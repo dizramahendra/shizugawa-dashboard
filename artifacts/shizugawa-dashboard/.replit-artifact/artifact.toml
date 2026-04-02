@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "3D Time-Series Dashboard"
+version = "1.0.0"
+id = "artifacts/shizugawa-dashboard"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25768
+
+[services.development]
+run = "pnpm --filter @workspace/shizugawa-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/shizugawa-dashboard", "run", "build" ]
+publicDir = "artifacts/shizugawa-dashboard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25768"
+BASE_PATH = "/"

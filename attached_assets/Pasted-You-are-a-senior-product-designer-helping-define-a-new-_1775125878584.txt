@@ -1,0 +1,198 @@
+You are a senior product designer helping define a new desktop dashboard for an environmental analytics product.
+
+I am designing a **standalone dashboard** called **3D Time-Series**.
+
+This dashboard is for:
+
+* **understanding / storytelling first**
+* **scientific playback of environmental data over time**
+* **existing condition only**
+* **desktop experience only**
+
+This is **not** a simulation tool, **not** a comparison tool, and **not** a KPI dashboard.
+
+## Product context
+
+The subject is **Shizugawa Bay, Japan**.
+
+The dashboard should visualize:
+
+* a **1-year playback** of nutrient flow / water-quality change
+* movement from **land to sea**
+* focused on the **ocean basin**
+* as a **3D data viewport**
+
+The feature should feel like:
+
+* a scientific playback viewer
+* a geospatial environmental data interface
+* a story-driven but credible analytical tool
+
+It should **not** feel like:
+
+* a generic SaaS dashboard
+* a finance dashboard
+* a colorful infographic
+* a scenic map explorer
+* a geology textbook
+
+## Core experience
+
+The user starts from a **top-down 2D overview** of the Shizugawa Bay area.
+
+Only the **ocean basin** is the main interactive trigger.
+
+Once selected, the main viewport transitions into a **3D gridded ocean-basin model**.
+
+The 3D model should:
+
+* roughly follow the irregular footprint / boundary shape of the Shizugawa Bay ocean basin
+* feel like the bay shape is **extruded downward**
+* show **depth**
+* show a **gridded / voxel-like / raster-like** ocean data structure
+* visualize nutrient concentration / water-quality as a scientific color field
+* be clean, minimal, and product-friendly
+
+This should **not** be a scenic watershed illustration.
+This should **not** be a decorative terrain block.
+The emphasis is on:
+
+* ocean basin
+* data field
+* playback over time
+
+## Interaction model
+
+There are two levels of interaction:
+
+### 1. Default interaction
+
+* select ocean basin
+* enter 3D playback view
+* play / pause
+* scrub timeline
+* inspect current timestamp
+* optionally change playback speed
+
+### 2. Secondary analysis tools
+
+These should exist, but they are not the primary experience:
+
+* point / pixel / cell selection
+* horizontal slice
+* vertical slice
+* depth graph
+
+These should feel like optional analysis overlays or modes on top of the main playback experience.
+
+## Design language
+
+Create the dashboard in a **clean, muted, scientific, GIS-inspired design language**.
+
+Use:
+
+* restrained colors
+* calm professional interface
+* off-white / light neutral background
+* compact analytical controls
+* clear typography hierarchy
+* subtle borders
+* soft shadows only if needed
+* large viewport as the hero
+
+Avoid:
+
+* bright consumer-app styling
+* playful illustration
+* oversaturated gradients
+* glassmorphism
+* overly rounded cards
+* generic startup dashboard feel
+* decorative widgets
+
+## Layout
+
+Design a **desktop-only two-column layout**.
+
+### Left side
+
+Large main viewport area:
+
+* 2D overview state
+* 3D playback state
+
+### Right side
+
+Structured utility / information panel:
+
+* selected basin context
+* current time / playback info
+* variable legend
+* analysis tool entry points
+* selected point / slice / graph info when relevant
+
+### Below viewport or attached to viewport
+
+Playback controls:
+
+* play / pause
+* timeline
+* timestamp
+* speed control
+
+## Required states
+
+Please define the dashboard across these states:
+
+### State 1 — Entry / 2D overview
+
+* top-down map or simplified geographic context
+* ocean basin clearly highlighted as the main entry point
+* guidance text if needed
+
+### State 2 — 3D playback default
+
+* ocean basin selected
+* 3D gridded data volume visible
+* playback controls active
+* right panel shows current context and legend
+
+### State 3 — Playback paused / scrubbed
+
+* same 3D model
+* user can inspect a specific timestep
+
+### State 4 — Point selection mode
+
+* one point / cell selected in the 3D basin
+* right panel updates with details
+
+### State 5 — Slice mode
+
+* horizontal or vertical slice through the 3D data volume
+* right panel adapts to slice context
+
+### State 6 — Depth graph mode
+
+* depth graph for selected point or slice
+* still clearly connected to the main viewport
+
+## What I want from you
+
+Please help me define the dashboard in a structured way.
+
+Output your answer in this exact structure:
+
+1. Product framing
+2. User goal
+3. Core UX flow
+4. Main layout structure
+5. Playback control model
+6. Secondary analysis modes
+7. Design language principles
+8. Risks / things to avoid
+9. A low-fidelity screen structure in words
+
+Do not generate code yet.
+Do not jump straight to visuals without explaining the structure.
+Focus on product logic, UX hierarchy, and interface behavior.
