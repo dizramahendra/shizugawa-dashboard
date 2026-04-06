@@ -4,6 +4,7 @@ import BasinOverview from "@/components/BasinOverview";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
 import InfoPanel from "@/components/InfoPanel";
+import TopNav from "@/components/TopNav";
 
 export default function Dashboard() {
   const [dashboardState, setDashboardState] = useState<DashboardState>("overview");
@@ -22,11 +23,8 @@ export default function Dashboard() {
 
   const startPlayback = useCallback(() => {
     setIsPlaying(true);
-    if (dashboardState === "overview") {
-      setDashboardState("playback");
-    } else if (dashboardState === "paused") {
-      setDashboardState("playback");
-    }
+    if (dashboardState === "overview") setDashboardState("playback");
+    else if (dashboardState === "paused") setDashboardState("playback");
   }, [dashboardState]);
 
   const pausePlayback = useCallback(() => {
@@ -48,9 +46,7 @@ export default function Dashboard() {
         });
       }, 800 / speed);
     }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPlaying, speed]);
 
   const handleSelectBasin = () => {
@@ -89,36 +85,86 @@ export default function Dashboard() {
 
   const isIn3D = dashboardState !== "overview";
 
+  const stateLabel: Record<DashboardState, string> = {
+    "overview": "2D Overview",
+    "playback": "3D Playback",
+    "paused": "Paused",
+    "point-select": "Point Inspection",
+    "slice-h": "Horizontal Slice",
+    "slice-v": "Vertical Slice",
+    "depth-graph": "Depth Profile",
+  };
+
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
-      {/* Top header bar */}
-      <header className="flex-shrink-0 h-10 border-b border-border/50 bg-card flex items-center px-4 gap-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-5 bg-primary rounded-sm" />
-          <span className="text-sm font-semibold tracking-tight text-foreground">3D Time-Series</span>
-          <span className="text-muted-foreground/50 text-xs">·</span>
-          <span className="data-label text-[10px] text-muted-foreground">Environmental Analytics</span>
-        </div>
+      {/* Top navigation bar — dark navy, GauDt-style */}
+      <TopNav currentState={dashboardState} stateLabel={stateLabel[dashboardState]} />
 
-        <div className="ml-auto flex items-center gap-3">
-          <div className="data-label text-[9px] text-muted-foreground/60 uppercase tracking-widest">
-            {dashboardState === "overview" && "2D Overview"}
-            {dashboardState === "playback" && "3D Playback"}
-            {dashboardState === "paused" && "3D Paused"}
-            {dashboardState === "point-select" && "Point Selection"}
-            {dashboardState === "slice-h" && "Horizontal Slice"}
-            {dashboardState === "slice-v" && "Vertical Slice"}
-            {dashboardState === "depth-graph" && "Depth Graph"}
+      {/* Tab bar — white, with active tab underline */}
+      <div className="tab-bar flex items-end px-4 flex-shrink-0">
+        <div
+          className={`tab-item ${!isIn3D ? "tab-item-active" : ""}`}
+          onClick={isIn3D ? handleReturnToOverview : undefined}
+          data-testid="tab-overview"
+        >
+          Basin Selection
+        </div>
+        <div
+          className={`tab-item ${isIn3D ? "tab-item-active" : ""}`}
+          onClick={!isIn3D ? handleSelectBasin : undefined}
+          data-testid="tab-3d"
+        >
+          3D Playback
+        </div>
+      </div>
+
+      {/* Toolbar — filter bar mimicking GauDt's Basin / Layer dropdowns */}
+      {isIn3D && (
+        <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Basin</span>
+            <div className="filter-select" data-testid="filter-basin">
+              <span className="text-sm">Shizugawa Bay</span>
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
           </div>
-          <div className="h-4 w-px bg-border/40" />
-          <span className="data-label text-[9px] text-muted-foreground/60">Shizugawa Bay · Japan</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Variable</span>
+            <select
+              className="filter-select pr-8 appearance-none"
+              value={selectedVariable}
+              onChange={(e) => setSelectedVariable(e.target.value)}
+              data-testid="filter-variable"
+              style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")", backgroundPosition: "right 0.5rem center", backgroundRepeat: "no-repeat", backgroundSize: "1.25rem" }}
+            >
+              <option value="nitrogen">Total Nitrogen</option>
+              <option value="phosphorus">Total Phosphorus</option>
+              <option value="chlorophyll">Chlorophyll-a</option>
+              <option value="do">Dissolved Oxygen</option>
+            </select>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {isPlaying ? (
+              <div className="flex items-center gap-1.5 text-xs text-green-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Playing
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                Paused
+              </div>
+            )}
+          </div>
         </div>
-      </header>
+      )}
 
-      {/* Main content */}
+      {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Viewport */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* Left: viewport */}
+        <div className="flex-1 flex flex-col min-w-0 relative">
           <div className="flex-1 relative overflow-hidden">
             {dashboardState === "overview" ? (
               <BasinOverview onSelectBasin={handleSelectBasin} />
@@ -133,21 +179,11 @@ export default function Dashboard() {
               />
             )}
 
-            {/* State indicator */}
+            {/* Viewport help text */}
             {isIn3D && (
-              <div className="absolute top-3 left-3 bg-card/90 border border-border/40 rounded-sm px-2 py-1 flex items-center gap-2 pointer-events-none">
-                <div className={`w-1.5 h-1.5 rounded-full ${isPlaying ? "bg-green-500 animate-pulse" : "bg-amber-500"}`} />
-                <span className="data-label text-[9px]">
-                  {isPlaying ? "Playing" : "Paused"}
-                </span>
-              </div>
-            )}
-
-            {/* 3D viewport instructions */}
-            {isIn3D && (
-              <div className="absolute bottom-3 left-3 bg-card/80 border border-border/30 rounded-sm px-2 py-1 pointer-events-none">
-                <div className="data-label text-[8px] text-muted-foreground/70">
-                  Orbit: drag · Zoom: scroll · Click voxel: inspect
+              <div className="absolute bottom-3 left-3 bg-white/80 border border-border rounded-md px-2.5 py-1.5 pointer-events-none shadow-sm">
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  Orbit · Zoom · Click voxel to inspect
                 </div>
               </div>
             )}
@@ -169,8 +205,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Right: Info Panel */}
-        <div className="w-[260px] flex-shrink-0">
+        {/* Right: info panel */}
+        <div className="w-72 flex-shrink-0 border-l border-border overflow-hidden">
           <InfoPanel
             dashboardState={dashboardState}
             setDashboardState={setDashboardState}

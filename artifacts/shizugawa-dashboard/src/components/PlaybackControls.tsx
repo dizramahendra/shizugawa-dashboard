@@ -14,6 +14,7 @@ interface PlaybackControlsProps {
 }
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default function PlaybackControls({
   week,
@@ -26,60 +27,48 @@ export default function PlaybackControls({
   onBack,
   onForward,
 }: PlaybackControlsProps) {
-  const { label, monthLabel } = getWeekLabel(week);
+  const { label } = getWeekLabel(week);
   const progress = week / (TOTAL_WEEKS - 1);
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
   return (
-    <div className="bg-card border-t border-border/60 px-4 py-2.5 flex items-center gap-4">
+    <div className="bg-white border-t border-border px-4 py-3 flex items-center gap-4 shadow-sm">
       {/* Play controls */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          className="control-btn"
-          onClick={onBack}
-          data-testid="playback-back"
-          title="Previous week"
-        >
-          <SkipBack size={11} />
+        <button className="ctrl-btn" onClick={onBack} data-testid="playback-back" title="Previous week">
+          <SkipBack size={12} />
         </button>
         <button
-          className={`control-btn h-8 w-8 ${isPlaying ? "control-btn-active" : ""}`}
+          className={`ctrl-btn w-9 h-9 ${isPlaying ? "ctrl-btn-primary" : ""}`}
           onClick={isPlaying ? onPause : onPlay}
           data-testid="playback-toggle"
         >
-          {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+          {isPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
         </button>
-        <button
-          className="control-btn"
-          onClick={onForward}
-          data-testid="playback-forward"
-          title="Next week"
-        >
-          <SkipForward size={11} />
+        <button className="ctrl-btn" onClick={onForward} data-testid="playback-forward" title="Next week">
+          <SkipForward size={12} />
         </button>
       </div>
 
       {/* Timestamp */}
-      <div className="flex-shrink-0 text-center min-w-[90px]">
+      <div className="flex-shrink-0 w-24">
         <div className="text-xs font-mono font-semibold text-foreground">{label}</div>
-        <div className="data-label text-[9px] text-muted-foreground">2023–2024</div>
+        <div className="text-[10px] text-muted-foreground">2023–2024</div>
       </div>
 
-      {/* Timeline scrubber */}
+      {/* Timeline */}
       <div className="flex-1 flex flex-col gap-1 min-w-0">
-        {/* Month markers */}
-        <div className="flex justify-between px-0">
-          {months.map((m) => (
-            <span key={m} className="data-label text-[8px] text-muted-foreground/60">{m}</span>
+        {/* Month labels */}
+        <div className="flex justify-between px-0.5">
+          {MONTHS.map((m) => (
+            <span key={m} className="text-[8px] font-mono text-muted-foreground/60">{m}</span>
           ))}
         </div>
 
-        {/* Slider track */}
-        <div className="relative h-5 flex items-center group">
-          <div className="w-full h-1.5 bg-muted rounded-full relative overflow-hidden">
+        {/* Track */}
+        <div className="relative h-6 flex items-center">
+          <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
             <div
-              className="absolute left-0 top-0 h-full bg-primary/70 rounded-full transition-all"
+              className="h-full bg-primary/70 rounded-full transition-all duration-150"
               style={{ width: `${progress * 100}%` }}
             />
           </div>
@@ -92,10 +81,10 @@ export default function PlaybackControls({
             className="absolute inset-0 opacity-0 cursor-pointer w-full"
             data-testid="playback-scrubber"
           />
-          {/* Thumb indicator */}
+          {/* Thumb */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-primary border-2 border-card shadow-sm pointer-events-none transition-all"
-            style={{ left: `calc(${progress * 100}% - 6px)` }}
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-primary border-2 border-white shadow pointer-events-none"
+            style={{ left: `calc(${progress * 100}% - 7px)` }}
           />
         </div>
 
@@ -104,30 +93,28 @@ export default function PlaybackControls({
           {Array.from({ length: 52 }).map((_, i) => (
             <div
               key={i}
-              className={`absolute top-0 w-px h-1 ${i % 4 === 0 ? "bg-muted-foreground/40" : "bg-muted-foreground/15"}`}
+              className={`absolute top-0 w-px ${i % 4 === 0 ? "h-1 bg-border" : "h-0.5 bg-border/50"}`}
               style={{ left: `${(i / 51) * 100}%` }}
             />
           ))}
         </div>
       </div>
 
-      {/* Speed control */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="data-label text-[9px] text-muted-foreground mr-1">Speed</span>
-        {SPEED_OPTIONS.map((s) => (
-          <button
-            key={s}
-            className={`px-1.5 py-0.5 text-[10px] font-mono rounded-sm border transition-colors cursor-pointer
-              ${speed === s
-                ? "bg-primary/10 border-primary/30 text-primary"
-                : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              }`}
-            onClick={() => onSpeedChange(s)}
-            data-testid={`speed-${s}`}
-          >
-            {s}×
-          </button>
-        ))}
+      {/* Speed */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <span className="text-[10px] text-muted-foreground">Speed</span>
+        <div className="flex gap-0.5">
+          {SPEED_OPTIONS.map((s) => (
+            <button
+              key={s}
+              className={`speed-btn ${speed === s ? "speed-btn-active" : ""}`}
+              onClick={() => onSpeedChange(s)}
+              data-testid={`speed-${s}`}
+            >
+              {s}×
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

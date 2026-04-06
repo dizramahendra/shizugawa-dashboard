@@ -45,8 +45,10 @@
   --color-chart-4: hsl(var(--chart-4));
   --color-chart-5: hsl(var(--chart-5));
 
+  --color-nav: hsl(var(--nav));
+  --color-nav-foreground: hsl(var(--nav-foreground));
+
   --font-sans: var(--app-font-sans);
-  --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -55,76 +57,70 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE — Scientific / GIS-inspired neutral palette */
+/* GauDt-inspired design system — dark nav, white panels, purple accent */
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: -6;
   --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .07);
+  --elevate-2: rgba(0,0,0, .06);
 
-  /* Off-white scientific background */
-  --background: 210 14% 96%;
-  --foreground: 215 20% 18%;
-  --border: 210 12% 83%;
-  --input: 210 12% 83%;
-  --ring: 207 44% 42%;
+  /* White content background */
+  --background: 0 0% 100%;
+  --foreground: 230 30% 12%;
 
-  --card: 210 14% 99%;
-  --card-foreground: 215 20% 18%;
-  --card-border: 210 12% 85%;
+  --border: 220 14% 90%;
+  --input: 220 14% 88%;
+  --ring: 247 58% 59%;
 
-  --popover: 210 14% 99%;
-  --popover-foreground: 215 20% 18%;
-  --popover-border: 210 12% 85%;
+  --card: 0 0% 100%;
+  --card-foreground: 230 30% 12%;
+  --card-border: 220 14% 90%;
 
-  --sidebar: 210 14% 98%;
-  --sidebar-foreground: 215 20% 18%;
-  --sidebar-border: 210 12% 85%;
-  --sidebar-primary: 207 44% 42%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 210 12% 92%;
-  --sidebar-accent-foreground: 215 20% 18%;
-  --sidebar-ring: 207 44% 42%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 230 30% 12%;
+  --popover-border: 220 14% 88%;
 
-  --primary: 207 44% 38%;
+  /* Purple/indigo primary — matches GauDt accent */
+  --primary: 247 58% 59%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 12% 88%;
-  --secondary-foreground: 215 20% 25%;
+  --secondary: 220 14% 94%;
+  --secondary-foreground: 230 25% 25%;
 
-  --muted: 210 12% 92%;
-  --muted-foreground: 215 12% 50%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 12% 52%;
 
-  --accent: 185 40% 42%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 247 58% 96%;
+  --accent-foreground: 247 58% 45%;
 
-  --destructive: 2 62% 50%;
+  --destructive: 4 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  --chart-1: 207 44% 38%;
-  --chart-2: 185 40% 42%;
-  --chart-3: 155 30% 44%;
-  --chart-4: 38 60% 52%;
-  --chart-5: 2 62% 50%;
+  /* Dark navy nav bar */
+  --nav: 232 38% 12%;
+  --nav-foreground: 0 0% 100%;
+
+  --chart-1: 247 58% 59%;
+  --chart-2: 185 45% 42%;
+  --chart-3: 155 35% 44%;
+  --chart-4: 38 65% 52%;
+  --chart-5: 4 72% 51%;
 
   --app-font-sans: 'Inter', 'system-ui', sans-serif;
-  --app-font-serif: Georgia, serif;
   --app-font-mono: 'JetBrains Mono', 'Menlo', monospace;
-  --radius: 0.25rem;
+  --radius: 0.375rem;
 
   --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
-  --shadow: 0 1px 3px 0 rgba(0,0,0,0.08), 0 1px 2px -1px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.07), 0 4px 6px -4px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
 
   --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
 @layer base {
@@ -136,42 +132,104 @@
   }
 }
 
-/* Custom utility classes for the scientific dashboard */
+/* ── GauDt-inspired utility classes ────────────────────────── */
 @layer utilities {
-  .panel-header {
-    @apply text-[10px] font-semibold tracking-widest uppercase text-muted-foreground;
+
+  /* Nav bar */
+  .nav-bar {
+    background-color: hsl(var(--nav));
+    color: hsl(var(--nav-foreground));
   }
 
+  /* Tab bar below nav */
+  .tab-bar {
+    @apply bg-white border-b border-border;
+  }
+
+  .tab-item {
+    @apply px-4 py-3 text-sm text-muted-foreground cursor-pointer border-b-2 border-transparent
+           hover:text-foreground transition-colors -mb-px;
+  }
+
+  .tab-item-active {
+    @apply text-primary border-primary font-medium;
+  }
+
+  /* Filter dropdowns (GauDt style) */
+  .filter-select {
+    @apply flex items-center gap-2 px-3 h-10 rounded-md border border-border bg-white
+           text-sm text-foreground cursor-pointer hover:border-primary/40
+           transition-colors select-none min-w-[160px] justify-between;
+  }
+
+  /* Panel section header */
+  .panel-section-title {
+    @apply text-[11px] font-semibold tracking-widest uppercase text-muted-foreground;
+  }
+
+  /* Data label */
   .data-label {
-    @apply text-[10px] font-mono tracking-wide text-muted-foreground;
+    @apply text-[11px] font-mono text-muted-foreground;
   }
 
   .data-value {
-    @apply text-sm font-mono font-medium text-foreground;
+    @apply text-sm font-medium text-foreground;
   }
 
-  .viewport-border {
-    @apply border border-border/60 rounded-sm;
+  /* Numbered list item (GauDt style) */
+  .basin-list-item {
+    @apply flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50
+           border-b border-border/60 last:border-0 transition-colors;
   }
 
-  .control-btn {
-    @apply inline-flex items-center justify-center h-7 w-7 rounded-sm border border-border/60
-           bg-card text-muted-foreground hover:text-foreground hover:bg-muted/60
-           transition-colors cursor-pointer text-xs;
+  .basin-list-item-active {
+    @apply bg-primary/5 hover:bg-primary/8;
   }
 
-  .control-btn-active {
-    @apply bg-primary/10 border-primary/30 text-primary;
+  .basin-number {
+    @apply w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0
+           text-[11px] font-semibold text-muted-foreground border border-border/60;
   }
 
-  .analysis-tool-btn {
-    @apply flex items-center gap-2 w-full px-2 py-1.5 rounded-sm text-xs
-           text-muted-foreground hover:text-foreground hover:bg-muted/60
-           border border-transparent hover:border-border/40
+  /* Search bar */
+  .search-input {
+    @apply w-full h-10 pl-9 pr-3 rounded-md border border-border bg-muted/30
+           text-sm placeholder:text-muted-foreground/70 focus:outline-none
+           focus:ring-1 focus:ring-primary/40 focus:border-primary/40 transition;
+  }
+
+  /* Playback control button */
+  .ctrl-btn {
+    @apply inline-flex items-center justify-center h-8 w-8 rounded-md
+           border border-border bg-white text-muted-foreground
+           hover:text-foreground hover:border-primary/30 hover:bg-primary/5
            transition-colors cursor-pointer;
   }
 
-  .analysis-tool-btn-active {
-    @apply text-primary bg-primary/8 border-primary/25;
+  .ctrl-btn-primary {
+    @apply bg-primary text-white border-primary hover:bg-primary/90;
+  }
+
+  /* Analysis tool button */
+  .tool-btn {
+    @apply flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-sm
+           text-muted-foreground hover:text-foreground hover:bg-muted/50
+           border border-transparent hover:border-border/50
+           transition-colors cursor-pointer;
+  }
+
+  .tool-btn-active {
+    @apply text-primary bg-primary/8 border-primary/20;
+  }
+
+  /* Speed badge */
+  .speed-btn {
+    @apply px-2 py-0.5 text-xs font-mono rounded border border-border
+           text-muted-foreground hover:border-primary/40 hover:text-primary
+           cursor-pointer transition-colors;
+  }
+
+  .speed-btn-active {
+    @apply bg-primary/10 border-primary/30 text-primary;
   }
 }

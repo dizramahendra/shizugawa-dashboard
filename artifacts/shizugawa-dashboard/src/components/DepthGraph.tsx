@@ -47,7 +47,7 @@ export default function DepthGraph({ week, variableId, variableLabel, unit, sele
   return (
     <div className="space-y-3">
       <div>
-        <div className="panel-header">Depth Profile</div>
+        <div className="panel-section-title">Depth Profile</div>
         {selectedPoint && (
           <div className="data-label text-[9px] mt-0.5">
             Cell ({selectedPoint.x}, {selectedPoint.z}) · {variableLabel}
