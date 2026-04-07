@@ -1,20 +1,41 @@
 import { useMemo } from "react";
 import {
   generateRiverData,
-  RIVER_COLS,
-  RIVER_ROWS,
   valueToConcentration,
   VARIABLE_OPTIONS,
 } from "@/lib/simulatedData";
 
-interface RiverGrid2DProps {
-  week: number;
-  variableId: string;
-  riverId: string;
-  selectedCell: { row: number; col: number } | null;
-  onCellClick: (row: number, col: number) => void;
+// ── Grid dimensions ──────────────────────────────────────────
+const COLS = 36;   // along-stream (left = upstream, right = downstream)
+const ROWS = 12;   // cross-stream (total canvas height)
+
+// ── River channel mask ────────────────────────────────────────
+// For each column, define the center row (0-indexed, float).
+// This traces a meandering course from upstream to downstream.
+function riverCenter(col: number): number {
+  // Two overlapping sine waves for a natural meander
+  return (
+    5.5 +
+    2.4 * Math.sin(col * 0.28 + 0.6) +
+    0.9 * Math.sin(col * 0.6 + 1.8)
+  );
 }
 
+// Channel half-width at each column (varies 0.9–1.8 cells)
+function channelHalfWidth(col: number): number {
+  return 1.1 + 0.7 * Math.abs(Math.sin(col * 0.35 + 0.4));
+}
+
+// Pre-compute mask once
+const RIVER_MASK: boolean[][] = Array.from({ length: ROWS }, (_, row) =>
+  Array.from({ length: COLS }, (_, col) => {
+    const center = riverCenter(col);
+    const hw = channelHalfWidth(col);
+    return Math.abs(row - center) <= hw;
+  })
+);
+
+// ── Colour interpolation ──────────────────────────────────────
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   phosphorus: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
@@ -27,16 +48,28 @@ function interpolateColor(stops: string[], t: number): string {
   const idx = Math.min(n - 1, Math.floor(t * n));
   const frac = t * n - idx;
   const hex = (s: string, o: number) => parseInt(s.slice(o, o + 2), 16);
-  const r1 = hex(stops[idx], 1), g1 = hex(stops[idx], 3), b1 = hex(stops[idx], 5);
-  const r2 = hex(stops[idx + 1], 1), g2 = hex(stops[idx + 1], 3), b2 = hex(stops[idx + 1], 5);
-  const r = Math.round(r1 + (r2 - r1) * frac);
-  const g = Math.round(g1 + (g2 - g1) * frac);
-  const b = Math.round(b1 + (b2 - b1) * frac);
-  return `rgb(${r},${g},${b})`;
+  const [r1, g1, b1] = [hex(stops[idx], 1), hex(stops[idx], 3), hex(stops[idx], 5)];
+  const [r2, g2, b2] = [hex(stops[idx + 1], 1), hex(stops[idx + 1], 3), hex(stops[idx + 1], 5)];
+  return `rgb(${Math.round(r1 + (r2 - r1) * frac)},${Math.round(g1 + (g2 - g1) * frac)},${Math.round(b1 + (b2 - b1) * frac)})`;
 }
 
-const DEPTH_LABELS_SHORT = ["≥0m", "1m", "2m", "3m", "4m", "5m+"];
-const KM_LABELS = ["0 km", "3 km", "6 km", "9 km", "12 km", "15 km", "18 km"];
+// ── km tick labels ────────────────────────────────────────────
+const KM_TICKS = [0, 6, 12, 18, 24, 30, 36].map((col) => ({
+  col,
+  label: `${Math.round((col / COLS) * 18)} km`,
+}));
+
+// ── Props ─────────────────────────────────────────────────────
+interface RiverGrid2DProps {
+  week: number;
+  variableId: string;
+  riverId: string;
+  selectedCell: { row: number; col: number } | null;
+  onCellClick: (row: number, col: number) => void;
+}
+
+const CELL = 24; // px per cell
+const GAP  = 1;  // px gap between cells
 
 export default function RiverGrid2D({
   week,
@@ -45,126 +78,136 @@ export default function RiverGrid2D({
   selectedCell,
   onCellClick,
 }: RiverGrid2DProps) {
+  // Use the full data grid but only render cells inside the mask
   const data = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const variable = VARIABLE_OPTIONS.find((v) => v.id === variableId) ?? VARIABLE_OPTIONS[0];
 
+  const gridW = COLS * CELL + (COLS - 1) * GAP;
+  const gridH = ROWS * CELL + (ROWS - 1) * GAP;
+
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-[#eaf2f5] relative select-none overflow-hidden">
 
-      {/* Background grid */}
-      <div
-        className="absolute inset-0 opacity-10"
-        style={{
-          backgroundImage:
-            "linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-        }}
-      />
-
-      {/* Faint terrain wash */}
-      <div className="absolute inset-0" style={{
-        background: "radial-gradient(ellipse at 50% 50%, rgba(140,195,215,0.18) 0%, transparent 70%)"
+      {/* Background grid texture */}
+      <div className="absolute inset-0 opacity-10" style={{
+        backgroundImage: "linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)",
+        backgroundSize: "40px 40px",
       }} />
 
-      {/* River label */}
+      {/* Badge */}
       <div className="absolute top-4 left-4 bg-white rounded-md shadow-sm border border-border px-3 py-2 z-10">
-        <div className="text-xs font-semibold text-foreground">2D River Playback</div>
-        <div className="text-[10px] font-mono text-muted-foreground">Horizontal cross-section view</div>
+        <div className="text-xs font-semibold text-foreground">River Playback (2D)</div>
+        <div className="text-[10px] font-mono text-muted-foreground">Raster channel · upstream → downstream</div>
       </div>
 
-      {/* Main grid area */}
-      <div className="relative flex flex-col" style={{ gap: 0 }}>
+      {/* Main grid + axes wrapper */}
+      <div className="flex flex-col items-start">
 
-        {/* Y-axis label */}
-        <div className="flex items-center">
-          <div className="flex flex-col justify-around h-full mr-2 text-right"
-            style={{ width: 44, height: RIVER_ROWS * 44 }}>
-            {Array.from({ length: RIVER_ROWS }).map((_, row) => (
-              <div key={row} className="text-[9px] font-mono text-muted-foreground flex items-center justify-end" style={{ height: 44 }}>
-                {DEPTH_LABELS_SHORT[row]}
+        {/* Row: y-axis label + grid */}
+        <div className="flex items-start">
+
+          {/* Y-axis */}
+          <div
+            className="flex flex-col justify-between pr-2 text-right flex-shrink-0"
+            style={{ height: gridH, width: 54, paddingTop: 0 }}
+          >
+            {["N bank", "", "", "", "thalweg", "", "", "", "", "", "", "S bank"].map((lbl, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-end"
+                style={{ height: CELL + (i < ROWS - 1 ? GAP : 0) }}
+              >
+                <span className="text-[8px] font-mono text-muted-foreground leading-none">{lbl}</span>
               </div>
             ))}
           </div>
 
-          {/* Grid cells */}
+          {/* Grid */}
           <div
-            className="grid relative"
-            style={{
-              gridTemplateColumns: `repeat(${RIVER_COLS}, 44px)`,
-              gridTemplateRows: `repeat(${RIVER_ROWS}, 44px)`,
-              gap: 2,
-            }}
+            className="relative flex-shrink-0"
+            style={{ width: gridW, height: gridH }}
           >
-            {Array.from({ length: RIVER_ROWS }).map((_, row) =>
-              Array.from({ length: RIVER_COLS }).map((_, col) => {
-                const val = data[row]?.[col] ?? 0;
-                const bg = interpolateColor(stops, val);
+            {Array.from({ length: ROWS }).map((_, row) =>
+              Array.from({ length: COLS }).map((_, col) => {
+                const inRiver = RIVER_MASK[row][col];
                 const isSelected = selectedCell?.row === row && selectedCell?.col === col;
-                const conc = valueToConcentration(val, variableId);
+
+                // Map data: use col as the x-dimension, row as z-dimension,
+                // but clamp to the smaller generateRiverData dimensions
+                const dataCol = Math.min(col, (data[0]?.length ?? 1) - 1);
+                const dataRow = Math.min(row, data.length - 1);
+                const val = data[dataRow]?.[dataCol] ?? 0;
+                const bg = inRiver ? interpolateColor(stops, val) : undefined;
+                const conc = inRiver ? valueToConcentration(val, variableId) : null;
 
                 return (
                   <div
                     key={`${row}-${col}`}
-                    onClick={() => onCellClick(row, col)}
-                    className="relative cursor-pointer group"
+                    onClick={() => inRiver && onCellClick(row, col)}
+                    className={`absolute group ${inRiver ? "cursor-pointer" : "cursor-default"}`}
                     style={{
-                      width: 44,
-                      height: 44,
-                      backgroundColor: bg,
+                      left: col * (CELL + GAP),
+                      top: row * (CELL + GAP),
+                      width: CELL,
+                      height: CELL,
+                      backgroundColor: inRiver ? bg : "#dde5ec",
                       border: isSelected
                         ? "2px solid hsl(var(--primary))"
-                        : "1px solid rgba(255,255,255,0.18)",
+                        : inRiver
+                        ? "1px solid rgba(255,255,255,0.25)"
+                        : "1px solid rgba(200,212,220,0.5)",
                       boxSizing: "border-box",
-                      outline: isSelected ? "2px solid hsl(var(--primary) / 40%)" : "none",
+                      opacity: inRiver ? 1 : 0.45,
+                      zIndex: isSelected ? 10 : 1,
+                      outline: isSelected ? "2px solid hsl(var(--primary) / 35%)" : "none",
                       outlineOffset: 1,
                     }}
-                    title={`Row ${row + 1}, Col ${col + 1}: ${conc} ${variable.unit}`}
                   >
-                    {/* Hover tooltip */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5
-                                    bg-foreground/90 text-white text-[9px] font-mono rounded whitespace-nowrap
-                                    opacity-0 group-hover:opacity-100 pointer-events-none z-20 transition-opacity">
-                      {conc} {variable.unit}
-                    </div>
+                    {/* Tooltip for active cells */}
+                    {inRiver && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5
+                                      bg-foreground/85 text-white text-[9px] font-mono rounded whitespace-nowrap
+                                      opacity-0 group-hover:opacity-100 pointer-events-none z-20 transition-opacity">
+                        {conc} {variable.unit}
+                      </div>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
-
-          {/* Right: cross-stream arrow */}
-          <div className="ml-3 flex flex-col items-center justify-center" style={{ height: RIVER_ROWS * 44 }}>
-            <div className="text-[9px] font-mono text-muted-foreground writing-mode-vertical text-center" style={{ writingMode: "vertical-rl" }}>
-              cross-stream
-            </div>
-          </div>
         </div>
 
         {/* X-axis km labels */}
-        <div className="flex items-center mt-1" style={{ paddingLeft: 46 }}>
-          <div className="flex justify-between" style={{ width: RIVER_COLS * 44 + (RIVER_COLS - 1) * 2 }}>
-            {KM_LABELS.map((l) => (
-              <span key={l} className="text-[9px] font-mono text-muted-foreground">{l}</span>
+        <div className="flex items-start mt-1.5" style={{ paddingLeft: 54 }}>
+          <div className="relative" style={{ width: gridW }}>
+            {KM_TICKS.map(({ col, label }) => (
+              <span
+                key={col}
+                className="absolute text-[9px] font-mono text-muted-foreground -translate-x-1/2"
+                style={{ left: col * (CELL + GAP) + CELL / 2 }}
+              >
+                {label}
+              </span>
             ))}
           </div>
         </div>
 
-        {/* X-axis label */}
-        <div className="text-[9px] font-mono text-muted-foreground text-center mt-1" style={{ paddingLeft: 46 }}>
+        {/* Direction label */}
+        <div className="mt-5 text-[9px] font-mono text-muted-foreground/70 text-center" style={{ paddingLeft: 54, width: gridW + 54 }}>
           ← upstream · downstream →
         </div>
       </div>
 
-      {/* Mini color bar */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3">
+      {/* Color bar */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap">
         <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
-        <div className="h-3 w-32 rounded-sm" style={{
+        <div className="h-3 w-32 rounded-sm border border-border/30" style={{
           background: `linear-gradient(to right, ${stops.join(", ")})`
         }} />
-        <div className="flex gap-4 text-[9px] font-mono text-muted-foreground">
-          <span>Low</span>
-          <span>High</span>
+        <div className="flex justify-between gap-6 text-[9px] font-mono text-muted-foreground">
+          <span>Low</span><span>High</span>
         </div>
       </div>
     </div>
