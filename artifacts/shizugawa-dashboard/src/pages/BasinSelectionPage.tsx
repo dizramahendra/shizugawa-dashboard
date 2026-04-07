@@ -24,13 +24,26 @@ export default function BasinSelectionPage() {
 
   const activeWS = WATERSHEDS.find((w) => w.id === selectedWatershed) ?? null;
 
-  const filtered = ALL_ITEMS.filter((b) =>
-    b.name.toLowerCase().includes(search.toLowerCase()) ||
-    b.sub.toLowerCase().includes(search.toLowerCase())
+  const lowerSearch = search.toLowerCase();
+
+  const filteredWatersheds = WATERSHEDS.filter((w) =>
+    !search ||
+    w.name.toLowerCase().includes(lowerSearch) ||
+    w.description.toLowerCase().includes(lowerSearch)
   );
 
-  const handleSelectOcean = () => navigate("/playback");
-  const handleSelectRiver = (riverId: string) => navigate(`/river?river=${riverId}`);
+  const filtered = ALL_ITEMS.filter((b) =>
+    !search ||
+    b.name.toLowerCase().includes(lowerSearch) ||
+    b.sub.toLowerCase().includes(lowerSearch)
+  );
+
+  const wnameSuffix = activeWS ? `&wname=${encodeURIComponent(activeWS.name)}` : "";
+
+  const handleSelectOcean = () =>
+    navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`);
+  const handleSelectRiver = (riverId: string) =>
+    navigate(`/river?river=${riverId}${wnameSuffix}`);
 
   const handleLoadWatershed = () => {
     if (!activeWS) return;
@@ -63,7 +76,7 @@ export default function BasinSelectionPage() {
           <div className="px-4 py-3.5 border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground">Map Viewport</h2>
-              <span className="text-xs text-muted-foreground">{ALL_ITEMS.length + WATERSHEDS.length} features</span>
+              <span className="text-xs text-muted-foreground">{filteredWatersheds.length + filtered.length} features</span>
             </div>
           </div>
 
@@ -89,7 +102,7 @@ export default function BasinSelectionPage() {
                 <span className="panel-section-title">Watersheds</span>
               </div>
             </div>
-            {WATERSHEDS.map((ws) => {
+            {filteredWatersheds.map((ws) => {
               const isSelected = selectedWatershed === ws.id;
               return (
                 <div
