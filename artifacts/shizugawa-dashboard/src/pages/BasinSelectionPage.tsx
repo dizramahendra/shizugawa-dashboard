@@ -47,7 +47,7 @@ export default function BasinSelectionPage() {
 
   const handleLoadWatershed = () => {
     if (!activeWS) return;
-    navigate(`/playback?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}`);
+    navigate(`/cross-section?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}`);
   };
 
   function isBasinInWatershed(id: string) {
@@ -174,7 +174,7 @@ export default function BasinSelectionPage() {
                   Load Watershed →
                 </button>
                 <div className="text-[10px] text-muted-foreground text-center mt-1.5">
-                  Opens Ocean 3D view with {activeWS.name} context
+                  Opens Terrain Cross-Section with {activeWS.name} context
                 </div>
               </div>
             )}

@@ -10,7 +10,8 @@ export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
   const location = useLocation();
   const isRiver = location.pathname.startsWith("/river");
   const isOcean = location.pathname.startsWith("/playback");
-  const isMap = !isRiver && !isOcean;
+  const isCS = location.pathname.startsWith("/cross-section");
+  const isMap = !isRiver && !isOcean && !isCS;
 
   return (
     <>
@@ -66,7 +67,7 @@ export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
         </div>
       </header>
 
-      {/* Tab bar — three views */}
+      {/* Tab bar — four views */}
       <nav className="tab-bar flex items-end px-4 flex-shrink-0">
         <NavLink
           to="/"
@@ -74,6 +75,15 @@ export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
           className={`tab-item ${isMap ? "tab-item-active" : ""}`}
         >
           Map Viewport
+        </NavLink>
+        <NavLink
+          to="/cross-section"
+          className={`tab-item ${isCS ? "tab-item-active" : ""}`}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-sm bg-emerald-400 inline-block" />
+            Cross-Section
+          </span>
         </NavLink>
         <NavLink
           to="/river"
