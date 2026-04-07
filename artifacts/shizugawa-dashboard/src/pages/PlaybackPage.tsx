@@ -58,6 +58,7 @@ export default function PlaybackPage() {
   const [sliceLevel, setSliceLevel] = useState(3);
   const [activeTool, setActiveTool] = useState<ToolState>("none");
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number; depth: number } | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number; depth: number } | null>(null);
   const [showExchange, setShowExchange] = useState(true);
   const [showElution, setShowElution] = useState(true);
 
@@ -144,7 +145,10 @@ export default function PlaybackPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* 3D viewport + playback */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 relative overflow-hidden">
+          <div
+            className="flex-1 relative overflow-hidden"
+            onPointerLeave={() => setHoveredPoint(null)}
+          >
             <OceanBasin3D
               week={week}
               colorScale={selectedVariable}
@@ -152,12 +156,43 @@ export default function PlaybackPage() {
               selectedPoint={selectedPoint}
               sliceLevel={sliceLevel}
               onCellClick={handleCellClick}
+              onCellHover={(x, z, d) => setHoveredPoint({ x, z, depth: d })}
             />
             <FlowIndicators
               week={week}
               showExchange={showExchange}
               showElution={showElution}
             />
+
+            {/* Live coordinate HUD — top-right corner */}
+            {(() => {
+              const pt = hoveredPoint ?? selectedPoint;
+              if (!pt) return (
+                <div className="absolute top-3 right-3 pointer-events-none">
+                  <div className="bg-black/40 backdrop-blur-sm rounded-md px-2.5 py-1.5 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
+                    <span className="text-[10px] font-mono text-white/40">— °N · — °E · — m</span>
+                  </div>
+                </div>
+              );
+              const c = gridToCoords(pt.x, pt.z, pt.depth);
+              const isHover = hoveredPoint !== null;
+              return (
+                <div className="absolute top-3 right-3 pointer-events-none">
+                  <div className={`rounded-md px-2.5 py-1.5 flex items-center gap-2 transition-all ${isHover ? "bg-black/60 backdrop-blur-sm" : "bg-black/35 backdrop-blur-sm"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isHover ? "bg-emerald-400" : "bg-amber-400"}`} />
+                    <span className="text-[10px] font-mono text-white leading-none">
+                      {c.lat}°N&nbsp;·&nbsp;{c.lon}°E
+                    </span>
+                    <span className="text-white/40 text-[10px]">|</span>
+                    <span className="text-[10px] font-mono text-white/80 leading-none">
+                      {c.depthM === 0 ? "Surface" : `↓ ${c.depthM} m`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="absolute bottom-3 left-3 bg-white/80 border border-border rounded-md px-2.5 py-1.5 pointer-events-none shadow-sm">
               <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click voxel to inspect</div>
             </div>

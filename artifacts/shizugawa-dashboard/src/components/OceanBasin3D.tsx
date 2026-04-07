@@ -66,9 +66,10 @@ interface VoxelGridProps {
   sliceMode: DashboardState;
   sliceLevel: number;
   onCellClick: (x: number, z: number, depth: number) => void;
+  onCellHover?: (x: number, z: number, depth: number) => void;
 }
 
-function VoxelGrid({ week, colorScale, selectedPoint, sliceMode, sliceLevel, onCellClick }: VoxelGridProps) {
+function VoxelGrid({ week, colorScale, selectedPoint, sliceMode, sliceLevel, onCellClick, onCellHover }: VoxelGridProps) {
   const data = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
@@ -115,6 +116,10 @@ function VoxelGrid({ week, colorScale, selectedPoint, sliceMode, sliceLevel, onC
             onClick={(e) => {
               e.stopPropagation();
               onCellClick(gx, gz, d);
+            }}
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              onCellHover?.(gx, gz, d);
             }}
           >
             <boxGeometry args={[CELL_W, CELL_H, CELL_W]} />
@@ -197,6 +202,7 @@ interface OceanBasin3DProps {
   selectedPoint: { x: number; z: number; depth: number } | null;
   sliceLevel: number;
   onCellClick: (x: number, z: number, depth: number) => void;
+  onCellHover?: (x: number, z: number, depth: number) => void;
 }
 
 export default function OceanBasin3D({
@@ -206,6 +212,7 @@ export default function OceanBasin3D({
   selectedPoint,
   sliceLevel,
   onCellClick,
+  onCellHover,
 }: OceanBasin3DProps) {
   return (
     <Canvas
@@ -225,6 +232,7 @@ export default function OceanBasin3D({
         sliceMode={dashboardState}
         sliceLevel={sliceLevel}
         onCellClick={onCellClick}
+        onCellHover={onCellHover}
       />
       <DepthAxis />
       <GridFloor />
