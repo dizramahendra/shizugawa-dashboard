@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity } from "lucide-react";
 import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData } from "@/lib/simulatedData";
 import TopNav from "@/components/TopNav";
@@ -25,6 +25,9 @@ function toDashboardState(tool: ToolState, isPlaying: boolean): DashboardState {
 
 export default function PlaybackPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const watershedName = searchParams.get("wname") ?? undefined;
+
   const [week, setWeek] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -73,7 +76,7 @@ export default function PlaybackPage() {
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
-      <TopNav stateLabel={isPlaying ? "Playing" : "Paused"} />
+      <TopNav stateLabel={isPlaying ? "Playing" : "Paused"} watershedName={watershedName} />
 
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">

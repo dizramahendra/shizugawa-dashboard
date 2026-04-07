@@ -3,9 +3,10 @@ import { NavLink, useLocation } from "react-router-dom";
 
 interface TopNavProps {
   stateLabel?: string;
+  watershedName?: string;
 }
 
-export default function TopNav({ stateLabel }: TopNavProps) {
+export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
   const location = useLocation();
   const isRiver = location.pathname.startsWith("/river");
   const isOcean = location.pathname.startsWith("/playback");
@@ -30,10 +31,23 @@ export default function TopNav({ stateLabel }: TopNavProps) {
           <span className="text-white/80 text-sm">3D Time-Series</span>
         </div>
 
-        {/* Center: current state label */}
-        <div className="mx-auto">
-          {stateLabel && (
+        {/* Center: watershed context + state label */}
+        <div className="mx-auto flex items-center gap-2">
+          {watershedName && (
+            <>
+              <span className="text-[10px] font-semibold text-white/60 uppercase tracking-widest">Watershed</span>
+              <span className="text-white/30 text-xs">·</span>
+              <span className="text-xs font-medium text-white/80">{watershedName}</span>
+            </>
+          )}
+          {stateLabel && !watershedName && (
             <span className="text-white/40 text-xs font-mono">{stateLabel}</span>
+          )}
+          {stateLabel && watershedName && (
+            <>
+              <span className="text-white/30 text-xs">·</span>
+              <span className="text-white/40 text-xs font-mono">{stateLabel}</span>
+            </>
           )}
         </div>
 

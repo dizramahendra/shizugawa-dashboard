@@ -156,6 +156,43 @@ export function valueToConcentration(value: number, variableId: string): number 
   }
 }
 
+// ── Watershed bounding boxes ─────────────────────────────────
+
+export interface Watershed {
+  id: string;
+  name: string;
+  description: string;
+  area: string;
+  basinIds: string[];           // river ids + "ocean"
+  svgBox: { x: number; y: number; w: number; h: number };
+  color: string;                // CSS hex for stroke/fill
+}
+
+/**
+ * Pre-defined watershed bounding boxes rendered on the Map Viewport.
+ * SVG coordinates are in the 520×400 viewBox used by BasinOverview.
+ */
+export const WATERSHEDS: Watershed[] = [
+  {
+    id: "shizugawa-bay",
+    name: "Shizugawa Bay Watershed",
+    description: "Complete drainage basin",
+    area: "78.9 km²",
+    basinIds: ["shizugawa", "kitakami", "hachiman", "ocean"],
+    svgBox: { x: 62, y: 40, w: 378, h: 278 },
+    color: "#7c6fcd",
+  },
+  {
+    id: "inner-bay-zone",
+    name: "Inner Bay Study Zone",
+    description: "Shizugawa · Hachiman catchment",
+    area: "44.1 km²",
+    basinIds: ["shizugawa", "hachiman", "ocean"],
+    svgBox: { x: 135, y: 55, w: 285, h: 253 },
+    color: "#0ea5e9",
+  },
+];
+
 // ── River data (2D, no depth) ────────────────────────────────
 
 export const RIVER_COLS = 36; // along-stream axis (x)

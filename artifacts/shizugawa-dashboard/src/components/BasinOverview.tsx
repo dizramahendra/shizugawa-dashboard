@@ -1,15 +1,17 @@
 import { useState } from "react";
-import { BAY_MASK, GRID_W, GRID_D, RIVERS } from "@/lib/simulatedData";
+import { BAY_MASK, GRID_W, GRID_D, RIVERS, WATERSHEDS, Watershed } from "@/lib/simulatedData";
 
 interface BasinOverviewProps {
   onSelectOcean: () => void;
   onSelectRiver: (riverId: string) => void;
+  selectedWatershed: string | null;
+  onSelectWatershed: (id: string | null) => void;
 }
 
 const RIVER_PATHS: {
   id: string;
   label: string;
-  points: [number, number][];   // SVG coords in the 520×400 viewBox
+  points: [number, number][];
   labelPos: [number, number];
 }[] = [
   {
@@ -32,12 +34,30 @@ const RIVER_PATHS: {
   },
 ];
 
-export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOverviewProps) {
+export default function BasinOverview({
+  onSelectOcean,
+  onSelectRiver,
+  selectedWatershed,
+  onSelectWatershed,
+}: BasinOverviewProps) {
   const [hoveredOcean, setHoveredOcean] = useState(false);
   const [hoveredRiver, setHoveredRiver] = useState<string | null>(null);
+  const [hoveredWatershed, setHoveredWatershed] = useState<string | null>(null);
 
   const cellW = 100 / GRID_W;
   const cellH = 100 / GRID_D;
+
+  const selectedWS = WATERSHEDS.find((w) => w.id === selectedWatershed) ?? null;
+
+  function isRiverHighlighted(riverId: string) {
+    if (!selectedWS) return false;
+    return selectedWS.basinIds.includes(riverId);
+  }
+
+  function isOceanHighlighted() {
+    if (!selectedWS) return false;
+    return selectedWS.basinIds.includes("ocean");
+  }
 
   return (
     <div className="w-full h-full relative flex flex-col items-center justify-center bg-[#e8edf2] select-none overflow-hidden">
@@ -69,6 +89,13 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
         <div className="flex items-center gap-1.5">
           <div className="w-5 h-1.5 rounded-full bg-blue-400" />
           <span className="text-[10px] text-foreground">River</span>
+        </div>
+        <div className="w-px h-3 bg-border" />
+        <div className="flex items-center gap-1.5">
+          <svg width="16" height="10">
+            <rect x="1" y="1" width="14" height="8" rx="1" fill="none" stroke="#7c6fcd" strokeWidth="1.5" strokeDasharray="4,2" />
+          </svg>
+          <span className="text-[10px] text-foreground">Watershed</span>
         </div>
       </div>
 
@@ -116,12 +143,103 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
           <path d="M130,95 L220,62 L300,62 L395,90 L450,135 L470,190 L460,250 L410,300 L330,315 L260,308 L190,300 L140,268 L110,220 L108,160 Z"
             fill="#b8d4e4" opacity="0.55" />
 
+          {/* ── Watershed bounding boxes (below rivers, above water) ── */}
+          {WATERSHEDS.map((ws: Watershed) => {
+            const isSelected = selectedWatershed === ws.id;
+            const isHovered = hoveredWatershed === ws.id;
+            const { x, y, w, h } = ws.svgBox;
+            const active = isSelected || isHovered;
+
+            return (
+              <g key={ws.id}>
+                {/* Glow / selection shadow */}
+                {active && (
+                  <rect
+                    x={x - 3} y={y - 3} width={w + 6} height={h + 6}
+                    rx={5}
+                    fill="none"
+                    stroke={ws.color}
+                    strokeWidth={isSelected ? 8 : 5}
+                    opacity={isSelected ? 0.18 : 0.10}
+                    className="pointer-events-none"
+                  />
+                )}
+                {/* Fill */}
+                <rect
+                  x={x} y={y} width={w} height={h}
+                  rx={3}
+                  fill={ws.color}
+                  fillOpacity={isSelected ? 0.11 : isHovered ? 0.07 : 0.035}
+                  stroke={ws.color}
+                  strokeWidth={isSelected ? 2 : 1.5}
+                  strokeDasharray={isSelected ? "8,4" : "6,5"}
+                  strokeOpacity={isSelected ? 0.95 : isHovered ? 0.75 : 0.45}
+                  className="cursor-pointer transition-all duration-150"
+                  onMouseEnter={() => setHoveredWatershed(ws.id)}
+                  onMouseLeave={() => setHoveredWatershed(null)}
+                  onClick={() => onSelectWatershed(isSelected ? null : ws.id)}
+                />
+                {/* Corner bracket — top-left */}
+                <path
+                  d={`M${x + 16},${y} L${x},${y} L${x},${y + 16}`}
+                  stroke={ws.color}
+                  strokeWidth="2.5"
+                  strokeOpacity={active ? 1 : 0.55}
+                  strokeLinecap="round"
+                  className="pointer-events-none"
+                />
+                {/* Corner bracket — bottom-right */}
+                <path
+                  d={`M${x + w - 16},${y + h} L${x + w},${y + h} L${x + w},${y + h - 16}`}
+                  stroke={ws.color}
+                  strokeWidth="2.5"
+                  strokeOpacity={active ? 1 : 0.55}
+                  strokeLinecap="round"
+                  className="pointer-events-none"
+                />
+                {/* Label badge */}
+                <rect
+                  x={x + 6} y={y + 5}
+                  width={ws.name.length * 5.6 + 12} height={16}
+                  rx={3}
+                  fill={ws.color}
+                  fillOpacity={isSelected ? 0.9 : isHovered ? 0.75 : 0.55}
+                  className="pointer-events-none"
+                />
+                <text
+                  x={x + 12} y={y + 16}
+                  fontSize="8"
+                  fill="white"
+                  fontFamily="system-ui, sans-serif"
+                  fontWeight="700"
+                  letterSpacing="0.05em"
+                  className="pointer-events-none"
+                >
+                  {ws.name.toUpperCase()}
+                </text>
+              </g>
+            );
+          })}
+
           {/* River paths */}
           {RIVER_PATHS.map((rp) => {
             const isHovered = hoveredRiver === rp.id;
+            const isInWS = isRiverHighlighted(rp.id);
             const pathD = rp.points.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
             return (
               <g key={rp.id}>
+                {/* Watershed highlight glow */}
+                {isInWS && (
+                  <path
+                    d={pathD}
+                    stroke={selectedWS?.color ?? "#7c6fcd"}
+                    strokeWidth="10"
+                    fill="none"
+                    strokeLinecap="round"
+                    opacity="0.2"
+                    className="pointer-events-none"
+                  />
+                )}
                 {/* Wider invisible hit area */}
                 <path
                   d={pathD}
@@ -136,8 +254,8 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
                 {/* Visible river stroke */}
                 <path
                   d={pathD}
-                  stroke={isHovered ? "#3b82f6" : "#60a5fa"}
-                  strokeWidth={isHovered ? 5 : 3}
+                  stroke={isInWS ? (selectedWS?.color ?? "#60a5fa") : isHovered ? "#3b82f6" : "#60a5fa"}
+                  strokeWidth={isHovered || isInWS ? 5 : 3}
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -187,6 +305,7 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
               Array.from({ length: GRID_W }).map((_, col) => {
                 const inBay = BAY_MASK[row]?.[col] ?? false;
                 if (!inBay) return null;
+                const highlighted = isOceanHighlighted();
                 return (
                   <div
                     key={`${row}-${col}`}
@@ -196,9 +315,11 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
                       top: `${row * cellH}%`,
                       width: `${cellW}%`,
                       height: `${cellH}%`,
-                      background: hoveredOcean
-                        ? "rgba(89,86,214,0.22)"
-                        : "rgba(120,176,210,0.16)",
+                      background: highlighted
+                        ? `${selectedWS?.color ?? "#7c6fcd"}28`
+                        : hoveredOcean
+                          ? "rgba(89,86,214,0.22)"
+                          : "rgba(120,176,210,0.16)",
                       transition: "background 0.15s",
                     }}
                   />
@@ -216,7 +337,7 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
         </div>
 
         {/* Ocean hover tooltip */}
-        {hoveredOcean && (
+        {hoveredOcean && !hoveredWatershed && (
           <div className="absolute pointer-events-none z-20"
             style={{ top: "155px", left: "175px", transform: "translate(-50%,-50%)" }}>
             <div className="bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center">
@@ -227,7 +348,7 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
         )}
 
         {/* River hover tooltip */}
-        {hoveredRiver && (
+        {hoveredRiver && !hoveredWatershed && (
           <div className="absolute pointer-events-none z-20"
             style={{ top: "20px", right: "10px" }}>
             <div className="bg-white border border-blue-200 rounded-md px-3 py-2 shadow-md text-center">
@@ -239,8 +360,25 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
           </div>
         )}
 
+        {/* Watershed hover tooltip */}
+        {hoveredWatershed && !selectedWatershed && (
+          <div className="absolute pointer-events-none z-20"
+            style={{ bottom: "16px", left: "50%", transform: "translateX(-50%)" }}>
+            {(() => {
+              const ws = WATERSHEDS.find(w => w.id === hoveredWatershed);
+              if (!ws) return null;
+              return (
+                <div className="bg-white border rounded-md px-3 py-2 shadow-md text-center" style={{ borderColor: ws.color + "55" }}>
+                  <div className="text-xs font-semibold" style={{ color: ws.color }}>{ws.name}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Click to select watershed</div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Static ocean label */}
-        {!hoveredOcean && !hoveredRiver && (
+        {!hoveredOcean && !hoveredRiver && !hoveredWatershed && !selectedWatershed && (
           <div className="absolute pointer-events-none z-5 text-center"
             style={{ top: "155px", left: "175px", transform: "translate(-50%,-50%)" }}>
             <div className="text-[9px] font-semibold text-[#5956d6]/60 uppercase tracking-widest">Ocean Basin</div>
@@ -252,10 +390,23 @@ export default function BasinOverview({ onSelectOcean, onSelectRiver }: BasinOve
 
       {/* Instruction card */}
       <div className="mt-4 bg-white rounded-md shadow-sm border border-border px-4 py-2.5 text-center max-w-sm">
-        <div className="text-sm font-medium text-foreground">Select a water body</div>
-        <div className="text-xs text-muted-foreground mt-0.5">
-          Click a <span className="text-blue-500 font-medium">river</span> for 2D playback · Click the <span className="text-primary font-medium">ocean basin</span> for 3D playback
-        </div>
+        {selectedWatershed ? (
+          <>
+            <div className="text-sm font-medium" style={{ color: WATERSHEDS.find(w => w.id === selectedWatershed)?.color }}>
+              {WATERSHEDS.find(w => w.id === selectedWatershed)?.name} selected
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Use the panel → <span className="font-medium text-foreground">Load Watershed</span> to begin playback
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-sm font-medium text-foreground">Select a watershed or water body</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Click a <span className="font-medium" style={{ color: "#7c6fcd" }}>watershed box</span> · <span className="text-blue-500 font-medium">river</span> · or <span className="text-primary font-medium">ocean basin</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

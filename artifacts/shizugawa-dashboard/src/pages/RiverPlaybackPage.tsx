@@ -24,6 +24,7 @@ export default function RiverPlaybackPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const riverId = searchParams.get("river") ?? "shizugawa";
+  const watershedName = searchParams.get("wname") ?? undefined;
 
   const river = RIVERS.find((r) => r.id === riverId) ?? RIVERS[0];
   const [week, setWeek] = useState(0);
@@ -61,7 +62,7 @@ export default function RiverPlaybackPage() {
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
-      <TopNav stateLabel={`River Playback View (2D) · ${isPlaying ? "Playing" : "Paused"}`} />
+      <TopNav stateLabel={`River Playback View (2D) · ${isPlaying ? "Playing" : "Paused"}`} watershedName={watershedName} />
 
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
