@@ -215,6 +215,15 @@ const COMPASS_STYLE: React.CSSProperties = {
   userSelect: "none",
 };
 
+// Derived box-edge positions (all from BOX_* constants, no magic numbers)
+const BOX_HALF_W = BOX_W / 2; // east/west x boundary
+const BOX_HALF_D = BOX_D / 2; // north/south z boundary
+const BOX_SOUTH_Z = -BOX_HALF_D; // south face z (low lat)
+const BOX_NORTH_Z = BOX_HALF_D; // north face z (high lat)
+const BOX_WEST_X = -BOX_HALF_W; // west face x (low lon)
+const BOX_EAST_X = BOX_HALF_W; // east face x (high lon)
+const DEPTH_LABEL_X = BOX_WEST_X - 0.7; // just outside west face for depth ticks
+
 function AxisLabels() {
   const lonTicks: React.ReactElement[] = [];
   const latTicks: React.ReactElement[] = [];
@@ -227,7 +236,7 @@ function AxisLabels() {
     lonTicks.push(
       <Html
         key={`lon-${gx}`}
-        position={[scenX, BOX_BOT - 0.6, -6.5]}
+        position={[scenX, BOX_BOT - 0.6, BOX_SOUTH_Z]}
         center
         distanceFactor={10}
         zIndexRange={[0, 0]}
@@ -244,7 +253,7 @@ function AxisLabels() {
     latTicks.push(
       <Html
         key={`lat-${gz}`}
-        position={[-7.5, BOX_BOT - 0.6, scenZ]}
+        position={[BOX_WEST_X, BOX_BOT - 0.6, scenZ]}
         center
         distanceFactor={10}
         zIndexRange={[0, 0]}
@@ -254,13 +263,13 @@ function AxisLabels() {
     );
   }
 
-  // Depth ticks — SW vertical edge
+  // Depth ticks — SW vertical edge (just outside the west-south corner)
   for (let d = 0; d < DEPTH_LAYERS; d++) {
     const y = Y_SURFACE - DEPTH_TOPS[d];
     depthTicks.push(
       <Html
         key={`dep-${d}`}
-        position={[-8.2, y, -6.5]}
+        position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]}
         center
         distanceFactor={10}
         zIndexRange={[0, 0]}
@@ -272,17 +281,21 @@ function AxisLabels() {
 
   return (
     <>
-      {/* Compass labels at top corners */}
-      <Html position={[0, BOX_TOP + 0.5, 6.5]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      {/*
+       * Compass labels at the midpoint of each top-face edge.
+       * N/S = centre of north/south edges; E/W = centre of east/west edges.
+       * All coordinates derived from BOX_* constants.
+       */}
+      <Html position={[0, BOX_TOP + 0.5, BOX_NORTH_Z]} center distanceFactor={10} zIndexRange={[0, 0]}>
         <div style={COMPASS_STYLE}>N</div>
       </Html>
-      <Html position={[0, BOX_TOP + 0.5, -6.5]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[0, BOX_TOP + 0.5, BOX_SOUTH_Z]} center distanceFactor={10} zIndexRange={[0, 0]}>
         <div style={COMPASS_STYLE}>S</div>
       </Html>
-      <Html position={[7.5, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[BOX_EAST_X, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
         <div style={COMPASS_STYLE}>E</div>
       </Html>
-      <Html position={[-7.5, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[BOX_WEST_X, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
         <div style={COMPASS_STYLE}>W</div>
       </Html>
 
