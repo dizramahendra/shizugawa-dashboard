@@ -102,6 +102,50 @@ export const VARIABLE_OPTIONS = [
   { id: "do", label: "Dissolved Oxygen", unit: "mg/L", colorScale: "oxygen" },
 ];
 
+/**
+ * Compute bay-ocean exchange intensity (0–1) for a given week.
+ * Based on the average value of the rightmost active cells in each row.
+ */
+export function getBayOceanExchangeIntensity(week: number): number {
+  const data = generateWeekData(week);
+  // Rightmost active column per row in the BAY_MASK
+  const edgeCols: number[] = [];
+  for (let z = 0; z < GRID_D; z++) {
+    for (let x = GRID_W - 1; x >= 0; x--) {
+      if (BAY_MASK[z]?.[x]) { edgeCols.push(x); break; }
+    }
+  }
+  let sum = 0, count = 0;
+  for (let z = 0; z < GRID_D; z++) {
+    const x = edgeCols[z];
+    if (x === undefined) continue;
+    for (let d = 0; d < 3; d++) {          // top 3 depth layers for exchange
+      sum += data[z]?.[x]?.[d] ?? 0;
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
+
+/**
+ * Compute sediment elution intensity (0–1) for a given week.
+ * Based on the average bottom-two-layer values across all active cells.
+ */
+export function getSedimentElutionIntensity(week: number): number {
+  const data = generateWeekData(week);
+  let sum = 0, count = 0;
+  for (let z = 0; z < GRID_D; z++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (!BAY_MASK[z]?.[x]) continue;
+      for (let d = DEPTH_LAYERS - 2; d < DEPTH_LAYERS; d++) {  // bottom 2 layers
+        sum += data[z]?.[x]?.[d] ?? 0;
+        count++;
+      }
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
+
 export function valueToConcentration(value: number, variableId: string): number {
   switch (variableId) {
     case "nitrogen": return +(value * 2.8 + 0.2).toFixed(2);

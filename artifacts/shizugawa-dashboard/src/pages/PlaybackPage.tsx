@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown } from "lucide-react";
+import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity } from "lucide-react";
 import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData } from "@/lib/simulatedData";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
 import ColorLegend from "@/components/ColorLegend";
 import DepthGraph from "@/components/DepthGraph";
+import FlowIndicators from "@/components/FlowIndicators";
 
 type ToolState = "none" | "point-select" | "slice-h" | "slice-v" | "depth-graph";
 
@@ -31,6 +32,8 @@ export default function PlaybackPage() {
   const [sliceLevel, setSliceLevel] = useState(3);
   const [activeTool, setActiveTool] = useState<ToolState>("none");
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number; depth: number } | null>(null);
+  const [showExchange, setShowExchange] = useState(true);
+  const [showElution, setShowElution] = useState(true);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -124,6 +127,11 @@ export default function PlaybackPage() {
               sliceLevel={sliceLevel}
               onCellClick={handleCellClick}
             />
+            <FlowIndicators
+              week={week}
+              showExchange={showExchange}
+              showElution={showElution}
+            />
             <div className="absolute bottom-3 left-3 bg-white/80 border border-border rounded-md px-2.5 py-1.5 pointer-events-none shadow-sm">
               <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click voxel to inspect</div>
             </div>
@@ -207,6 +215,48 @@ export default function PlaybackPage() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Process Indicators */}
+            <div className="px-4 py-4">
+              <div className="panel-section-title mb-2 flex items-center gap-1.5">
+                <Activity size={11} />
+                Process Indicators
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2.5 cursor-pointer group">
+                  <button
+                    role="switch"
+                    aria-checked={showExchange}
+                    onClick={() => setShowExchange((v) => !v)}
+                    className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border transition-colors focus:outline-none ${showExchange ? "bg-primary border-primary/70" : "bg-muted border-border"}`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-3 w-3 translate-y-0.5 rounded-full bg-white shadow transition-transform ${showExchange ? "translate-x-3.5" : "translate-x-0.5"}`}
+                    />
+                  </button>
+                  <div>
+                    <div className="text-xs font-medium text-foreground leading-none">Bay–Ocean Exchange</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">Water &amp; nutrient flux at bay mouth</div>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2.5 cursor-pointer group">
+                  <button
+                    role="switch"
+                    aria-checked={showElution}
+                    onClick={() => setShowElution((v) => !v)}
+                    className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border transition-colors focus:outline-none ${showElution ? "bg-primary border-primary/70" : "bg-muted border-border"}`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-3 w-3 translate-y-0.5 rounded-full bg-white shadow transition-transform ${showElution ? "translate-x-3.5" : "translate-x-0.5"}`}
+                    />
+                  </button>
+                  <div>
+                    <div className="text-xs font-medium text-foreground leading-none">Sediment Elution</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">Upward flux from seabed layers</div>
+                  </div>
+                </label>
               </div>
             </div>
 
