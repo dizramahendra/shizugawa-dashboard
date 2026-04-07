@@ -150,12 +150,21 @@ function RiverCells({ week, colorScale }: { week: number; colorScale: string }) 
   );
 }
 
-const OCN_X_CELLS = 5;
-const OCN_Z_CELLS = 4;
-const OCN_D_CELLS = 4;
 const OCN_CELL_SZ = 0.88;
 const OCN_GAP = 0.12;
 const OCN_STEP = OCN_CELL_SZ + OCN_GAP;
+const OCN_Z_CELLS = 4;
+const OCN_D_CELLS = 4;
+
+/*
+ * X positions covering both inner-bay (x: +4..+11) and open-ocean (x: +11..+22).
+ * Inner bay: 6 columns spaced 1 unit apart starting at x=4.8
+ * Open ocean: 5 columns spaced 1.6 units apart starting at x=11.8
+ */
+const OCN_X_POSITIONS: number[] = [
+  ...Array.from({ length: 6 }, (_, i) => 4.8 + i * 1.0),  // inner bay
+  ...Array.from({ length: 5 }, (_, i) => 11.8 + i * 1.6), // open ocean
+];
 
 function OceanVoxels({ week, colorScale }: { week: number; colorScale: string }) {
   const data = useMemo(() => generateWeekData(week), [week]);
@@ -171,14 +180,14 @@ function OceanVoxels({ week, colorScale }: { week: number; colorScale: string })
       opacity: number;
     }[] = [];
 
-    for (let gx = 0; gx < OCN_X_CELLS; gx++) {
+    OCN_X_POSITIONS.forEach((xPos, gx) => {
       for (let gz = 0; gz < OCN_Z_CELLS; gz++) {
         for (let gd = 0; gd < OCN_D_CELLS; gd++) {
-          const x = 4.8 + gx * OCN_STEP;
+          const x = xPos;
           const z = -1.6 + gz * OCN_STEP;
           const y = -0.6 - gd * OCN_STEP;
 
-          const dataX = Math.min(Math.round(gx * GRID_W / OCN_X_CELLS), GRID_W - 1);
+          const dataX = Math.min(Math.round(gx * GRID_W / OCN_X_POSITIONS.length), GRID_W - 1);
           const dataZ = Math.min(Math.round(gz * GRID_D / OCN_Z_CELLS), GRID_D - 1);
           const dataD = Math.min(gd, DEPTH_LAYERS - 1);
 
@@ -191,7 +200,7 @@ function OceanVoxels({ week, colorScale }: { week: number; colorScale: string })
           items.push({ key: `${gx}-${gz}-${gd}`, x, y, z, color, opacity });
         }
       }
-    }
+    });
     return items;
   }, [week, colorScale, data, stops]);
 

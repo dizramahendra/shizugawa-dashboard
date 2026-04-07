@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Search, Map } from "lucide-react";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import TopNav from "@/components/TopNav";
 import BasinOverview from "@/components/BasinOverview";
 import { RIVERS, WATERSHEDS } from "@/lib/simulatedData";
@@ -23,6 +23,10 @@ export default function BasinSelectionPage() {
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => { if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current); };
+  }, []);
 
   const activeWS = WATERSHEDS.find((w) => w.id === selectedWatershed) ?? null;
 

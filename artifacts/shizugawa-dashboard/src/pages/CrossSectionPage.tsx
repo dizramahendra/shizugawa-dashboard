@@ -47,10 +47,13 @@ export default function CrossSectionPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const navRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* Trigger tilt-in on mount */
+  /* Trigger tilt-in on mount; clear pending nav timeout on unmount */
   useEffect(() => {
     const t = setTimeout(() => setTiltedIn(true), 60);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      if (navRef.current) clearTimeout(navRef.current);
+    };
   }, []);
 
   const pause = useCallback(() => setIsPlaying(false), []);
