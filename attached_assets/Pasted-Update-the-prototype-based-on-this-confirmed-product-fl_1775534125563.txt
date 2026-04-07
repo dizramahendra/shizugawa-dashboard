@@ -1,0 +1,95 @@
+Update the prototype based on this confirmed product flow.
+
+## Confirmed product structure
+
+The experience starts from a shared Map Viewport.
+
+From the map viewport, the user can select one of two water-body types:
+
+### Path 1 — River
+- User selects a river from the map viewport
+- This opens a River Playback View (2D)
+- The River Playback View should be parallel in structure to the Ocean Playback View, but adapted for 2D
+- It should use the same temporal playback logic:
+  - values change over time at fixed cells
+  - no particle animation
+  - playback-first interaction
+- It should use a 2D pixel / gridded visualization
+- It should not use depth representation
+
+### Path 2 — Ocean
+- User selects the ocean basin from the map viewport
+- This opens an Ocean Playback View (3D)
+- Keep the current 3D gridded / voxel ocean-basin model direction
+- Do not remove or change the current depth section in the Ocean Playback View
+- Leave the depth section as it is for now
+
+## Design / UX intent
+
+This is a 3D Time-Series / temporal playback product.
+
+Shared logic across both River and Ocean playback views:
+- playback over time is the primary interaction
+- values change over time at fixed spatial cells
+- no particle movement
+- no decarbonization
+- no comparison
+- desktop only
+
+The two playback views should feel like parallel sibling views in the same product family:
+- same visual language
+- same playback bar logic
+- same variable-switching logic
+- similar sidebar structure
+
+But they differ in representation:
+- River Playback View = 2D
+- Ocean Playback View = 3D
+
+## What to implement
+
+### 1. Map Viewport
+- Keep the current map viewport as the shared entry
+- Add river selection capability in addition to ocean selection
+- Selecting river should open the River Playback View (2D)
+- Selecting ocean should open the Ocean Playback View (3D)
+
+### 2. River Playback View (2D)
+Define and implement a new River Playback View that is parallel with the existing ocean one.
+
+Requirements:
+- 2D pixel / gridded temporal visualization
+- same variable selector concept as the ocean view
+- same playback bar concept as the ocean view
+- similar right sidebar structure as the ocean view
+- no depth section
+- no 3D controls
+- no orbit instruction
+- keep it simpler and flatter than the ocean view
+
+Suggested sidebar structure for River Playback View:
+1. selected river / basin context
+2. playback status / time
+3. variable section + legend
+4. optional analysis tools (if already scaffolded)
+
+### 3. Ocean Playback View (3D)
+- Keep the existing Ocean Playback View structure
+- Keep the current 3D viewport direction
+- Keep the current depth section as-is
+- Do not remove or redesign the depth section in this pass
+- Only make changes if needed to keep parity with the new River Playback View structure
+
+## Naming
+Use these labels consistently:
+- Map Viewport
+- River Playback View (2D)
+- Ocean Playback View (3D)
+
+## Before coding
+First summarize:
+1. the revised confirmed product flow
+2. the difference between River Playback View (2D) and Ocean Playback View (3D)
+3. what new states / routes / screens will be added
+
+Then update the prototype.
