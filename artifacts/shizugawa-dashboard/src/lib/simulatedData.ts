@@ -111,3 +111,41 @@ export function valueToConcentration(value: number, variableId: string): number 
     default: return +value.toFixed(3);
   }
 }
+
+// ── River data (2D, no depth) ────────────────────────────────
+
+export const RIVER_COLS = 28; // along-stream axis (x)
+export const RIVER_ROWS = 6;  // cross-stream axis (z)
+
+export const RIVERS = [
+  { id: "shizugawa", name: "Shizugawa River", sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
+  { id: "kitakami", name: "Kitakami Upper Tributary", sub: "Motoyoshi · 21.3 km²", length: "12.1 km" },
+  { id: "hachiman", name: "Hachiman River", sub: "Minamisanriku · 24.1 km²", length: "9.7 km" },
+];
+
+/** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
+export function generateRiverData(week: number, riverId: string): number[][] {
+  const t = (week / TOTAL_WEEKS) * Math.PI * 2;
+  const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
+  const riverOffset = riverId === "kitakami" ? 1.2 : riverId === "hachiman" ? 0.6 : 0;
+
+  const data: number[][] = [];
+  for (let row = 0; row < RIVER_ROWS; row++) {
+    data[row] = [];
+    for (let col = 0; col < RIVER_COLS; col++) {
+      // Upstream (col=0) tends to be higher; values decrease toward the bay
+      const upstreamInfluence = Math.max(0, 1 - col / RIVER_COLS) * 0.5;
+      const centerBoost = 1 - Math.abs(row - RIVER_ROWS / 2 + 0.5) / (RIVER_ROWS / 2) * 0.3;
+      const v = (
+        Math.sin(col * 0.4 + t * 0.9 + riverOffset) * 0.2 +
+        Math.cos(row * 0.8 + t * 0.7) * 0.15 +
+        Math.sin((col + row) * 0.3 + t * 1.2) * 0.1
+      );
+      const val = Math.min(1, Math.max(0,
+        seasonalBase * 0.5 + v * 0.6 + upstreamInfluence * 0.3 + centerBoost * 0.1
+      ));
+      data[row][col] = val;
+    }
+  }
+  return data;
+}
