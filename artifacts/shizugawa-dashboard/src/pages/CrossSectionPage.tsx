@@ -17,6 +17,18 @@ const ZONE_INFO = [
   { key: "ocean",   label: "Open Ocean",  color: "#041828", model: "DELFT 3D" },
 ];
 
+/*
+ * Viewport tilt transition:
+ * - On mount:  content starts "above" (rotateX(24deg), scaled down, opacity 0)
+ *              and transitions to flat / normal over 0.9s.
+ *              This simulates the camera tilting down from top-down map view
+ *              into the perspective cross-section angle.
+ * - On exit:   content tilts back up (same transform applied, opacity → 0)
+ *              then the route change fires, so the user sees a smooth reversal.
+ */
+const TILT_TRANSFORM = "perspective(1000px) rotateX(24deg) scale(0.9)";
+const TILT_ORIGIN    = "center bottom";
+
 export default function CrossSectionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -26,12 +38,18 @@ export default function CrossSectionPage() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState("nitrogen");
-  const [mounted, setMounted] = useState(false);
+
+  /* Tilt-in: starts false (tilted / invisible), flips to true on mount */
+  const [tiltedIn, setTiltedIn] = useState(false);
+  /* Tilt-out: starts false, set to true right before navigating away */
+  const [tiltingOut, setTiltingOut] = useState(false);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const navRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /* Trigger tilt-in on mount */
   useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 60);
+    const t = setTimeout(() => setTiltedIn(true), 60);
     return () => clearTimeout(t);
   }, []);
 
@@ -50,8 +68,27 @@ export default function CrossSectionPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPlaying, speed]);
 
+  /* Navigate back with reverse tilt animation */
+  const handleBack = useCallback(() => {
+    if (tiltingOut) return;
+    setTiltingOut(true);
+    if (navRef.current) clearTimeout(navRef.current);
+    navRef.current = setTimeout(() => navigate("/"), 680);
+  }, [tiltingOut, navigate]);
+
   const { label: weekLabel } = getWeekLabel(week);
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
+
+  /* Compute CSS transform for the viewport container */
+  const isAnimating = !tiltedIn || tiltingOut;
+  const viewportStyle: React.CSSProperties = {
+    transform: isAnimating ? TILT_TRANSFORM : "none",
+    opacity: isAnimating ? 0 : 1,
+    transition: tiltedIn
+      ? "transform 0.72s cubic-bezier(0.4, 0, 0.8, 0.6), opacity 0.55s ease-in"
+      : "transform 0.88s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.65s ease-out",
+    transformOrigin: TILT_ORIGIN,
+  };
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
@@ -61,7 +98,8 @@ export default function CrossSectionPage() {
       <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
         <button
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          onClick={() => navigate("/")}
+          onClick={handleBack}
+          disabled={tiltingOut}
         >
           <ChevronLeft size={14} />
           Map Viewport
@@ -101,20 +139,10 @@ export default function CrossSectionPage() {
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* 3D cross-section viewport with tilt-in transition */}
+        {/* 3D cross-section viewport */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div
-            className="flex-1 relative overflow-hidden"
-            style={{
-              transform: mounted
-                ? "none"
-                : "perspective(1800px) rotateX(26deg) scale(0.88)",
-              opacity: mounted ? 1 : 0,
-              transition: mounted
-                ? "transform 0.9s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.65s ease-out"
-                : "none",
-            }}
-          >
+          {/* Viewport container with tilt-in / tilt-out transition */}
+          <div className="flex-1 relative overflow-hidden" style={viewportStyle}>
             <TerrainCrossSection3D week={week} colorScale={selectedVariable} />
 
             {/* Zone label strip */}
@@ -132,15 +160,17 @@ export default function CrossSectionPage() {
             </div>
 
             {/* Sea level marker */}
-            <div className="absolute pointer-events-none"
-              style={{ bottom: "52px", right: "12px" }}>
+            <div
+              className="absolute pointer-events-none"
+              style={{ bottom: "52px", right: "12px" }}
+            >
               <div className="flex items-center gap-1.5 bg-black/40 border border-blue-400/30 rounded px-2 py-1">
                 <div className="w-4 h-px bg-blue-400/70" />
                 <span className="text-[9px] font-mono text-blue-300/80">sea level</span>
               </div>
             </div>
 
-            {/* Hint */}
+            {/* Orbit hint */}
             <div className="absolute bottom-3 left-3 bg-black/50 text-white/60 border border-white/10 rounded-md px-2.5 py-1.5 pointer-events-none">
               <div className="text-[10px] font-mono">Orbit · Zoom · Cross-Section View</div>
             </div>
@@ -164,7 +194,7 @@ export default function CrossSectionPage() {
           {/* Back link */}
           <div
             className="flex items-center gap-1.5 px-4 py-2.5 border-b border-border cursor-pointer hover:bg-muted/40 transition-colors flex-shrink-0"
-            onClick={() => navigate("/")}
+            onClick={handleBack}
           >
             <ChevronLeft size={14} className="text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Basin Selection</span>

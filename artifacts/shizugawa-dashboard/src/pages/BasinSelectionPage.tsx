@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Search, Map } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import TopNav from "@/components/TopNav";
 import BasinOverview from "@/components/BasinOverview";
 import { RIVERS, WATERSHEDS } from "@/lib/simulatedData";
@@ -21,6 +21,8 @@ export default function BasinSelectionPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
+  const [isTiltingOut, setIsTiltingOut] = useState(false);
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeWS = WATERSHEDS.find((w) => w.id === selectedWatershed) ?? null;
 
@@ -45,10 +47,13 @@ export default function BasinSelectionPage() {
   const handleSelectRiver = (riverId: string) =>
     navigate(`/river?river=${riverId}${wnameSuffix}`);
 
-  const handleLoadWatershed = () => {
+  const handleLoadWatershed = useCallback(() => {
     if (!activeWS) return;
-    navigate(`/cross-section?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}`);
-  };
+    const target = `/cross-section?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}`;
+    setIsTiltingOut(true);
+    if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    navTimeoutRef.current = setTimeout(() => navigate(target), 720);
+  }, [activeWS, navigate]);
 
   function isBasinInWatershed(id: string) {
     return activeWS ? activeWS.basinIds.includes(id) : false;
@@ -59,8 +64,20 @@ export default function BasinSelectionPage() {
       <TopNav />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Map Viewport */}
-        <div className="flex-1 min-w-0 overflow-hidden">
+        {/* Left: Map Viewport — animates tilt-out when loading cross-section */}
+        <div
+          className="flex-1 min-w-0 overflow-hidden"
+          style={{
+            transform: isTiltingOut
+              ? "perspective(1000px) rotateX(24deg) scale(0.9)"
+              : "none",
+            opacity: isTiltingOut ? 0 : 1,
+            transition: isTiltingOut
+              ? "transform 0.68s cubic-bezier(0.4, 0, 0.8, 0.6), opacity 0.55s ease-in"
+              : "none",
+            transformOrigin: "center bottom",
+          }}
+        >
           <BasinOverview
             onSelectOcean={handleSelectOcean}
             onSelectRiver={handleSelectRiver}
@@ -170,6 +187,7 @@ export default function BasinSelectionPage() {
                   style={{ background: activeWS.color }}
                   onClick={handleLoadWatershed}
                   data-testid="load-watershed-btn"
+                  disabled={isTiltingOut}
                 >
                   Load Watershed →
                 </button>
