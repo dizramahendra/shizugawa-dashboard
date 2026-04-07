@@ -16,7 +16,6 @@ export default function Dashboard() {
   const [selectedPoint, setSelectedPoint] = useState<{
     x: number;
     z: number;
-    depth: number;
   } | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -54,8 +53,8 @@ export default function Dashboard() {
     setIsPlaying(true);
   };
 
-  const handleCellClick = (x: number, z: number, depth: number) => {
-    setSelectedPoint({ x, z, depth });
+  const handleCellClick = (x: number, z: number) => {
+    setSelectedPoint({ x, z });
     if (dashboardState !== "point-select" && dashboardState !== "depth-graph") {
       setDashboardState("point-select");
     }
@@ -98,7 +97,7 @@ export default function Dashboard() {
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
       {/* Top navigation bar — dark navy, GauDt-style */}
-      <TopNav currentState={dashboardState} stateLabel={stateLabel[dashboardState]} />
+      <TopNav stateLabel={stateLabel[dashboardState]} />
 
       {/* Tab bar — white, with active tab underline */}
       <div className="tab-bar flex items-end px-4 flex-shrink-0">
@@ -167,7 +166,12 @@ export default function Dashboard() {
         <div className="flex-1 flex flex-col min-w-0 relative">
           <div className="flex-1 relative overflow-hidden">
             {dashboardState === "overview" ? (
-              <BasinOverview onSelectBasin={handleSelectBasin} />
+              <BasinOverview
+                onSelectOcean={handleSelectBasin}
+                onSelectRiver={() => {}}
+                selectedWatershed={null}
+                onSelectWatershed={() => {}}
+              />
             ) : (
               <OceanBasin3D
                 week={week}
@@ -211,7 +215,7 @@ export default function Dashboard() {
             dashboardState={dashboardState}
             setDashboardState={setDashboardState}
             week={week}
-            selectedPoint={selectedPoint}
+            selectedPoint={selectedPoint ? { ...selectedPoint, depth: 0 } : null}
             selectedVariable={selectedVariable}
             setSelectedVariable={setSelectedVariable}
             sliceLevel={sliceLevel}

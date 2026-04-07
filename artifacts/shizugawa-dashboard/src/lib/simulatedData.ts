@@ -204,6 +204,47 @@ export const RIVERS = [
   { id: "hachiman", name: "Hachiman River", sub: "Minamisanriku · 24.1 km²", length: "9.7 km" },
 ];
 
+// ── Depth geometry constants (non-uniform sigma-coordinate layers) ───────────
+
+/** Scene-unit height of each depth layer (layer 0 = surface, thinnest) */
+export const DEPTH_HEIGHTS = [0.40, 0.50, 0.65, 0.82, 1.05, 1.28, 1.55, 1.80];
+
+/** Real meter depth at the TOP surface of each layer */
+export const DEPTH_REAL_M = [0, 2, 5, 10, 18, 30, 47, 69];
+
+/**
+ * Cumulative scene-unit offset from the surface for the TOP of each layer.
+ * DEPTH_TOPS[0] = 0 (layer 0 top is at the surface).
+ * DEPTH_TOPS[d] = sum of DEPTH_HEIGHTS[0..d-1].
+ */
+export const DEPTH_TOPS: number[] = (() => {
+  const tops: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < DEPTH_HEIGHTS.length; i++) {
+    tops.push(acc);
+    acc += DEPTH_HEIGHTS[i];
+  }
+  return tops;
+})();
+
+/** Total scene-unit height of the full depth column */
+export const DEPTH_TOTAL_H = DEPTH_HEIGHTS.reduce((a, b) => a + b, 0);
+
+/**
+ * Depth-weighted column mean across all 8 layers at (x, z).
+ * Weight = DEPTH_HEIGHTS[d] (thicker layers count more).
+ */
+export function getColumnMean(data: number[][][], x: number, z: number): number {
+  let sumW = 0;
+  let sumWV = 0;
+  for (let d = 0; d < DEPTH_HEIGHTS.length; d++) {
+    const v = data[z]?.[x]?.[d] ?? 0;
+    sumWV += v * DEPTH_HEIGHTS[d];
+    sumW += DEPTH_HEIGHTS[d];
+  }
+  return sumW > 0 ? sumWV / sumW : 0;
+}
+
 /** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
 export function generateRiverData(week: number, riverId: string): number[][] {
   const t = (week / TOTAL_WEEKS) * Math.PI * 2;

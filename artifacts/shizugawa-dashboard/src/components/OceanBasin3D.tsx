@@ -1,16 +1,47 @@
-import { useRef, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { useMemo } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
 import {
   BAY_MASK,
   GRID_W,
   GRID_D,
   DEPTH_LAYERS,
+  DEPTH_HEIGHTS,
+  DEPTH_TOPS,
+  DEPTH_REAL_M,
+  DEPTH_TOTAL_H,
   generateWeekData,
   DashboardState,
 } from "@/lib/simulatedData";
 
+// ── Scene layout constants ────────────────────────────────────────────────────
+const CELL_W = 0.95;
+const STEP = 1.0;
+const Y_SURFACE = 1.2; // y-coord of the top surface face
+
+const offsetX = -(GRID_W * STEP) / 2; // -7.0
+const offsetZ = -(GRID_D * STEP) / 2; // -6.0
+
+// Bounding box dimensions (with padding)
+const BOX_PAD_X = 0.5;
+const BOX_PAD_Z = 0.5;
+const BOX_PAD_Y_TOP = 0.2;
+const BOX_PAD_Y_BOT = 0.2;
+const BOX_W = GRID_W * STEP + BOX_PAD_X * 2; // 15
+const BOX_D = GRID_D * STEP + BOX_PAD_Z * 2; // 13
+const BOX_TOP = Y_SURFACE + BOX_PAD_Y_TOP;
+const BOX_BOT = Y_SURFACE - DEPTH_TOTAL_H - BOX_PAD_Y_BOT;
+const BOX_H = BOX_TOP - BOX_BOT;
+const BOX_CY = (BOX_TOP + BOX_BOT) / 2;
+
+// Real coordinate bounds (matching PlaybackPage gridToCoords)
+const BAY_LON_W = 141.383;
+const BAY_LON_E = 141.468;
+const BAY_LAT_S = 38.582;
+const BAY_LAT_N = 38.651;
+
+// ── Color scales ──────────────────────────────────────────────────────────────
 const COLOR_SCALES: Record<string, [number, number, number][]> = {
   nitrogen: [
     [0.23, 0.44, 0.63],
@@ -59,32 +90,31 @@ function lerpColor(stops: [number, number, number][], t: number): [number, numbe
   ];
 }
 
+// ── VoxelGrid ─────────────────────────────────────────────────────────────────
 interface VoxelGridProps {
   week: number;
   colorScale: string;
-  selectedPoint: { x: number; z: number; depth: number } | null;
+  selectedPoint: { x: number; z: number } | null;
   sliceMode: DashboardState;
   sliceLevel: number;
-  onCellClick: (x: number, z: number, depth: number) => void;
-  onCellHover?: (x: number, z: number, depth: number) => void;
+  onCellClick: (x: number, z: number) => void;
+  onCellHover?: (x: number, z: number) => void;
 }
 
-function VoxelGrid({ week, colorScale, selectedPoint, sliceMode, sliceLevel, onCellClick, onCellHover }: VoxelGridProps) {
+function VoxelGrid({
+  week,
+  colorScale,
+  selectedPoint,
+  sliceMode,
+  sliceLevel,
+  onCellClick,
+  onCellHover,
+}: VoxelGridProps) {
   const data = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
-  const CELL_W = 0.95;
-  const CELL_H = 0.4;
-  const GAP = 0.05;
-  const STEP = CELL_W + GAP;
-
-  const offsetX = -(GRID_W * STEP) / 2;
-  const offsetZ = -(GRID_D * STEP) / 2;
-
   const visibleDepths = useMemo(() => {
-    if (sliceMode === "slice-h") {
-      return [sliceLevel];
-    }
+    if (sliceMode === "slice-h") return [sliceLevel];
     return Array.from({ length: DEPTH_LAYERS }, (_, i) => i);
   }, [sliceMode, sliceLevel]);
 
@@ -100,33 +130,49 @@ function VoxelGrid({ week, colorScale, selectedPoint, sliceMode, sliceLevel, onC
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const [r, g, b] = lerpColor(stops, val);
 
-        const isSelected =
-          selectedPoint && selectedPoint.x === gx && selectedPoint.z === gz && selectedPoint.depth === d;
+        const isColumnSelected =
+          selectedPoint !== null &&
+          selectedPoint.x === gx &&
+          selectedPoint.z === gz;
 
         const px = offsetX + gx * STEP + CELL_W / 2;
-        const py = -(d * (CELL_H + 0.05)) + DEPTH_LAYERS * 0.15;
+        const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
         const pz = offsetZ + gz * STEP + CELL_W / 2;
 
         const depthOpacity = 1 - d * 0.09;
+
+        const isInteractive = d === 0;
 
         meshes.push(
           <mesh
             key={`${gz}-${gx}-${d}`}
             position={[px, py, pz]}
-            onClick={(e) => {
-              e.stopPropagation();
-              onCellClick(gx, gz, d);
-            }}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              onCellHover?.(gx, gz, d);
-            }}
+            onClick={
+              isInteractive
+                ? (e) => {
+                    e.stopPropagation();
+                    onCellClick(gx, gz);
+                  }
+                : undefined
+            }
+            onPointerOver={
+              isInteractive
+                ? (e) => {
+                    e.stopPropagation();
+                    onCellHover?.(gx, gz);
+                  }
+                : undefined
+            }
           >
-            <boxGeometry args={[CELL_W, CELL_H, CELL_W]} />
+            <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
             <meshStandardMaterial
-              color={isSelected ? new THREE.Color(1, 0.9, 0.2) : new THREE.Color(r, g, b)}
+              color={
+                isColumnSelected
+                  ? new THREE.Color(1, 0.9, 0.2)
+                  : new THREE.Color(r, g, b)
+              }
               transparent
-              opacity={isSelected ? 1 : depthOpacity * 0.88}
+              opacity={isColumnSelected ? 1 : depthOpacity * 0.88}
               roughness={0.7}
               metalness={0.05}
             />
@@ -139,70 +185,172 @@ function VoxelGrid({ week, colorScale, selectedPoint, sliceMode, sliceLevel, onC
   return <>{meshes}</>;
 }
 
-function DepthAxis() {
-  const lines: React.ReactElement[] = [];
-  const STEP = 0.45;
-  const depths = ["0m", "5m", "15m", "30m", "50m", "75m", "100m", "150m"];
-  for (let i = 0; i < DEPTH_LAYERS; i++) {
-    const y = -(i * STEP) + DEPTH_LAYERS * 0.15;
-    lines.push(
-      <mesh key={i} position={[-8.5, y, 0]}>
-        <boxGeometry args={[0.03, 0.03, 0.03]} />
-        <meshStandardMaterial color="#8a9ab0" />
-      </mesh>
-    );
-  }
-  return <>{lines}</>;
+// ── GIS wireframe bounding box ────────────────────────────────────────────────
+function BoundingBox() {
+  return (
+    <mesh position={[0, BOX_CY, 0]}>
+      <boxGeometry args={[BOX_W, BOX_H, BOX_D]} />
+      <meshStandardMaterial transparent opacity={0} depthWrite={false} />
+      <Edges color="#555555" threshold={0} />
+    </mesh>
+  );
 }
 
-function GridFloor() {
+// ── In-scene axis labels ──────────────────────────────────────────────────────
+const LABEL_STYLE: React.CSSProperties = {
+  fontFamily: "monospace",
+  fontSize: "9px",
+  color: "#333",
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  userSelect: "none",
+};
+
+const COMPASS_STYLE: React.CSSProperties = {
+  fontFamily: "monospace",
+  fontSize: "11px",
+  fontWeight: "bold",
+  color: "#222",
+  pointerEvents: "none",
+  userSelect: "none",
+};
+
+function AxisLabels() {
+  const lonTicks: React.ReactElement[] = [];
+  const latTicks: React.ReactElement[] = [];
+  const depthTicks: React.ReactElement[] = [];
+
+  // Longitude ticks — south bottom edge (every 3 columns: gx=0,3,6,9,12)
+  for (const gx of [0, 3, 6, 9, 12]) {
+    const lon = BAY_LON_W + (gx / 13) * (BAY_LON_E - BAY_LON_W);
+    const scenX = offsetX + gx * STEP + CELL_W / 2;
+    lonTicks.push(
+      <Html
+        key={`lon-${gx}`}
+        position={[scenX, BOX_BOT - 0.6, -6.5]}
+        center
+        distanceFactor={10}
+        zIndexRange={[0, 0]}
+      >
+        <div style={LABEL_STYLE}>{lon.toFixed(3)}°E</div>
+      </Html>
+    );
+  }
+
+  // Latitude ticks — west bottom edge (every 2 rows: gz=0,2,4,6,8,10)
+  for (const gz of [0, 2, 4, 6, 8, 10]) {
+    const lat = BAY_LAT_S + (gz / 11) * (BAY_LAT_N - BAY_LAT_S);
+    const scenZ = offsetZ + gz * STEP + CELL_W / 2;
+    latTicks.push(
+      <Html
+        key={`lat-${gz}`}
+        position={[-7.5, BOX_BOT - 0.6, scenZ]}
+        center
+        distanceFactor={10}
+        zIndexRange={[0, 0]}
+      >
+        <div style={LABEL_STYLE}>{lat.toFixed(3)}°N</div>
+      </Html>
+    );
+  }
+
+  // Depth ticks — SW vertical edge
+  for (let d = 0; d < DEPTH_LAYERS; d++) {
+    const y = Y_SURFACE - DEPTH_TOPS[d];
+    depthTicks.push(
+      <Html
+        key={`dep-${d}`}
+        position={[-8.2, y, -6.5]}
+        center
+        distanceFactor={10}
+        zIndexRange={[0, 0]}
+      >
+        <div style={LABEL_STYLE}>{DEPTH_REAL_M[d]}m</div>
+      </Html>
+    );
+  }
+
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -(DEPTH_LAYERS * 0.45 + 0.2), 0]}>
+    <>
+      {/* Compass labels at top corners */}
+      <Html position={[0, BOX_TOP + 0.5, 6.5]} center distanceFactor={10} zIndexRange={[0, 0]}>
+        <div style={COMPASS_STYLE}>N</div>
+      </Html>
+      <Html position={[0, BOX_TOP + 0.5, -6.5]} center distanceFactor={10} zIndexRange={[0, 0]}>
+        <div style={COMPASS_STYLE}>S</div>
+      </Html>
+      <Html position={[7.5, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
+        <div style={COMPASS_STYLE}>E</div>
+      </Html>
+      <Html position={[-7.5, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
+        <div style={COMPASS_STYLE}>W</div>
+      </Html>
+
+      {lonTicks}
+      {latTicks}
+      {depthTicks}
+    </>
+  );
+}
+
+// ── Grid floor ────────────────────────────────────────────────────────────────
+function GridFloor() {
+  const floorY = Y_SURFACE - DEPTH_TOTAL_H;
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, floorY, 0]}>
       <planeGeometry args={[GRID_W * 1.0, GRID_D * 1.0, GRID_W, GRID_D]} />
       <meshStandardMaterial color="#b8c8d8" wireframe opacity={0.3} transparent />
     </mesh>
   );
 }
 
+// ── Slice indicator ───────────────────────────────────────────────────────────
 interface SliceIndicatorProps {
   mode: DashboardState;
   level: number;
 }
 
 function SliceIndicator({ mode, level }: SliceIndicatorProps) {
-  const STEP = 1.0;
-  const offsetX = -(GRID_W * STEP) / 2;
-  const offsetZ = -(GRID_D * STEP) / 2;
-
   if (mode === "slice-h") {
-    const y = -(level * 0.45) + DEPTH_LAYERS * 0.15;
+    const y = Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2;
     return (
       <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[GRID_W * 1.0, GRID_D * 1.0]} />
-        <meshStandardMaterial color="#4a90d9" opacity={0.08} transparent side={THREE.DoubleSide} />
+        <meshStandardMaterial
+          color="#4a90d9"
+          opacity={0.08}
+          transparent
+          side={THREE.DoubleSide}
+        />
       </mesh>
     );
   }
   if (mode === "slice-v") {
     const x = offsetX + level * STEP + STEP / 2;
     return (
-      <mesh position={[x, 0, 0]}>
-        <planeGeometry args={[0.05, DEPTH_LAYERS * 0.45 + 1, DEPTH_LAYERS, GRID_D]} />
-        <meshStandardMaterial color="#4a90d9" opacity={0.12} transparent side={THREE.DoubleSide} />
+      <mesh position={[x, BOX_CY, 0]}>
+        <planeGeometry args={[0.05, BOX_H, DEPTH_LAYERS, GRID_D]} />
+        <meshStandardMaterial
+          color="#4a90d9"
+          opacity={0.12}
+          transparent
+          side={THREE.DoubleSide}
+        />
       </mesh>
     );
   }
   return null;
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 interface OceanBasin3DProps {
   week: number;
   colorScale: string;
   dashboardState: DashboardState;
-  selectedPoint: { x: number; z: number; depth: number } | null;
+  selectedPoint: { x: number; z: number } | null;
   sliceLevel: number;
-  onCellClick: (x: number, z: number, depth: number) => void;
-  onCellHover?: (x: number, z: number, depth: number) => void;
+  onCellClick: (x: number, z: number) => void;
+  onCellHover?: (x: number, z: number) => void;
 }
 
 export default function OceanBasin3D({
@@ -216,14 +364,13 @@ export default function OceanBasin3D({
 }: OceanBasin3DProps) {
   return (
     <Canvas
-      camera={{ position: [12, 9, 14], fov: 38 }}
-      style={{ background: "#edf0f3" }}
+      camera={{ position: [16, 12, 18], fov: 38 }}
+      style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[10, 15, 10]} intensity={0.8} castShadow />
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 15, 10]} intensity={0.7} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
-      <fog attach="fog" args={["#edf0f3", 25, 50]} />
 
       <VoxelGrid
         week={week}
@@ -234,7 +381,9 @@ export default function OceanBasin3D({
         onCellClick={onCellClick}
         onCellHover={onCellHover}
       />
-      <DepthAxis />
+
+      <BoundingBox />
+      <AxisLabels />
       <GridFloor />
       <SliceIndicator mode={dashboardState} level={sliceLevel} />
 
@@ -243,7 +392,7 @@ export default function OceanBasin3D({
         enableZoom={true}
         enableRotate={true}
         minDistance={8}
-        maxDistance={35}
+        maxDistance={40}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>

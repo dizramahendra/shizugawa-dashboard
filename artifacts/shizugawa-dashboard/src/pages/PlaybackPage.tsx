@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity } from "lucide-react";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean } from "@/lib/simulatedData";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
@@ -57,8 +57,8 @@ export default function PlaybackPage() {
   const [selectedVariable, setSelectedVariable] = useState("nitrogen");
   const [sliceLevel, setSliceLevel] = useState(3);
   const [activeTool, setActiveTool] = useState<ToolState>("none");
-  const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number; depth: number } | null>(null);
-  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number; depth: number } | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
   const [showExchange, setShowExchange] = useState(true);
   const [showElution, setShowElution] = useState(true);
 
@@ -79,8 +79,8 @@ export default function PlaybackPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPlaying, speed]);
 
-  const handleCellClick = (x: number, z: number, depth: number) => {
-    setSelectedPoint({ x, z, depth });
+  const handleCellClick = (x: number, z: number) => {
+    setSelectedPoint({ x, z });
     if (activeTool === "none") setActiveTool("point-select");
   };
 
@@ -92,7 +92,7 @@ export default function PlaybackPage() {
   const currentData = selectedPoint ? generateWeekData(week) : null;
   const selectedValue = currentData && selectedPoint
     ? valueToConcentration(
-        currentData[selectedPoint.z]?.[selectedPoint.x]?.[selectedPoint.depth] ?? 0,
+        getColumnMean(currentData, selectedPoint.x, selectedPoint.z),
         selectedVariable
       )
     : null;
@@ -156,7 +156,7 @@ export default function PlaybackPage() {
               selectedPoint={selectedPoint}
               sliceLevel={sliceLevel}
               onCellClick={handleCellClick}
-              onCellHover={(x, z, d) => setHoveredPoint({ x, z, depth: d })}
+              onCellHover={(x, z) => setHoveredPoint({ x, z })}
             />
             <FlowIndicators
               week={week}
@@ -175,7 +175,7 @@ export default function PlaybackPage() {
                   </div>
                 </div>
               );
-              const c = gridToCoords(pt.x, pt.z, pt.depth);
+              const c = gridToCoords(pt.x, pt.z, 0);
               const isHover = hoveredPoint !== null;
               return (
                 <div className="absolute top-3 right-3 pointer-events-none">
@@ -186,7 +186,7 @@ export default function PlaybackPage() {
                     </span>
                     <span className="text-white/40 text-[10px]">|</span>
                     <span className="text-[10px] font-mono text-white/80 leading-none">
-                      {c.depthM === 0 ? "Surface" : `↓ ${c.depthM} m`}
+                      Surface column
                     </span>
                   </div>
                 </div>
@@ -194,7 +194,7 @@ export default function PlaybackPage() {
             })()}
 
             <div className="absolute bottom-3 left-3 bg-white/80 border border-border rounded-md px-2.5 py-1.5 pointer-events-none shadow-sm">
-              <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click voxel to inspect</div>
+              <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click surface cell to inspect column</div>
             </div>
           </div>
 
@@ -344,12 +344,17 @@ export default function PlaybackPage() {
               </div>
             )}
 
-            {/* Selected point */}
+            {/* Selected column */}
             {selectedPoint && (activeTool === "point-select" || activeTool === "depth-graph") && (() => {
-              const coords = gridToCoords(selectedPoint.x, selectedPoint.z, selectedPoint.depth);
+              const coords = gridToCoords(selectedPoint.x, selectedPoint.z, 0);
               return (
                 <div className="px-4 py-4">
-                  <div className="panel-section-title mb-2">Selected Cell</div>
+                  <div className="panel-section-title mb-2 flex items-center gap-1.5">
+                    Selected Column
+                    <span className="ml-auto text-[9px] font-mono bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5">
+                      Surface → 99m
+                    </span>
+                  </div>
                   <div className="bg-muted/40 rounded-md p-3 space-y-2">
                     {/* Lat / Lon row */}
                     <div className="grid grid-cols-2 gap-2">
@@ -362,19 +367,17 @@ export default function PlaybackPage() {
                         <div className="text-xs font-mono font-semibold text-foreground">{coords.lon}°E</div>
                       </div>
                     </div>
-                    {/* Depth row */}
+                    {/* Integration depth badge */}
                     <div className="bg-white rounded border border-border/60 p-1.5 flex items-center justify-between px-2">
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Depth</div>
+                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Integration</div>
                       <div className="text-xs font-mono font-semibold text-foreground">
-                        {coords.depthM === 0 ? "Surface" : `${coords.depthM} m`}
-                        <span className="text-muted-foreground font-normal ml-1 text-[9px]">
-                          (L{selectedPoint.depth + 1})
-                        </span>
+                        All 8 layers
+                        <span className="text-muted-foreground font-normal ml-1 text-[9px]">(depth-weighted)</span>
                       </div>
                     </div>
                     {selectedValue !== null && (
                       <div className="pt-2 border-t border-border/40">
-                        <div className="text-xs text-muted-foreground">{variable.label}</div>
+                        <div className="text-xs text-muted-foreground">Column-Integrated {variable.label}</div>
                         <div className="text-lg font-mono font-bold text-primary mt-0.5">
                           {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
                         </div>
@@ -393,7 +396,7 @@ export default function PlaybackPage() {
                   variableId={selectedVariable}
                   variableLabel={variable.label}
                   unit={variable.unit}
-                  selectedPoint={selectedPoint}
+                  selectedPoint={selectedPoint ? { ...selectedPoint, depth: 0 } : null}
                 />
               </div>
             )}
