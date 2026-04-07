@@ -12,6 +12,7 @@ export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
   const isOcean = location.pathname.startsWith("/playback");
   const isCS = location.pathname.startsWith("/cross-section");
   const isMap = !isRiver && !isOcean && !isCS;
+  const csSearch = isCS ? location.search : "";
 
   return (
     <>
@@ -77,7 +78,7 @@ export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
           Map Viewport
         </NavLink>
         <NavLink
-          to="/cross-section"
+          to={`/cross-section${csSearch}`}
           className={`tab-item ${isCS ? "tab-item-active" : ""}`}
         >
           <span className="flex items-center gap-1.5">

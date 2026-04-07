@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Search, Map } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import TopNav from "@/components/TopNav";
@@ -19,14 +19,26 @@ const ALL_ITEMS = [
 
 export default function BasinSelectionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromCS = (location.state as { fromCS?: boolean } | null)?.fromCS ?? false;
+
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
+  /* When returning from cross-section, start tilted (tiltedIn=false) then animate in */
+  const [tiltedIn, setTiltedIn] = useState(!fromCS);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    return () => { if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current); };
-  }, []);
+    let tiltTimer: ReturnType<typeof setTimeout> | null = null;
+    if (fromCS && !tiltedIn) {
+      tiltTimer = setTimeout(() => setTiltedIn(true), 60);
+    }
+    return () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+      if (tiltTimer) clearTimeout(tiltTimer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeWS = WATERSHEDS.find((w) => w.id === selectedWatershed) ?? null;
 
@@ -68,16 +80,18 @@ export default function BasinSelectionPage() {
       <TopNav />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Map Viewport — animates tilt-out when loading cross-section */}
+        {/* Left: Map Viewport — tilt-out when loading CS; tilt-in when returning from CS */}
         <div
           className="flex-1 min-w-0 overflow-hidden"
           style={{
-            transform: isTiltingOut
+            transform: (isTiltingOut || !tiltedIn)
               ? "perspective(1000px) rotateX(24deg) scale(0.9)"
               : "none",
-            opacity: isTiltingOut ? 0 : 1,
+            opacity: (isTiltingOut || !tiltedIn) ? 0 : 1,
             transition: isTiltingOut
               ? "transform 0.68s cubic-bezier(0.4, 0, 0.8, 0.6), opacity 0.55s ease-in"
+              : tiltedIn && fromCS
+              ? "transform 0.88s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.65s ease-out"
               : "none",
             transformOrigin: "center bottom",
           }}

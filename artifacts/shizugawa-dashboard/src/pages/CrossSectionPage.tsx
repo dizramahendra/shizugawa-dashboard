@@ -71,12 +71,12 @@ export default function CrossSectionPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPlaying, speed]);
 
-  /* Navigate back with reverse tilt animation */
+  /* Navigate back with reverse tilt animation; pass state so map can tilt in */
   const handleBack = useCallback(() => {
     if (tiltingOut) return;
     setTiltingOut(true);
     if (navRef.current) clearTimeout(navRef.current);
-    navRef.current = setTimeout(() => navigate("/"), 680);
+    navRef.current = setTimeout(() => navigate("/", { state: { fromCS: true } }), 680);
   }, [tiltingOut, navigate]);
 
   const { label: weekLabel } = getWeekLabel(week);
