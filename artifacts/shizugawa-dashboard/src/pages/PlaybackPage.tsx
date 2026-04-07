@@ -23,6 +23,29 @@ function toDashboardState(tool: ToolState, isPlaying: boolean): DashboardState {
   return isPlaying ? "playback" : "paused";
 }
 
+/*
+ * Shizugawa Bay real-world coordinate bounds (DELFT3D model domain):
+ *   Longitude: 141.383°E → 141.468°E  (west → east,  grid x 0→13)
+ *   Latitude:  38.582°N  → 38.651°N   (south → north, grid z 0→11)
+ *   Depth:     0 m (surface) → 35 m (bottom, grid depth 0→7)
+ */
+const BAY_LON_W = 141.383;
+const BAY_LON_E = 141.468;
+const BAY_LAT_S = 38.582;
+const BAY_LAT_N = 38.651;
+const MAX_DEPTH_M = 35;
+
+function gridToCoords(x: number, z: number, depthLayer: number) {
+  const lon = BAY_LON_W + (x / 13) * (BAY_LON_E - BAY_LON_W);
+  const lat = BAY_LAT_S + (z / 11) * (BAY_LAT_N - BAY_LAT_S);
+  const depthM = Math.round((depthLayer / 7) * MAX_DEPTH_M);
+  return {
+    lat: lat.toFixed(4),
+    lon: lon.toFixed(4),
+    depthM,
+  };
+}
+
 export default function PlaybackPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -287,29 +310,45 @@ export default function PlaybackPage() {
             )}
 
             {/* Selected point */}
-            {selectedPoint && (activeTool === "point-select" || activeTool === "depth-graph") && (
-              <div className="px-4 py-4">
-                <div className="panel-section-title mb-2">Selected Cell</div>
-                <div className="bg-muted/40 rounded-md p-3 space-y-2">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    {[["X", selectedPoint.x], ["Z", selectedPoint.z], ["Layer", `L${selectedPoint.depth + 1}`]].map(([l, v]) => (
-                      <div key={l as string} className="bg-white rounded border border-border/60 p-1.5">
-                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide">{l}</div>
-                        <div className="text-sm font-mono font-semibold text-foreground">{v}</div>
+            {selectedPoint && (activeTool === "point-select" || activeTool === "depth-graph") && (() => {
+              const coords = gridToCoords(selectedPoint.x, selectedPoint.z, selectedPoint.depth);
+              return (
+                <div className="px-4 py-4">
+                  <div className="panel-section-title mb-2">Selected Cell</div>
+                  <div className="bg-muted/40 rounded-md p-3 space-y-2">
+                    {/* Lat / Lon row */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white rounded border border-border/60 p-1.5 text-center">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Latitude</div>
+                        <div className="text-xs font-mono font-semibold text-foreground">{coords.lat}°N</div>
                       </div>
-                    ))}
-                  </div>
-                  {selectedValue !== null && (
-                    <div className="pt-2 border-t border-border/40">
-                      <div className="text-xs text-muted-foreground">{variable.label}</div>
-                      <div className="text-lg font-mono font-bold text-primary mt-0.5">
-                        {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
+                      <div className="bg-white rounded border border-border/60 p-1.5 text-center">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Longitude</div>
+                        <div className="text-xs font-mono font-semibold text-foreground">{coords.lon}°E</div>
                       </div>
                     </div>
-                  )}
+                    {/* Depth row */}
+                    <div className="bg-white rounded border border-border/60 p-1.5 flex items-center justify-between px-2">
+                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Depth</div>
+                      <div className="text-xs font-mono font-semibold text-foreground">
+                        {coords.depthM === 0 ? "Surface" : `${coords.depthM} m`}
+                        <span className="text-muted-foreground font-normal ml-1 text-[9px]">
+                          (L{selectedPoint.depth + 1})
+                        </span>
+                      </div>
+                    </div>
+                    {selectedValue !== null && (
+                      <div className="pt-2 border-t border-border/40">
+                        <div className="text-xs text-muted-foreground">{variable.label}</div>
+                        <div className="text-lg font-mono font-bold text-primary mt-0.5">
+                          {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Depth graph */}
             {activeTool === "depth-graph" && (
