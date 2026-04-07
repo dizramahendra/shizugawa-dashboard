@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { Bell } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
@@ -13,9 +14,26 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
   const isOcean = location.pathname.startsWith("/playback");
   const isCS = location.pathname.startsWith("/cross-section");
   const isMap = !isRiver && !isOcean && !isCS;
-  const csSearch = isCS ? location.search : "";
 
-  const handleMapTabClick = (e: React.MouseEvent) => {
+  /*
+   * Cross-section tab href:
+   * - When already on /cross-section: preserve current search (watershed params intact).
+   * - When on another route: carry forward wname + watershed/river context from
+   *   the current page's own URL params so the header shows the right label.
+   */
+  const buildCSHref = (): string => {
+    if (isCS) return `/cross-section${location.search}`;
+    const sp = new URLSearchParams(location.search);
+    const wname = sp.get("wname");
+    const watershed = sp.get("watershed") || sp.get("river");
+    if (!wname) return "/cross-section";
+    const out = new URLSearchParams();
+    if (watershed) out.set("watershed", watershed);
+    out.set("wname", wname);
+    return `/cross-section?${out.toString()}`;
+  };
+
+  const handleMapTabClick = (e: MouseEvent<HTMLAnchorElement>) => {
     if (onMapNavRequest) {
       e.preventDefault();
       onMapNavRequest();
@@ -87,7 +105,7 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
           Map Viewport
         </NavLink>
         <NavLink
-          to={`/cross-section${csSearch}`}
+          to={buildCSHref()}
           className={`tab-item ${isCS ? "tab-item-active" : ""}`}
         >
           <span className="flex items-center gap-1.5">
