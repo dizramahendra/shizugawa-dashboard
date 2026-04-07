@@ -191,7 +191,7 @@ function BoundingBox() {
     <mesh position={[0, BOX_CY, 0]}>
       <boxGeometry args={[BOX_W, BOX_H, BOX_D]} />
       <meshStandardMaterial transparent opacity={0} depthWrite={false} />
-      <Edges color="#555555" threshold={0} />
+      <Edges color="#555555" threshold={15} />
     </mesh>
   );
 }
