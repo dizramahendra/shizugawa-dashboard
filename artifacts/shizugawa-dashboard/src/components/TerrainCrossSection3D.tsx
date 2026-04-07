@@ -102,8 +102,8 @@ const RV_CELL_W = 0.82;
 const RV_CELL_D = 1.3;
 const RV_CELL_H = 0.12;
 
-function RiverCells({ week, colorScale }: { week: number; colorScale: string }) {
-  const data = useMemo(() => generateRiverData(week, "shizugawa"), [week]);
+function RiverCells({ week, colorScale, riverId }: { week: number; colorScale: string; riverId: string }) {
+  const data = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
   const stops = COLOR_STOPS[colorScale] ?? COLOR_STOPS.nitrogen;
 
   const cells = useMemo(() => {
@@ -247,9 +247,10 @@ function DepthLines() {
 interface TerrainCrossSection3DProps {
   week: number;
   colorScale: string;
+  riverId?: string;
 }
 
-export default function TerrainCrossSection3D({ week, colorScale }: TerrainCrossSection3DProps) {
+export default function TerrainCrossSection3D({ week, colorScale, riverId = "shizugawa" }: TerrainCrossSection3DProps) {
   return (
     <Canvas
       camera={{ position: [1, 10, 24], fov: 43 }}
@@ -267,7 +268,7 @@ export default function TerrainCrossSection3D({ week, colorScale }: TerrainCross
       <SeaLevelEdge />
       <DepthLines />
       <GroundGrid />
-      <RiverCells week={week} colorScale={colorScale} />
+      <RiverCells week={week} colorScale={colorScale} riverId={riverId} />
       <OceanVoxels week={week} colorScale={colorScale} />
 
       <OrbitControls

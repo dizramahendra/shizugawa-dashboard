@@ -33,6 +33,7 @@ export default function CrossSectionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const watershedName = searchParams.get("wname") ?? undefined;
+  const riverId = searchParams.get("river") ?? searchParams.get("watershed") ?? "shizugawa";
 
   const [week, setWeek] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -95,7 +96,11 @@ export default function CrossSectionPage() {
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
-      <TopNav stateLabel={isPlaying ? "Playing" : "Paused"} watershedName={watershedName} />
+      <TopNav
+        stateLabel={isPlaying ? "Playing" : "Paused"}
+        watershedName={watershedName}
+        onMapNavRequest={handleBack}
+      />
 
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
@@ -146,7 +151,7 @@ export default function CrossSectionPage() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* Viewport container with tilt-in / tilt-out transition */}
           <div className="flex-1 relative overflow-hidden" style={viewportStyle}>
-            <TerrainCrossSection3D week={week} colorScale={selectedVariable} />
+            <TerrainCrossSection3D week={week} colorScale={selectedVariable} riverId={riverId} />
 
             {/* Zone label strip */}
             <div className="absolute top-3 left-3 right-3 flex items-center gap-1.5 pointer-events-none flex-wrap">

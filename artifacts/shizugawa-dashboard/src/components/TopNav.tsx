@@ -4,15 +4,23 @@ import { NavLink, useLocation } from "react-router-dom";
 interface TopNavProps {
   stateLabel?: string;
   watershedName?: string;
+  onMapNavRequest?: () => void;
 }
 
-export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
+export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: TopNavProps) {
   const location = useLocation();
   const isRiver = location.pathname.startsWith("/river");
   const isOcean = location.pathname.startsWith("/playback");
   const isCS = location.pathname.startsWith("/cross-section");
   const isMap = !isRiver && !isOcean && !isCS;
   const csSearch = isCS ? location.search : "";
+
+  const handleMapTabClick = (e: React.MouseEvent) => {
+    if (onMapNavRequest) {
+      e.preventDefault();
+      onMapNavRequest();
+    }
+  };
 
   return (
     <>
@@ -74,6 +82,7 @@ export default function TopNav({ stateLabel, watershedName }: TopNavProps) {
           to="/"
           end
           className={`tab-item ${isMap ? "tab-item-active" : ""}`}
+          onClick={handleMapTabClick}
         >
           Map Viewport
         </NavLink>
