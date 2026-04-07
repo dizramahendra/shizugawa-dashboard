@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity } from "lucide-react";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
@@ -89,13 +89,28 @@ export default function PlaybackPage() {
   const dashboardState = toDashboardState(activeTool, isPlaying);
 
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
-  const currentData = selectedPoint ? generateWeekData(week) : null;
-  const selectedValue = currentData && selectedPoint
+  const weekData = useMemo(() => generateWeekData(week), [week]);
+
+  const selectedValue = selectedPoint
     ? valueToConcentration(
-        getColumnMean(currentData, selectedPoint.x, selectedPoint.z),
+        getColumnMean(weekData, selectedPoint.x, selectedPoint.z),
         selectedVariable
       )
     : null;
+
+  const basinMean = useMemo(() => {
+    let sum = 0;
+    let count = 0;
+    for (let z = 0; z < GRID_D; z++) {
+      for (let x = 0; x < GRID_W; x++) {
+        if (!BAY_MASK[z]?.[x]) continue;
+        sum += getColumnMean(weekData, x, z);
+        count++;
+      }
+    }
+    return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
+  }, [weekData, selectedVariable]);
+
   const { label: weekLabel } = getWeekLabel(week);
 
   return (
@@ -245,6 +260,26 @@ export default function PlaybackPage() {
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Progress</div>
                   <div className="text-sm font-semibold text-foreground font-mono">{week + 1}/{TOTAL_WEEKS}w</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Basin Mean */}
+            <div className="px-4 py-4">
+              <div className="panel-section-title mb-2">Basin Mean</div>
+              <div className="rounded-md border border-primary/20 bg-primary/5 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
+                  <div className="text-xl font-mono font-bold text-primary leading-none">
+                    {basinMean ?? "—"}
+                    <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1">Depth-integrated · all active cells</div>
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-primary/30 flex-shrink-0">
+                  <ellipse cx="12" cy="12" rx="10" ry="4" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M2 12c0 4 4.5 7 10 7s10-3 10-7" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M2 12V8m20 4V8" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2"/>
+                </svg>
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import {
@@ -8,6 +8,8 @@ import {
   valueToConcentration,
   generateRiverData,
   RIVERS,
+  RIVER_ROWS,
+  RIVER_COLS,
 } from "@/lib/simulatedData";
 import TopNav from "@/components/TopNav";
 import PlaybackControls from "@/components/PlaybackControls";
@@ -53,12 +55,26 @@ export default function RiverPlaybackPage() {
   const { label: weekLabel } = getWeekLabel(week);
   const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
 
+  const riverWeekData = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
+
   const cellValue = selectedCell
     ? valueToConcentration(
-        generateRiverData(week, riverId)[selectedCell.row]?.[selectedCell.col] ?? 0,
+        riverWeekData[selectedCell.row]?.[selectedCell.col] ?? 0,
         selectedVariable
       )
     : null;
+
+  const reachMean = useMemo(() => {
+    let sum = 0;
+    let count = 0;
+    for (let row = 0; row < RIVER_ROWS; row++) {
+      for (let col = 0; col < RIVER_COLS; col++) {
+        sum += riverWeekData[row]?.[col] ?? 0;
+        count++;
+      }
+    }
+    return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
+  }, [riverWeekData, selectedVariable]);
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
@@ -197,6 +213,25 @@ export default function RiverPlaybackPage() {
               <div className="flex justify-between text-[10px] font-mono text-muted-foreground mt-1">
                 <span>Low</span>
                 <span>High</span>
+              </div>
+            </div>
+
+            {/* 3b. Reach Mean */}
+            <div className="px-4 py-4">
+              <div className="panel-section-title mb-2">Reach Mean</div>
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
+                  <div className="text-xl font-mono font-bold text-blue-600 leading-none">
+                    {reachMean ?? "—"}
+                    <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reach cells</div>
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                </svg>
               </div>
             </div>
 
