@@ -7,40 +7,13 @@ import {
   RIVER_COLS,
 } from "@/lib/simulatedData";
 
-// ── Per-river Bezier arch channel mask ───────────────────────
-// Row fractions: 0 = N bank (top), 1 = S bank (bottom)
-// Three control points: [startFrac, peakFrac, endFrac]
-const ARCH_PARAMS: Record<string, [number, number, number]> = {
-  shizugawa: [0.80, 0.13, 0.56],
-  kitakami:  [0.52, 0.80, 0.16],
-  hachiman:  [0.20, 0.50, 0.82],
-};
-
-function buildMask(riverId: string): boolean[][] {
-  const [s, p, e] = ARCH_PARAMS[riverId] ?? ARCH_PARAMS.shizugawa;
-  return Array.from({ length: RIVER_ROWS }, (_, row) =>
-    Array.from({ length: RIVER_COLS }, (_, col) => {
-      const t = col / (RIVER_COLS - 1);
-      const frac = (1 - t) * (1 - t) * s + 2 * t * (1 - t) * p + t * t * e;
-      const center = frac * (RIVER_ROWS - 1);
-      const halfW = 1.7 + Math.sin(t * Math.PI) * 1.3;
-      return Math.abs(row - center) <= halfW;
-    })
-  );
-}
-
-const MASKS: Record<string, boolean[][]> = {
-  shizugawa: buildMask("shizugawa"),
-  kitakami:  buildMask("kitakami"),
-  hachiman:  buildMask("hachiman"),
-};
-
 // ── Color interpolation ───────────────────────────────────────
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:    ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   phosphorus:  ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   chlorophyll: ["#1a4a2e", "#2d7a4a", "#5aab6e", "#a8d898", "#e8f4b0", "#f5f5dc"],
   do:          ["#c8401c", "#e8a030", "#f0e68c", "#b8dce8", "#6ca0c8", "#3b6fa0"],
+  all:         ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
 };
 
 function interpolateColor(stops: string[], t: number): string {
@@ -55,15 +28,108 @@ function interpolateColor(stops: string[], t: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+// ── Organic mask generation ───────────────────────────────────
+// Cosine-blend between control points for smooth-but-varied curves
+type CP = [number, number]; // [t, value]
+
+function cosineInterp(pts: CP[], t: number): number {
+  if (t <= pts[0][0]) return pts[0][1];
+  if (t >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [t0, v0] = pts[i];
+    const [t1, v1] = pts[i + 1];
+    if (t >= t0 && t <= t1) {
+      const f = (t - t0) / (t1 - t0);
+      const cf = (1 - Math.cos(f * Math.PI)) / 2;
+      return v0 + (v1 - v0) * cf;
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+
+// Per-river control points: rows 0=N bank, RIVER_ROWS-1=S bank
+// center: row index of thalweg (0..RIVER_ROWS-1)
+// halfW:  half-width in row units (inclusive: |row-center| <= halfW)
+const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
+  shizugawa: {
+    // Arch: starts near S bank, sweeps up to N, eases back down
+    center: [
+      [0.00, 13.5], [0.06, 13.0], [0.12, 12.0], [0.20, 10.5],
+      [0.30,  8.5], [0.40,  6.5], [0.50,  5.0], [0.58,  4.2],
+      [0.65,  5.0], [0.74,  6.8], [0.83,  8.5], [0.91,  9.8],
+      [1.00, 11.0],
+    ],
+    halfW: [
+      [0.00, 1.2], [0.06, 2.0], [0.14, 3.2], [0.22, 4.0],
+      [0.32, 3.5], [0.42, 2.5], [0.52, 1.8], [0.60, 2.5],
+      [0.68, 3.8], [0.78, 4.8], [0.87, 3.8], [0.94, 3.0],
+      [1.00, 2.2],
+    ],
+  },
+  kitakami: {
+    // S-curve: N bank → meanders to S → rises back
+    center: [
+      [0.00, 5.0], [0.10, 4.5], [0.22, 5.5], [0.35, 7.5],
+      [0.46, 9.5], [0.55, 11.0], [0.63, 11.5], [0.72, 10.5],
+      [0.82,  8.5], [0.90,  6.5], [1.00,  5.5],
+    ],
+    halfW: [
+      [0.00, 2.0], [0.12, 3.2], [0.25, 2.0], [0.38, 3.5],
+      [0.50, 2.2], [0.60, 3.0], [0.70, 2.5], [0.80, 4.0],
+      [0.90, 3.2], [1.00, 2.5],
+    ],
+  },
+  hachiman: {
+    // Steep plunge: starts at N third, dives to S, climbs back
+    center: [
+      [0.00, 5.0], [0.12, 6.0], [0.24, 8.0], [0.36, 10.5],
+      [0.48, 12.5], [0.58, 12.0], [0.68, 10.0], [0.78, 7.5],
+      [0.88,  5.5], [1.00,  4.5],
+    ],
+    halfW: [
+      [0.00, 2.0], [0.12, 3.0], [0.26, 2.5], [0.38, 4.5],
+      [0.50, 3.5], [0.62, 2.5], [0.74, 4.0], [0.86, 3.2],
+      [1.00, 2.5],
+    ],
+  },
+};
+
+// Small deterministic jitter to roughen the bank edges
+function edgeJitter(col: number, side: "top" | "bot"): number {
+  const seed = col * 7 + (side === "top" ? 3 : 11);
+  return (Math.sin(seed * 2.399) * 0.5); // ±0.5 row
+}
+
+function buildMask(riverId: string): boolean[][] {
+  const profile = RIVER_PROFILES[riverId] ?? RIVER_PROFILES.shizugawa;
+  return Array.from({ length: RIVER_ROWS }, (_, row) =>
+    Array.from({ length: RIVER_COLS }, (_, col) => {
+      const t      = col / (RIVER_COLS - 1);
+      const center = cosineInterp(profile.center, t);
+      const halfW  = cosineInterp(profile.halfW,  t);
+      const topEdge = center - halfW + edgeJitter(col, "top");
+      const botEdge = center + halfW + edgeJitter(col, "bot");
+      return row >= topEdge && row <= botEdge;
+    })
+  );
+}
+
+const MASKS: Record<string, boolean[][]> = {
+  shizugawa: buildMask("shizugawa"),
+  kitakami:  buildMask("kitakami"),
+  hachiman:  buildMask("hachiman"),
+};
+
 // ── km tick positions ─────────────────────────────────────────
-const KM_TICKS = [0, 6, 12, 18, 24, 30, 36].map(col => ({
-  col,
-  label: `${Math.round((col / RIVER_COLS) * 18)} km`,
+// RIVER_COLS=54, total length=18 km → every 9 cols = 3 km
+const KM_TICKS = [0, 9, 18, 27, 36, 45, 54].map(col => ({
+  col: Math.min(col, RIVER_COLS),
+  label: `${Math.round((Math.min(col, RIVER_COLS) / RIVER_COLS) * 18)} km`,
 }));
 
 // ── Layout constants ──────────────────────────────────────────
-const CELL = 20;   // px per cell
-const GAP  = 3;    // gap between cells — creates the "separated pixel" look
+const CELL = 14;  // px per cell
+const GAP  = 0;   // no gap — cells butt up against each other
 
 interface RiverGrid2DProps {
   week: number;
@@ -89,8 +155,8 @@ export default function RiverGrid2D({
       className="w-full h-full flex flex-col items-center justify-center relative select-none overflow-hidden"
       style={{
         background: "#eaf2f5",
-        backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.35) 1px, transparent 1px)",
-        backgroundSize: `${CELL + GAP}px ${CELL + GAP}px`,
+        backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.30) 1.5px, transparent 1.5px)",
+        backgroundSize: "23px 23px",
       }}
     >
       {/* Badge */}
@@ -117,7 +183,7 @@ export default function RiverGrid2D({
 
           {/* Pixel grid */}
           <div
-            className="relative flex-shrink-0 rounded-sm overflow-visible"
+            className="relative flex-shrink-0 overflow-visible"
             style={{ width: gridW, height: gridH }}
           >
             {Array.from({ length: RIVER_ROWS }, (_, row) =>
@@ -134,11 +200,11 @@ export default function RiverGrid2D({
                     onClick={() => inCh && onCellClick(row, col)}
                     className={`absolute group ${inCh ? "cursor-crosshair" : "cursor-default"}`}
                     style={{
-                      left:  col * (CELL + GAP),
-                      top:   row * (CELL + GAP),
-                      width: CELL,
+                      left:   col * (CELL + GAP),
+                      top:    row * (CELL + GAP),
+                      width:  CELL,
                       height: CELL,
-                      borderRadius: 3,
+                      borderRadius: 0,
                       backgroundColor: color,
                       outline: isSelected ? "2px solid hsl(var(--primary))" : "none",
                       outlineOffset: "-1px",
@@ -187,7 +253,7 @@ export default function RiverGrid2D({
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap">
         <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
         <div
-          className="h-3 w-32 rounded-sm border border-border/30"
+          className="h-3 w-32 border border-border/30"
           style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
         />
         <div className="flex justify-between text-[9px] font-mono text-muted-foreground" style={{ width: "8rem" }}>

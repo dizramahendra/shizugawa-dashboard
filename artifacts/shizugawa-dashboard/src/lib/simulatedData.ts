@@ -197,8 +197,8 @@ export const WATERSHEDS: Watershed[] = [
 
 // ── River data (2D, no depth) ────────────────────────────────
 
-export const RIVER_COLS = 36; // along-stream axis (x)
-export const RIVER_ROWS = 12; // cross-stream axis (z)
+export const RIVER_COLS = 54; // along-stream axis (x)
+export const RIVER_ROWS = 16; // cross-stream axis (z)
 
 export const RIVERS = [
   { id: "shizugawa", name: "Shizugawa River", sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
