@@ -395,117 +395,96 @@ export default function MapLibreMap({
         })}
       </svg>
 
-      {/* Pixel grid view overlay — light theme, channel shape, km axis */}
+      {/* Pixel grid view overlay — CSS-grid based, fills any container shape */}
       {showGrid && selectedRiver && gridData && (() => {
         const mask = CHANNEL_MASKS[selectedRiver] ?? CHANNEL_MASKS.shizugawa;
-        // SVG coordinate system: each cell = 1 unit
-        const ML = 4.2; // left margin for Y labels
-        const MR = 0.6;
-        const MT = 0.8;
-        const MB = 3.8; // bottom margin for X labels + scale bar
-        const VW = ML + RIVER_COLS + MR;
-        const VH = MT + RIVER_ROWS + MB;
-        // Unique gradient ID per river to avoid collisions
-        const gradId = `cscale-${selectedRiver}`;
+        const riverLabel = selectedRiver.charAt(0).toUpperCase() + selectedRiver.slice(1);
+        const Y_AXIS_W = "3.2rem";
         return (
-          <div className="absolute inset-0 bg-[#f8fafc] flex flex-col">
+          <div className="absolute inset-0 bg-[#f8fafc] flex flex-col overflow-hidden">
+
             {/* Title bar */}
-            <div className="flex-shrink-0 flex items-center justify-between px-5 pt-3 pb-1">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 pt-2.5 pb-1.5 border-b border-slate-100">
               <div>
-                <div className="text-xs font-semibold text-gray-700 capitalize">
-                  {selectedRiver.charAt(0).toUpperCase() + selectedRiver.slice(1)} River
-                </div>
-                <div className="text-[9px] text-gray-400 mt-0.5">Raster channel · upstream → downstream</div>
+                <span className="text-xs font-semibold text-gray-700">{riverLabel} River</span>
+                <span className="ml-2 text-[9px] text-gray-400">Raster channel · upstream → downstream</span>
               </div>
-              <div className="text-[9px] text-gray-400 font-medium tracking-wide">
-                {RIVER_ROWS} × {RIVER_COLS} grid
-              </div>
+              <span className="text-[9px] text-gray-400 font-mono">{RIVER_ROWS}×{RIVER_COLS}</span>
             </div>
 
-            {/* SVG grid */}
-            <div className="flex-1 min-h-0 px-4 pb-2">
-              <svg
-                width="100%" height="100%"
-                viewBox={`0 0 ${VW} ${VH}`}
-                preserveAspectRatio="xMidYMid meet"
+            {/* Grid + Y-axis */}
+            <div className="flex flex-1 min-h-0 items-stretch px-3 pt-2 pb-0 gap-0">
+
+              {/* Y-axis labels */}
+              <div className="flex flex-col justify-between flex-shrink-0 text-right pr-1.5"
+                   style={{ width: Y_AXIS_W }}>
+                <span className="text-[9px] text-slate-400 font-mono leading-none">N bank</span>
+                <span className="text-[9px] text-slate-400 font-mono leading-none">thalweg</span>
+                <span className="text-[9px] text-slate-400 font-mono leading-none">S bank</span>
+              </div>
+
+              {/* Pixel grid */}
+              <div
+                className="flex-1 min-w-0 rounded-sm border border-slate-200 bg-white overflow-hidden"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${RIVER_COLS}, 1fr)`,
+                  gridTemplateRows:    `repeat(${RIVER_ROWS}, 1fr)`,
+                  gap: "1px",
+                  padding: "1px",
+                  backgroundColor: "#e2e8f0",
+                }}
               >
-                <defs>
-                  <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
-                    {stops.map((c, i) => (
-                      <stop key={i} offset={`${(i / (stops.length - 1)) * 100}%`} stopColor={c} />
-                    ))}
-                  </linearGradient>
-                </defs>
-
-                {/* White grid background */}
-                <rect x={ML} y={MT} width={RIVER_COLS} height={RIVER_ROWS} fill="white"
-                  stroke="#e2e8f0" strokeWidth={0.04} rx={0.1} />
-
-                {/* Subtle column grid lines */}
-                {Array.from({ length: RIVER_COLS + 1 }, (_, i) => (
-                  <line key={i} x1={ML + i} y1={MT} x2={ML + i} y2={MT + RIVER_ROWS}
-                    stroke="#e2e8f0" strokeWidth={0.03} />
-                ))}
-                {/* Subtle row grid lines */}
-                {Array.from({ length: RIVER_ROWS + 1 }, (_, i) => (
-                  <line key={i} x1={ML} y1={MT + i} x2={ML + RIVER_COLS} y2={MT + i}
-                    stroke="#e2e8f0" strokeWidth={0.03} />
-                ))}
-
-                {/* Channel cells */}
                 {Array.from({ length: RIVER_ROWS }, (_, row) =>
                   Array.from({ length: RIVER_COLS }, (_, col) => {
                     const inCh = mask[row]?.[col] ?? false;
-                    if (!inCh) return null;
-                    const val = gridData[row]?.[col] ?? 0;
+                    const val  = inCh ? (gridData[row]?.[col] ?? 0) : 0;
                     return (
-                      <rect key={`${row}-${col}`}
-                        x={ML + col + 0.03} y={MT + row + 0.03}
-                        width={0.94} height={0.94}
-                        fill={interpolateColor(stops, Math.max(0, Math.min(1, val)))}
-                        rx={0.08}
+                      <div
+                        key={`${row}-${col}`}
+                        title={inCh ? `r${row} c${col}: ${val.toFixed(3)}` : undefined}
+                        style={{
+                          backgroundColor: inCh
+                            ? interpolateColor(stops, Math.max(0, Math.min(1, val)))
+                            : "white",
+                          borderRadius: 1,
+                        }}
                       />
                     );
                   })
                 )}
+              </div>
+            </div>
 
-                {/* Y-axis labels */}
-                <text x={ML - 0.25} y={MT + 0.6} textAnchor="end" fontSize={0.68} fill="#94a3b8" fontFamily="monospace">N bank</text>
-                <text x={ML - 0.25} y={MT + RIVER_ROWS / 2 + 0.25} textAnchor="end" fontSize={0.68} fill="#94a3b8" fontFamily="monospace">thalweg</text>
-                <text x={ML - 0.25} y={MT + RIVER_ROWS - 0.05} textAnchor="end" fontSize={0.68} fill="#94a3b8" fontFamily="monospace">S bank</text>
-
-                {/* X-axis tick marks and km labels — every 6 columns = 3 km */}
+            {/* X-axis km labels */}
+            <div className="flex-shrink-0 flex pt-0.5 pb-0" style={{ paddingLeft: `calc(${Y_AXIS_W} + 0.75rem)`, paddingRight: "0.75rem" }}>
+              <div className="flex-1 relative" style={{ height: "1.1rem" }}>
                 {Array.from({ length: 7 }, (_, i) => {
                   const col = i * 6;
-                  const km = (col * KM_PER_COL).toFixed(0);
+                  const pct = (col / RIVER_COLS) * 100;
                   return (
-                    <g key={i}>
-                      <line x1={ML + col} y1={MT + RIVER_ROWS} x2={ML + col} y2={MT + RIVER_ROWS + 0.3}
-                        stroke="#cbd5e1" strokeWidth={0.07} />
-                      <text x={ML + col} y={MT + RIVER_ROWS + 0.85} textAnchor="middle"
-                        fontSize={0.65} fill="#94a3b8" fontFamily="monospace">
-                        {km} km
-                      </text>
-                    </g>
+                    <span key={i}
+                      className="absolute text-[8px] text-slate-400 font-mono"
+                      style={{ left: `${pct}%`, transform: "translateX(-50%)", top: 0, whiteSpace: "nowrap" }}>
+                      {(col * KM_PER_COL).toFixed(0)} km
+                    </span>
                   );
                 })}
-
-                {/* X-axis direction label */}
-                <text x={ML + RIVER_COLS / 2} y={MT + RIVER_ROWS + 1.7} textAnchor="middle"
-                  fontSize={0.65} fill="#cbd5e1" fontFamily="sans-serif">
-                  ← upstream · downstream →
-                </text>
-
-                {/* Color scale bar */}
-                <rect x={ML} y={VH - 1.5} width={RIVER_COLS} height={0.55}
-                  fill={`url(#${gradId})`} rx={0.12} />
-                <text x={ML} y={VH - 0.75} fontSize={0.6} fill="#94a3b8" fontFamily="monospace">Low</text>
-                <text x={ML + RIVER_COLS} y={VH - 0.75} textAnchor="end" fontSize={0.6} fill="#94a3b8" fontFamily="monospace">High</text>
-                <text x={ML + RIVER_COLS / 2} y={VH - 0.75} textAnchor="middle" fontSize={0.6} fill="#94a3b8" fontFamily="sans-serif">
-                  {variableLabel}
-                </text>
-              </svg>
+              </div>
             </div>
+
+            {/* Direction label + color scale */}
+            <div className="flex-shrink-0 px-4 pb-3 pt-1">
+              <div className="text-[8px] text-center text-slate-300 mb-1">← upstream · downstream →</div>
+              <div className="flex items-center gap-2">
+                <span className="text-[8px] text-slate-400 font-mono">Low</span>
+                <div className="flex-1 h-2 rounded"
+                     style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }} />
+                <span className="text-[8px] text-slate-400 font-mono">High</span>
+              </div>
+              <div className="text-[8px] text-center text-slate-400 mt-0.5">{variableLabel}</div>
+            </div>
+
           </div>
         );
       })()}
