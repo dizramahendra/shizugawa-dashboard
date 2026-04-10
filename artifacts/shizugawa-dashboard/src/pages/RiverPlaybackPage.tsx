@@ -219,8 +219,8 @@ export default function RiverPlaybackPage() {
                 background: `linear-gradient(to right, ${stops.join(", ")})`
               }} />
               <div className="flex justify-between text-[10px] font-mono text-muted-foreground mt-1">
-                <span>Low</span>
-                <span>High</span>
+                <span>{variable.min} {variable.unit}</span>
+                <span>{variable.max} {variable.unit}</span>
               </div>
             </div>
 

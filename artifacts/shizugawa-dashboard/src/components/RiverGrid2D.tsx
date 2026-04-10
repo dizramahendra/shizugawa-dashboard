@@ -190,8 +190,9 @@ export default function RiverGrid2D({
           className="h-3 w-32 rounded-sm border border-border/30"
           style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
         />
-        <div className="flex gap-6 text-[9px] font-mono text-muted-foreground">
-          <span>Low</span><span>High</span>
+        <div className="flex justify-between text-[9px] font-mono text-muted-foreground" style={{ width: "8rem" }}>
+          <span>{variable.min} {variable.unit}</span>
+          <span>{variable.max} {variable.unit}</span>
         </div>
       </div>
     </div>

@@ -474,16 +474,21 @@ export default function MapLibreMap({
             </div>
 
             {/* Direction label + color scale */}
-            <div className="flex-shrink-0 px-4 pb-3 pt-1">
-              <div className="text-[8px] text-center text-slate-300 mb-1">← upstream · downstream →</div>
-              <div className="flex items-center gap-2">
-                <span className="text-[8px] text-slate-400 font-mono">Low</span>
-                <div className="flex-1 h-2 rounded"
-                     style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }} />
-                <span className="text-[8px] text-slate-400 font-mono">High</span>
-              </div>
-              <div className="text-[8px] text-center text-slate-400 mt-0.5">{variableLabel}</div>
-            </div>
+            {(() => {
+              const vo = VARIABLE_OPTIONS.find(v => v.id === variableId);
+              return (
+                <div className="flex-shrink-0 px-4 pb-3 pt-1">
+                  <div className="text-[8px] text-center text-slate-300 mb-1">← upstream · downstream →</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] text-slate-400 font-mono">{vo?.min ?? 0} {vo?.unit}</span>
+                    <div className="flex-1 h-2 rounded"
+                         style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }} />
+                    <span className="text-[8px] text-slate-400 font-mono">{vo?.max ?? 1} {vo?.unit}</span>
+                  </div>
+                  <div className="text-[8px] text-center text-slate-400 mt-0.5">{variableLabel}</div>
+                </div>
+              );
+            })()}
 
           </div>
         );
@@ -499,17 +504,23 @@ export default function MapLibreMap({
       )}
 
       {/* Color bar legend — hidden when grid overlay is active */}
-      {!showGrid && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none whitespace-nowrap">
-          <span className="text-[9px] text-muted-foreground font-medium">{variableLabel}</span>
-          <div
-            className="w-24 h-2.5 rounded-sm border border-border/20"
-            style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
-          />
-          <span className="text-[9px] text-muted-foreground font-mono">Low</span>
-          <span className="text-[9px] text-muted-foreground font-mono">High</span>
-        </div>
-      )}
+      {!showGrid && (() => {
+        const varOpt = VARIABLE_OPTIONS.find(v => v.id === variableId);
+        const minVal = varOpt?.min ?? 0;
+        const maxVal = varOpt?.max ?? 1;
+        const unit   = varOpt?.unit ?? "";
+        return (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none whitespace-nowrap">
+            <span className="text-[9px] text-muted-foreground font-medium">{variableLabel}</span>
+            <span className="text-[9px] text-slate-500 font-mono">{minVal}</span>
+            <div
+              className="w-24 h-2.5 rounded-sm border border-border/20"
+              style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
+            />
+            <span className="text-[9px] text-slate-500 font-mono">{maxVal} {unit}</span>
+          </div>
+        );
+      })()}
 
       {/* Controls when zoomed into a river */}
       {selectedRiver && (

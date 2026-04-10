@@ -96,11 +96,11 @@ export function getWeekLabel(week: number): WeekLabel {
 }
 
 export const VARIABLE_OPTIONS = [
-  { id: "nitrogen",    label: "Total Nitrogen",    unit: "mg/L",  colorScale: "nitrogen" },
-  { id: "phosphorus",  label: "Total Phosphorus",  unit: "μg/L",  colorScale: "phosphorus" },
-  { id: "chlorophyll", label: "Chlorophyll-a",     unit: "μg/L",  colorScale: "chlorophyll" },
-  { id: "do",          label: "Dissolved Oxygen",  unit: "mg/L",  colorScale: "oxygen" },
-  { id: "all",         label: "All Variables",     unit: "index", colorScale: "all" },
+  { id: "nitrogen",    label: "Total Nitrogen",    unit: "mg/L",  colorScale: "nitrogen",    min: 0.2,  max: 3.0  },
+  { id: "phosphorus",  label: "Total Phosphorus",  unit: "μg/L",  colorScale: "phosphorus",  min: 10,   max: 130  },
+  { id: "chlorophyll", label: "Chlorophyll-a",     unit: "μg/L",  colorScale: "chlorophyll", min: 0.5,  max: 18.5 },
+  { id: "do",          label: "Dissolved Oxygen",  unit: "mg/L",  colorScale: "oxygen",      min: 4.0,  max: 10.0 },
+  { id: "all",         label: "All Variables",     unit: "index", colorScale: "all",         min: 0,    max: 1    },
 ];
 
 /**
