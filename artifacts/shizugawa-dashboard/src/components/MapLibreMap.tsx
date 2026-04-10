@@ -1,8 +1,38 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import maplibregl from "maplibre-gl";
+import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { RIVER_PATHS } from "@/lib/svgPaths";
-import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, VARIABLE_OPTIONS } from "@/lib/simulatedData";
+import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+
+type LonLat = [number, number];
+type Ring = LonLat[];
+type PolygonGeom = { type: "Polygon"; coordinates: Ring[] };
+type LineStringGeom = { type: "LineString"; coordinates: LonLat[] };
+type OceanCellProps = { color: string };
+type RiverReachProps = { reachId: number; modelRiver: string; isMainStem: boolean; color: string; lineWidth: number };
+
+interface OceanCellFeature {
+  type: "Feature";
+  properties: OceanCellProps;
+  geometry: PolygonGeom;
+}
+
+interface OceanCellCollection {
+  type: "FeatureCollection";
+  features: OceanCellFeature[];
+}
+
+interface RiverReachFeature {
+  type: "Feature";
+  id: number;
+  properties: RiverReachProps;
+  geometry: LineStringGeom;
+}
+
+interface RiverReachCollection {
+  type: "FeatureCollection";
+  features: RiverReachFeature[];
+}
 
 const SVG_W = 465;
 const SVG_H = 586;
@@ -87,13 +117,13 @@ function computeOceanMean(week: number): number {
   return count > 0 ? sum / count : 0;
 }
 
-function buildOceanGridGeoJSON(week: number, variableId: string) {
+function buildOceanGridGeoJSON(week: number, variableId: string): OceanCellCollection {
   const data = generateWeekData(week);
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const cellLon = (BAY_EAST - BAY_WEST) / GRID_W;
   const cellLat = (BAY_NORTH - BAY_SOUTH) / GRID_D;
 
-  const features: object[] = [];
+  const features: OceanCellFeature[] = [];
   for (let z = 0; z < GRID_D; z++) {
     for (let x = 0; x < GRID_W; x++) {
       if (!BAY_MASK[z]?.[x]) continue;
@@ -181,40 +211,29 @@ const OCEAN_SVG_POINTS: [number, number][] = [
 
 const OCEAN_COORDS: [number, number][] = OCEAN_SVG_POINTS.map(([x, y]) => [svgToLon(x), svgToLat(y)]);
 
-interface RiverFeature {
-  type: "Feature";
-  id: number;
-  properties: {
-    reachId: number;
-    modelRiver: string;
-    isMainStem: boolean;
-    color: string;
-    lineWidth: number;
-  };
-  geometry: { type: "LineString"; coordinates: [number, number][] };
-}
-
-function buildRiverFeatures(week: number, variableId: string, selectedRiver: string | null): RiverFeature[] {
+function buildRiverFeatures(week: number, variableId: string, selectedRiver: string | null): RiverReachCollection {
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
-  return Object.entries(RIVER_PATHS).map(([idStr, d]) => {
+  const features: RiverReachFeature[] = Object.entries(RIVER_PATHS).map(([idStr, d]) => {
     const id = Number(idStr);
     const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
     const isMainStem = MAIN_STEMS.has(id);
     const mean = computeRiverMean(week, modelRiver);
     const color = interpolateColor(stops, Math.max(0, Math.min(1, mean)));
     const isSelected = selectedRiver === modelRiver;
-    const lineWidth = isMainStem
-      ? (isSelected ? 8 : 5)
-      : (isSelected ? 5 : 3);
+    const lineWidth = isMainStem ? (isSelected ? 8 : 5) : (isSelected ? 5 : 3);
     const svgPts = parseSvgPath(d);
-    const coords = svgPts.map(([x, y]) => [svgToLon(x), svgToLat(y)] as [number, number]);
+    const coords: LonLat[] = svgPts.map(([x, y]) => [svgToLon(x), svgToLat(y)]);
+    const safeCoords: LonLat[] = coords.length >= 2
+      ? coords
+      : [[svgToLon(200), svgToLat(300)], [svgToLon(201), svgToLat(301)]];
     return {
       type: "Feature",
       id,
       properties: { reachId: id, modelRiver, isMainStem, color, lineWidth },
-      geometry: { type: "LineString", coordinates: coords.length >= 2 ? coords : [[svgToLon(200), svgToLat(300)], [svgToLon(201), svgToLat(301)]] },
+      geometry: { type: "LineString", coordinates: safeCoords },
     };
   });
+  return { type: "FeatureCollection", features };
 }
 
 interface MapLibreMapProps {
@@ -293,7 +312,7 @@ export default function MapLibreMap({
 
       map.addSource("rivers", {
         type: "geojson",
-        data: { type: "FeatureCollection", features: initialFeatures },
+        data: initialFeatures,
         generateId: false,
       });
 
@@ -331,8 +350,7 @@ export default function MapLibreMap({
       );
       map.addSource("ocean-grid", {
         type: "geojson",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        data: initialOceanGrid as any,
+        data: initialOceanGrid,
       });
 
       map.addLayer({
@@ -450,16 +468,14 @@ export default function MapLibreMap({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const riverSource = map.getSource("rivers") as maplibregl.GeoJSONSource | undefined;
+    const riverSource = map.getSource("rivers") as GeoJSONSource | undefined;
     if (riverSource) {
-      const features = buildRiverFeatures(week, variableId, selectedRiver);
-      riverSource.setData({ type: "FeatureCollection", features });
+      riverSource.setData(buildRiverFeatures(week, variableId, selectedRiver));
     }
 
-    const oceanGridSource = map.getSource("ocean-grid") as maplibregl.GeoJSONSource | undefined;
+    const oceanGridSource = map.getSource("ocean-grid") as GeoJSONSource | undefined;
     if (oceanGridSource) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      oceanGridSource.setData(buildOceanGridGeoJSON(week, variableId) as any);
+      oceanGridSource.setData(buildOceanGridGeoJSON(week, variableId));
     }
   }, [week, variableId, selectedRiver, mapReady]);
 
