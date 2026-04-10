@@ -10,10 +10,9 @@ interface TopNavProps {
 
 export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: TopNavProps) {
   const location = useLocation();
-  const isRiver = location.pathname.startsWith("/river");
   const isOcean = location.pathname.startsWith("/playback");
   const isCS = location.pathname.startsWith("/cross-section");
-  const isMap = !isRiver && !isOcean && !isCS;
+  const isMap = !isOcean && !isCS;
 
   /*
    * Cross-section tab href:
@@ -111,15 +110,6 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-sm bg-emerald-400 inline-block" />
             Cross-Section
-          </span>
-        </NavLink>
-        <NavLink
-          to="/river"
-          className={`tab-item ${isRiver ? "tab-item-active" : ""}`}
-        >
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />
-            River Playback (2D)
           </span>
         </NavLink>
         <NavLink
