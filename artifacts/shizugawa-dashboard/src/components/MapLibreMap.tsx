@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { RIVER_PATHS, SUB_BASIN_PATHS } from "@/lib/svgPaths";
+import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
 import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, RIVER_COLS, RIVER_ROWS } from "@/lib/simulatedData";
 
 const SVG_W = 465;
@@ -188,7 +188,6 @@ function parseSvgPath(d: string): [number, number][] {
   return pts;
 }
 
-const OCEAN_POLYGON_SVG = "M387 197 L392 215 L400 218 L408 215 L413 223 L413 241 L415 264 L414 271 L408 283 L418 299 L404 308 L394 313 L400 336 L410 343 L404 364 L392 400 L379 403 L380 397 L382 389 L378 390 L376 391 L372 394 L371 397 L366 401 L360 399 L360 394 L356 390 L351 396 L347 402 L337 401 L335 393 L330 384 L324 383 L314 385 L316 390 L309 400 L297 407 L287 405 L282 398 L277 401 L270 398 L265 399 L255 419 L257 440 L188 380 L138 391 L131 263 L60 312 L50 340 L68 395 L65 440 L70 470 L80 500 L100 540 L140 570 L180 580 L230 586 L280 580 L330 565 L370 545 L400 520 L425 490 L440 460 L450 430 L455 400 L460 370 L463 340 L465 300 L460 265 L450 240 L440 220 L430 205 L415 195 L400 192 Z";
 
 function computeRiverSvgBounds(modelRiver: string): { x: number; y: number; w: number; h: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -297,9 +296,9 @@ export default function MapLibreMap({
           );
         })}
 
-        {/* Ocean polygon */}
+        {/* Ocean polygon — exact Shizugawa Bay (Ocean Basin) shape from SVG */}
         <path
-          d={OCEAN_POLYGON_SVG}
+          d={OCEAN_BASIN_PATH}
           fill={`${oceanColor}55`}
           stroke={oceanColor}
           strokeWidth={hoveredOcean ? 2.5 : 1.5}
