@@ -11,6 +11,96 @@ import {
   RIVER_ROWS,
   RIVER_COLS,
 } from "@/lib/simulatedData";
+
+// ── Inline sparkline chart ────────────────────────────────────
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function ReachMeanChart({
+  series, currentWeek, unit, color,
+}: {
+  series: number[];
+  currentWeek: number;
+  unit: string;
+  color: string;
+}) {
+  const W = 228, H = 72, PAD_L = 28, PAD_R = 6, PAD_T = 6, PAD_B = 20;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+
+  const minV = Math.min(...series);
+  const maxV = Math.max(...series);
+  const range = maxV - minV || 1;
+
+  const toX = (i: number) => PAD_L + (i / (series.length - 1)) * innerW;
+  const toY = (v: number) => PAD_T + (1 - (v - minV) / range) * innerH;
+
+  const points = series.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
+  const areaPoints = [
+    `${toX(0)},${PAD_T + innerH}`,
+    ...series.map((v, i) => `${toX(i)},${toY(v)}`),
+    `${toX(series.length - 1)},${PAD_T + innerH}`,
+  ].join(" ");
+
+  const cx = toX(currentWeek);
+  const cy = toY(series[currentWeek] ?? minV);
+
+  // Month ticks: week 0 = Jan w1, 52 weeks across 12 months
+  const monthTicks = [0, 4, 9, 13, 17, 22, 26, 30, 35, 39, 43, 48].map((w, i) => ({
+    x: toX(w), label: MONTHS[i],
+  }));
+
+  const yTicks = [minV, (minV + maxV) / 2, maxV].map(v => ({
+    y: toY(v), label: v.toFixed(1),
+  }));
+
+  return (
+    <svg width={W} height={H} className="overflow-visible">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+
+      {/* Y grid lines */}
+      {yTicks.map(({ y, label }) => (
+        <g key={label}>
+          <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e2e8f0" strokeWidth="1" />
+          <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="7" fill="#94a3b8" fontFamily="monospace">
+            {label}
+          </text>
+        </g>
+      ))}
+
+      {/* Area fill */}
+      <polygon points={areaPoints} fill="url(#areaGrad)" />
+
+      {/* Line */}
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+
+      {/* Current-week cursor */}
+      <line x1={cx} y1={PAD_T} x2={cx} y2={PAD_T + innerH} stroke={color} strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+      <circle cx={cx} cy={cy} r="3" fill={color} stroke="white" strokeWidth="1.5" />
+
+      {/* Value label above dot */}
+      <rect x={cx - 18} y={cy - 17} width={36} height={12} rx="2" fill={color} opacity="0.9" />
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize="7" fill="white" fontFamily="monospace" fontWeight="bold">
+        {(series[currentWeek] ?? 0).toFixed(2)} {unit}
+      </text>
+
+      {/* X axis month labels */}
+      {monthTicks.map(({ x, label }) => (
+        <text key={label} x={x} y={H - 4} textAnchor="middle" fontSize="7" fill="#94a3b8" fontFamily="monospace">
+          {label}
+        </text>
+      ))}
+
+      {/* Axis lines */}
+      <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + innerH} stroke="#cbd5e1" strokeWidth="1" />
+      <line x1={PAD_L} y1={PAD_T + innerH} x2={W - PAD_R} y2={PAD_T + innerH} stroke="#cbd5e1" strokeWidth="1" />
+    </svg>
+  );
+}
 import TopNav from "@/components/TopNav";
 import PlaybackControls from "@/components/PlaybackControls";
 import RiverGrid2D from "@/components/RiverGrid2D";
@@ -75,6 +165,21 @@ export default function RiverPlaybackPage() {
     }
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [riverWeekData, selectedVariable]);
+
+  // Full 52-week time series — recompute only when river or variable changes
+  const allWeekMeans = useMemo(() => {
+    return Array.from({ length: TOTAL_WEEKS }, (_, w) => {
+      const grid = generateRiverData(w, riverId);
+      let s = 0, c = 0;
+      for (let r = 0; r < RIVER_ROWS; r++)
+        for (let col = 0; col < RIVER_COLS; col++) { s += grid[r]?.[col] ?? 0; c++; }
+      return c > 0 ? valueToConcentration(s / c, selectedVariable) : 0;
+    });
+  }, [riverId, selectedVariable]);
+
+  const CHART_COLORS: Record<string, string> = {
+    nitrogen: "#3b6fa0", phosphorus: "#4a7fb5", chlorophyll: "#2d7a4a", do: "#c8401c", all: "#7c3aed",
+  };
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
@@ -241,6 +346,20 @@ export default function RiverPlaybackPage() {
                   <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
                 </svg>
               </div>
+            </div>
+
+            {/* 3c. Time-series line chart */}
+            <div className="px-4 py-4">
+              <div className="panel-section-title mb-2">Annual Trend</div>
+              <div className="text-[9px] text-muted-foreground mb-2 font-mono">
+                Reach mean · {variable.label} ({variable.unit}) · 2023–2024
+              </div>
+              <ReachMeanChart
+                series={allWeekMeans}
+                currentWeek={week}
+                unit={variable.unit}
+                color={CHART_COLORS[selectedVariable] ?? "#3b6fa0"}
+              />
             </div>
 
             {/* 4. Selected cell */}
