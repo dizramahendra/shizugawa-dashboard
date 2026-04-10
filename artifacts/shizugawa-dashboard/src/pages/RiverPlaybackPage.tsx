@@ -25,7 +25,7 @@ const COLOR_STOPS: Record<string, string[]> = {
 export default function RiverPlaybackPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const riverId = searchParams.get("river") ?? "shizugawa";
+  const [riverId, setRiverId] = useState(searchParams.get("river") ?? "shizugawa");
   const watershedName = searchParams.get("wname") ?? undefined;
 
   const river = RIVERS.find((r) => r.id === riverId) ?? RIVERS[0];
@@ -84,12 +84,20 @@ export default function RiverPlaybackPage() {
       <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">River</span>
-          <div className="flex items-center gap-2 px-3 h-10 rounded-md border border-border bg-white text-sm text-foreground min-w-[200px]">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-blue-500 flex-shrink-0">
-              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" opacity="0.5" strokeDasharray="2 2"/>
-            </svg>
-            <span>{river.name}</span>
+          <div className="relative">
+            <select
+              value={riverId}
+              onChange={e => { setRiverId(e.target.value); setSelectedCell(null); }}
+              className="filter-select pr-8 appearance-none min-w-[200px]"
+              style={{
+                backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")",
+                backgroundPosition: "right 0.5rem center",
+                backgroundRepeat: "no-repeat",
+                backgroundSize: "1.25rem",
+              }}
+            >
+              {RIVERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
           </div>
         </div>
         <div className="flex items-center gap-2">
