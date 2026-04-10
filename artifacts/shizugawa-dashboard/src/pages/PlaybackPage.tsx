@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity } from "lucide-react";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, getBayOceanExchangeIntensity, getSedimentElutionIntensity } from "@/lib/simulatedData";
+import { usePlayback } from "@/context/PlaybackContext";
+import { YEARS } from "@/lib/weekUtils";
+import WeekRangePicker from "@/components/WeekRangePicker";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
@@ -51,6 +54,7 @@ export default function PlaybackPage() {
   const [searchParams] = useSearchParams();
   const watershedName = searchParams.get("wname") ?? undefined;
 
+  const { year, setYear, weekRange, setWeekRange } = usePlayback();
   const [week, setWeek] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -67,17 +71,21 @@ export default function PlaybackPage() {
   const pause = useCallback(() => setIsPlaying(false), []);
 
   useEffect(() => {
+    setWeek(w => Math.max(weekRange[0], Math.min(weekRange[1], w)));
+  }, [weekRange]);
+
+  useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (isPlaying) {
       intervalRef.current = setInterval(() => {
         setWeek((w) => {
-          if (w >= TOTAL_WEEKS - 1) { setIsPlaying(false); return 0; }
+          if (w >= weekRange[1]) { setIsPlaying(false); return weekRange[0]; }
           return w + 1;
         });
       }, 800 / speed);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isPlaying, speed]);
+  }, [isPlaying, speed, weekRange]);
 
   const handleCellClick = (x: number, z: number) => {
     setSelectedPoint({ x, z });
@@ -89,7 +97,7 @@ export default function PlaybackPage() {
   const dashboardState = toDashboardState(activeTool, isPlaying);
 
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
-  const weekData = useMemo(() => generateWeekData(week), [week]);
+  const weekData = useMemo(() => generateWeekData(week, year), [week, year]);
 
   const selectedValue = selectedPoint
     ? valueToConcentration(
@@ -111,14 +119,14 @@ export default function PlaybackPage() {
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [weekData, selectedVariable]);
 
-  const { label: weekLabel } = getWeekLabel(week);
+  const { label: weekLabel } = getWeekLabel(week, year);
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
       <TopNav stateLabel={isPlaying ? "Playing" : "Paused"} watershedName={watershedName} />
 
       {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-border flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Basin</span>
           <div className="filter-select">
@@ -146,6 +154,30 @@ export default function PlaybackPage() {
             ))}
           </select>
         </div>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* Year segmented control */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground font-medium">Year</span>
+          <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+            {YEARS.map(y => (
+              <button
+                key={y}
+                onClick={() => { setYear(y); setWeek(0); }}
+                className={`px-2 py-1 text-[11px] font-mono rounded-sm transition-colors ${
+                  year === y
+                    ? "bg-white text-foreground shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >{y}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Calendar date range picker */}
+        <WeekRangePicker year={year} weekRange={weekRange} onChange={r => { setWeekRange(r); pause(); }} />
+
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {isPlaying ? (
             <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
@@ -216,12 +248,15 @@ export default function PlaybackPage() {
             week={week}
             isPlaying={isPlaying}
             speed={speed}
+            year={year}
+            windowStart={weekRange[0]}
+            windowEnd={weekRange[1]}
             onPlay={() => setIsPlaying(true)}
             onPause={pause}
             onSeek={handleSeek}
             onSpeedChange={setSpeed}
-            onBack={() => { setWeek((w) => Math.max(0, w - 1)); pause(); }}
-            onForward={() => { setWeek((w) => Math.min(TOTAL_WEEKS - 1, w + 1)); pause(); }}
+            onBack={() => { setWeek((w) => Math.max(weekRange[0], w - 1)); pause(); }}
+            onForward={() => { setWeek((w) => Math.min(weekRange[1], w + 1)); pause(); }}
           />
         </div>
 

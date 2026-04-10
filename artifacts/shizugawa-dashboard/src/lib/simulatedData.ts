@@ -55,8 +55,9 @@ function noise(x: number, z: number, t: number, scale: number): number {
   );
 }
 
-export function generateWeekData(week: number): number[][][] {
-  const t = (week / TOTAL_WEEKS) * Math.PI * 2;
+export function generateWeekData(week: number, year: number = 2023): number[][][] {
+  const yearShift = (year - 2023) * 0.29;
+  const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
   const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
 
   const data: number[][][] = [];
@@ -82,16 +83,14 @@ export interface WeekLabel {
   monthLabel: string;
 }
 
-export function getWeekLabel(week: number): WeekLabel {
+export function getWeekLabel(week: number, year: number = 2023): WeekLabel {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const dayOfYear = week * 7;
-  const monthIndex = Math.floor((dayOfYear / 365) * 12);
-  const clampedMonth = Math.min(11, Math.max(0, monthIndex));
-  const weekInMonth = Math.floor((dayOfYear % 30) / 7) + 1;
+  const date = new Date(new Date(year, 0, 1).getTime() + week * 7 * 86_400_000);
+  const m = months[date.getMonth()];
   return {
     week,
-    label: `W${String(week + 1).padStart(2, "0")} ${months[clampedMonth]}`,
-    monthLabel: months[clampedMonth],
+    label: `W${String(week + 1).padStart(2, "0")} ${m}`,
+    monthLabel: m,
   };
 }
 
@@ -107,8 +106,8 @@ export const VARIABLE_OPTIONS = [
  * Compute bay-ocean exchange intensity (0–1) for a given week.
  * Based on the average value of the rightmost active cells in each row.
  */
-export function getBayOceanExchangeIntensity(week: number): number {
-  const data = generateWeekData(week);
+export function getBayOceanExchangeIntensity(week: number, year: number = 2023): number {
+  const data = generateWeekData(week, year);
   // Rightmost active column per row in the BAY_MASK
   const edgeCols: number[] = [];
   for (let z = 0; z < GRID_D; z++) {
@@ -132,8 +131,8 @@ export function getBayOceanExchangeIntensity(week: number): number {
  * Compute sediment elution intensity (0–1) for a given week.
  * Based on the average bottom-two-layer values across all active cells.
  */
-export function getSedimentElutionIntensity(week: number): number {
-  const data = generateWeekData(week);
+export function getSedimentElutionIntensity(week: number, year: number = 2023): number {
+  const data = generateWeekData(week, year);
   let sum = 0, count = 0;
   for (let z = 0; z < GRID_D; z++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -248,8 +247,9 @@ export function getColumnMean(data: number[][][], x: number, z: number): number 
 }
 
 /** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
-export function generateRiverData(week: number, riverId: string): number[][] {
-  const t = (week / TOTAL_WEEKS) * Math.PI * 2;
+export function generateRiverData(week: number, riverId: string, year: number = 2023): number[][] {
+  const yearShift = (year - 2023) * 0.31;
+  const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
   const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
   const riverOffset = riverId === "kitakami" ? 1.2 : riverId === "hachiman" ? 0.6 : 0;
 

@@ -11,6 +11,9 @@ import {
   RIVER_ROWS,
   RIVER_COLS,
 } from "@/lib/simulatedData";
+import { usePlayback } from "@/context/PlaybackContext";
+import { YEARS } from "@/lib/weekUtils";
+import WeekRangePicker from "@/components/WeekRangePicker";
 
 // ── Inline sparkline chart ────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -118,8 +121,9 @@ export default function RiverPlaybackPage() {
   const [riverId, setRiverId] = useState(searchParams.get("river") ?? "shizugawa");
   const watershedName = searchParams.get("wname") ?? undefined;
 
+  const { year, setYear, weekRange, setWeekRange } = usePlayback();
   const river = RIVERS.find((r) => r.id === riverId) ?? RIVERS[0];
-  const [week, setWeek] = useState(0);
+  const [week, setWeek] = useState(weekRange[0]);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState("nitrogen");
@@ -128,24 +132,29 @@ export default function RiverPlaybackPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pause = useCallback(() => setIsPlaying(false), []);
 
+  // Clamp week to weekRange when range changes
+  useEffect(() => {
+    setWeek(w => Math.max(weekRange[0], Math.min(weekRange[1], w)));
+  }, [weekRange]);
+
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (isPlaying) {
       intervalRef.current = setInterval(() => {
         setWeek((w) => {
-          if (w >= TOTAL_WEEKS - 1) { setIsPlaying(false); return 0; }
+          if (w >= weekRange[1]) { setIsPlaying(false); return weekRange[0]; }
           return w + 1;
         });
       }, 800 / speed);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isPlaying, speed]);
+  }, [isPlaying, speed, weekRange]);
 
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
-  const { label: weekLabel } = getWeekLabel(week);
+  const { label: weekLabel } = getWeekLabel(week, year);
   const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
 
-  const riverWeekData = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
+  const riverWeekData = useMemo(() => generateRiverData(week, riverId, year), [week, riverId, year]);
 
   const cellValue = selectedCell
     ? valueToConcentration(
@@ -166,16 +175,16 @@ export default function RiverPlaybackPage() {
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [riverWeekData, selectedVariable]);
 
-  // Full 52-week time series — recompute only when river or variable changes
+  // Full 52-week time series — recompute only when river, variable, or year changes
   const allWeekMeans = useMemo(() => {
     return Array.from({ length: TOTAL_WEEKS }, (_, w) => {
-      const grid = generateRiverData(w, riverId);
+      const grid = generateRiverData(w, riverId, year);
       let s = 0, c = 0;
       for (let r = 0; r < RIVER_ROWS; r++)
         for (let col = 0; col < RIVER_COLS; col++) { s += grid[r]?.[col] ?? 0; c++; }
       return c > 0 ? valueToConcentration(s / c, selectedVariable) : 0;
     });
-  }, [riverId, selectedVariable]);
+  }, [riverId, selectedVariable, year]);
 
   const CHART_COLORS: Record<string, string> = {
     nitrogen: "#3b6fa0", phosphorus: "#4a7fb5", chlorophyll: "#2d7a4a", do: "#c8401c", all: "#7c3aed",
@@ -186,25 +195,26 @@ export default function RiverPlaybackPage() {
       <TopNav stateLabel={`River Playback View (2D) · ${isPlaying ? "Playing" : "Paused"}`} watershedName={watershedName} />
 
       {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-b border-border">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-border flex-wrap">
+        {/* River selector */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">River</span>
-          <div className="relative">
-            <select
-              value={riverId}
-              onChange={e => { setRiverId(e.target.value); setSelectedCell(null); }}
-              className="filter-select pr-8 appearance-none min-w-[200px]"
-              style={{
-                backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")",
-                backgroundPosition: "right 0.5rem center",
-                backgroundRepeat: "no-repeat",
-                backgroundSize: "1.25rem",
-              }}
-            >
-              {RIVERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </div>
+          <select
+            value={riverId}
+            onChange={e => { setRiverId(e.target.value); setSelectedCell(null); }}
+            className="filter-select pr-8 appearance-none min-w-[180px]"
+            style={{
+              backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")",
+              backgroundPosition: "right 0.5rem center",
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "1.25rem",
+            }}
+          >
+            {RIVERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
         </div>
+
+        {/* Variable selector */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Variable</span>
           <select
@@ -224,6 +234,32 @@ export default function RiverPlaybackPage() {
             <option value="do">Dissolved Oxygen</option>
           </select>
         </div>
+
+        {/* Separator */}
+        <div className="w-px h-5 bg-border" />
+
+        {/* Year segmented control */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground font-medium">Year</span>
+          <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+            {YEARS.map(y => (
+              <button
+                key={y}
+                onClick={() => { setYear(y); setWeek(0); }}
+                className={`px-2 py-1 text-[11px] font-mono rounded-sm transition-colors ${
+                  year === y
+                    ? "bg-white text-foreground shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >{y}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Calendar date range picker */}
+        <WeekRangePicker year={year} weekRange={weekRange} onChange={r => { setWeekRange(r); pause(); }} />
+
+        {/* Playing indicator */}
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {isPlaying
             ? <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
@@ -249,12 +285,15 @@ export default function RiverPlaybackPage() {
             week={week}
             isPlaying={isPlaying}
             speed={speed}
+            year={year}
+            windowStart={weekRange[0]}
+            windowEnd={weekRange[1]}
             onPlay={() => setIsPlaying(true)}
             onPause={pause}
             onSeek={(w) => { setWeek(w); pause(); }}
             onSpeedChange={setSpeed}
-            onBack={() => { setWeek((w) => Math.max(0, w - 1)); pause(); }}
-            onForward={() => { setWeek((w) => Math.min(TOTAL_WEEKS - 1, w + 1)); pause(); }}
+            onBack={() => { setWeek((w) => Math.max(weekRange[0], w - 1)); pause(); }}
+            onForward={() => { setWeek((w) => Math.min(weekRange[1], w + 1)); pause(); }}
           />
         </div>
 
@@ -352,7 +391,7 @@ export default function RiverPlaybackPage() {
             <div className="px-4 py-4">
               <div className="panel-section-title mb-2">Annual Trend</div>
               <div className="text-[9px] text-muted-foreground mb-2 font-mono">
-                Reach mean · {variable.label} ({variable.unit}) · 2023–2024
+                Reach mean · {variable.label} ({variable.unit}) · {year}
               </div>
               <ReachMeanChart
                 series={allWeekMeans}

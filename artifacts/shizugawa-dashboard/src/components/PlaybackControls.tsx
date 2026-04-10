@@ -1,10 +1,12 @@
 import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import { getWeekLabel, TOTAL_WEEKS } from "@/lib/simulatedData";
+import { weekToDate } from "@/lib/weekUtils";
 
 interface PlaybackControlsProps {
   week: number;
   isPlaying: boolean;
   speed: number;
+  year?: number;
   onPlay: () => void;
   onPause: () => void;
   onSeek: (week: number) => void;
@@ -22,6 +24,7 @@ export default function PlaybackControls({
   week,
   isPlaying,
   speed,
+  year = 2023,
   onPlay,
   onPause,
   onSeek,
@@ -31,7 +34,7 @@ export default function PlaybackControls({
   windowStart = 0,
   windowEnd = TOTAL_WEEKS - 1,
 }: PlaybackControlsProps) {
-  const { label } = getWeekLabel(week);
+  const { label } = getWeekLabel(week, year);
   const windowLen = Math.max(1, windowEnd - windowStart);
   const progress = (week - windowStart) / windowLen;
 
@@ -60,7 +63,11 @@ export default function PlaybackControls({
 
       <div className="flex-shrink-0 w-24">
         <div className="text-xs font-mono font-semibold text-foreground">{label}</div>
-        <div className="text-[10px] text-muted-foreground">2023–2024</div>
+        <div className="text-[10px] text-muted-foreground font-mono">
+          {weekToDate(windowStart, year).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+          {" – "}
+          {weekToDate(windowEnd, year).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col gap-1 min-w-0">
