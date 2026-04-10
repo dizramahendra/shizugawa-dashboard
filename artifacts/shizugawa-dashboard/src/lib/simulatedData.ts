@@ -197,7 +197,7 @@ export const WATERSHEDS: Watershed[] = [
 
 // ── River data (2D, no depth) ────────────────────────────────
 
-export const RIVER_COLS = 54; // along-stream axis (x)
+export const RIVER_COLS = 90; // along-stream axis (x)
 export const RIVER_ROWS = 16; // cross-stream axis (z)
 
 export const RIVERS = [

@@ -121,14 +121,14 @@ const MASKS: Record<string, boolean[][]> = {
 };
 
 // ── km tick positions ─────────────────────────────────────────
-// RIVER_COLS=54, total length=18 km → every 9 cols = 3 km
-const KM_TICKS = [0, 9, 18, 27, 36, 45, 54].map(col => ({
+// RIVER_COLS=90, total length=18 km → every 15 cols = 3 km
+const KM_TICKS = [0, 15, 30, 45, 60, 75, 90].map(col => ({
   col: Math.min(col, RIVER_COLS),
   label: `${Math.round((Math.min(col, RIVER_COLS) / RIVER_COLS) * 18)} km`,
 }));
 
 // ── Layout constants ──────────────────────────────────────────
-const CELL = 14;  // px per cell
+const CELL = 9;   // px per cell — smaller cells, more columns = longer river feel
 const GAP  = 0;   // no gap — cells butt up against each other
 
 interface RiverGrid2DProps {
