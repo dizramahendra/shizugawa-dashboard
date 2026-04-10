@@ -306,7 +306,6 @@ export default function MapLibreMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [tilesLoaded, setTilesLoaded] = useState(false);
   const [webglError, setWebglError] = useState(false);
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
@@ -315,11 +314,23 @@ export default function MapLibreMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    const BLANK_STYLE: maplibregl.StyleSpecification = {
+      version: 8,
+      sources: {},
+      layers: [
+        {
+          id: "background",
+          type: "background",
+          paint: { "background-color": "#f0f4f8" },
+        },
+      ],
+    };
+
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: "https://tiles.openfreemap.org/styles/liberty",
+        style: BLANK_STYLE,
         center: [(BAY_WEST + BAY_EAST) / 2, (BAY_SOUTH + BAY_NORTH) / 2],
         zoom: 12.5,
         minZoom: 10,
@@ -331,15 +342,9 @@ export default function MapLibreMap({
       return;
     }
 
-    const fallbackTimer = setTimeout(() => {
-      if (!mapRef.current?.loaded() || !mapRef.current?.areTilesLoaded()) {
-        setWebglError(true);
-      }
-    }, 6000);
-
     map.on("error", (e) => {
       const msg = String((e as { error?: unknown }).error).toLowerCase();
-      if (msg.includes("webgl") || msg.includes("style") || msg.includes("failed to fetch")) {
+      if (msg.includes("webgl")) {
         setWebglError(true);
       }
     });
@@ -517,14 +522,7 @@ export default function MapLibreMap({
         }
       });
 
-      clearTimeout(fallbackTimer);
       setMapReady(true);
-    });
-
-    map.on("idle", () => {
-      if (mapRef.current?.areTilesLoaded()) {
-        setTilesLoaded(true);
-      }
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-left");
@@ -532,7 +530,6 @@ export default function MapLibreMap({
     mapRef.current = map;
 
     return () => {
-      clearTimeout(fallbackTimer);
       map.remove();
       mapRef.current = null;
     };
@@ -664,7 +661,7 @@ export default function MapLibreMap({
     </>
   );
 
-  const showSvg = webglError || !mapReady || !tilesLoaded;
+  const showSvg = webglError || !mapReady;
 
   return (
     <div className="relative w-full h-full bg-slate-50 overflow-hidden">
@@ -690,9 +687,9 @@ export default function MapLibreMap({
         ref={containerRef}
         className="absolute inset-0"
         style={{
-          opacity: mapReady && tilesLoaded && !webglError ? 1 : 0,
+          opacity: mapReady && !webglError ? 1 : 0,
           transition: "opacity 0.4s ease",
-          pointerEvents: mapReady && tilesLoaded && !webglError ? "auto" : "none",
+          pointerEvents: mapReady && !webglError ? "auto" : "none",
         }}
       />
 
