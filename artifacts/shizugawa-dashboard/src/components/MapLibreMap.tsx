@@ -38,10 +38,12 @@ function computeReachValue(week: number, reachId: number): number {
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
-  phosphorus: ["#fce7f3", "#f9a8d4", "#ec4899", "#be185d", "#500724"],
-  sediment:   ["#fef3c7", "#fcd34d", "#f59e0b", "#b45309", "#451a03"],
-  do:         ["#ecfdf5", "#6ee7b7", "#10b981", "#047857", "#022c22"],
+  nitrogen:    ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
+  phosphorus:  ["#fce7f3", "#f9a8d4", "#ec4899", "#be185d", "#500724"],
+  sediment:    ["#fef3c7", "#fcd34d", "#f59e0b", "#b45309", "#451a03"],
+  do:          ["#ecfdf5", "#6ee7b7", "#10b981", "#047857", "#022c22"],
+  chlorophyll: ["#f0fdf4", "#86efac", "#22c55e", "#15803d", "#14532d"],
+  all:         ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
 };
 
 function interpolateColor(stops: string[], t: number): string {

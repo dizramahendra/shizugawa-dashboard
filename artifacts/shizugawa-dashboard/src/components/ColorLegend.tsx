@@ -25,6 +25,11 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
     low: "4.0 mg/L",
     high: "10.0 mg/L",
   },
+  all: {
+    stops: ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
+    low: "0.00",
+    high: "1.00",
+  },
 };
 
 const DEPTH_LABELS = ["0–5m", "5–15m", "15–30m", "30–50m", ">50m"];

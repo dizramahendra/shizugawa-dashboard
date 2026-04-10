@@ -141,10 +141,9 @@ export default function PlaybackPage() {
               backgroundSize: "1.25rem",
             }}
           >
-            <option value="nitrogen">Total Nitrogen</option>
-            <option value="phosphorus">Total Phosphorus</option>
-            <option value="chlorophyll">Chlorophyll-a</option>
-            <option value="do">Dissolved Oxygen</option>
+            {VARIABLE_OPTIONS.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
           </select>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-xs">

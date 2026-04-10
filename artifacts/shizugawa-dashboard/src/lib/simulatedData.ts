@@ -96,10 +96,11 @@ export function getWeekLabel(week: number): WeekLabel {
 }
 
 export const VARIABLE_OPTIONS = [
-  { id: "nitrogen", label: "Total Nitrogen", unit: "mg/L", colorScale: "nitrogen" },
-  { id: "phosphorus", label: "Total Phosphorus", unit: "μg/L", colorScale: "phosphorus" },
-  { id: "chlorophyll", label: "Chlorophyll-a", unit: "μg/L", colorScale: "chlorophyll" },
-  { id: "do", label: "Dissolved Oxygen", unit: "mg/L", colorScale: "oxygen" },
+  { id: "nitrogen",    label: "Total Nitrogen",    unit: "mg/L",  colorScale: "nitrogen" },
+  { id: "phosphorus",  label: "Total Phosphorus",  unit: "μg/L",  colorScale: "phosphorus" },
+  { id: "chlorophyll", label: "Chlorophyll-a",     unit: "μg/L",  colorScale: "chlorophyll" },
+  { id: "do",          label: "Dissolved Oxygen",  unit: "mg/L",  colorScale: "oxygen" },
+  { id: "all",         label: "All Variables",     unit: "index", colorScale: "all" },
 ];
 
 /**
@@ -148,11 +149,12 @@ export function getSedimentElutionIntensity(week: number): number {
 
 export function valueToConcentration(value: number, variableId: string): number {
   switch (variableId) {
-    case "nitrogen": return +(value * 2.8 + 0.2).toFixed(2);
-    case "phosphorus": return +(value * 120 + 10).toFixed(1);
+    case "nitrogen":    return +(value * 2.8 + 0.2).toFixed(2);
+    case "phosphorus":  return +(value * 120 + 10).toFixed(1);
     case "chlorophyll": return +(value * 18 + 0.5).toFixed(2);
-    case "do": return +((1 - value) * 6 + 4).toFixed(2);
-    default: return +value.toFixed(3);
+    case "do":          return +((1 - value) * 6 + 4).toFixed(2);
+    case "all":         return +value.toFixed(3);
+    default:            return +value.toFixed(3);
   }
 }
 

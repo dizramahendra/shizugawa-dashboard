@@ -75,6 +75,14 @@ const COLOR_SCALES: Record<string, [number, number, number][]> = {
     [0.42, 0.63, 0.78],
     [0.23, 0.44, 0.63],
   ],
+  all: [
+    [0.27, 0.00, 0.33],
+    [0.13, 0.37, 0.60],
+    [0.09, 0.59, 0.55],
+    [0.21, 0.72, 0.43],
+    [0.68, 0.85, 0.19],
+    [0.99, 0.91, 0.15],
+  ],
 };
 
 function lerpColor(stops: [number, number, number][], t: number): [number, number, number] {
