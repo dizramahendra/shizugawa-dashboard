@@ -306,6 +306,7 @@ export default function MapLibreMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [tilesLoaded, setTilesLoaded] = useState(false);
   const [webglError, setWebglError] = useState(false);
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
@@ -331,7 +332,7 @@ export default function MapLibreMap({
     }
 
     const fallbackTimer = setTimeout(() => {
-      if (!mapRef.current?.loaded()) {
+      if (!mapRef.current?.loaded() || !mapRef.current?.areTilesLoaded()) {
         setWebglError(true);
       }
     }, 6000);
@@ -520,6 +521,12 @@ export default function MapLibreMap({
       setMapReady(true);
     });
 
+    map.on("idle", () => {
+      if (mapRef.current?.areTilesLoaded()) {
+        setTilesLoaded(true);
+      }
+    });
+
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-left");
 
     mapRef.current = map;
@@ -657,7 +664,7 @@ export default function MapLibreMap({
     </>
   );
 
-  const showSvg = webglError || !mapReady;
+  const showSvg = webglError || !mapReady || !tilesLoaded;
 
   return (
     <div className="relative w-full h-full bg-slate-50 overflow-hidden">
@@ -683,9 +690,9 @@ export default function MapLibreMap({
         ref={containerRef}
         className="absolute inset-0"
         style={{
-          opacity: mapReady && !webglError ? 1 : 0,
+          opacity: mapReady && tilesLoaded && !webglError ? 1 : 0,
           transition: "opacity 0.4s ease",
-          pointerEvents: mapReady && !webglError ? "auto" : "none",
+          pointerEvents: mapReady && tilesLoaded && !webglError ? "auto" : "none",
         }}
       />
 
