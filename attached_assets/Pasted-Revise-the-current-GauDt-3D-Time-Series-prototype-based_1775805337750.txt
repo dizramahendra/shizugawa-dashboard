@@ -1,0 +1,241 @@
+Revise the current **GauDt · 3D Time-Series** prototype based on the latest confirmed product behavior.
+
+Do not rebuild from scratch.
+Keep the current dashboard shell, visual language, and overall layout structure.
+The main task is to fix the **map visualization logic** and update the **selection behavior**.
+
+## Latest confirmed product logic
+
+### Shared main state = Map Viewport
+The default state is a shared **Map Viewport**.
+
+This state already includes:
+- basin selector
+- variable selector
+- playback controls
+- right-side water-body list
+- active timestep / playback context
+
+This default map state is **not static**.
+It is already the main temporal overview of the system.
+
+---
+
+## Water-body behavior
+
+### Rivers
+Rivers should no longer open a separate 2D playback page when selected.
+
+Instead:
+- rivers remain in the same shared map shell
+- selecting a river should **zoom in to the selected river**
+- remain in **2D map-based view**
+- keep playback controls active
+- keep variable selector active
+- keep the same overall shell and right panel pattern
+
+### Ocean basin
+When the ocean basin is selected:
+- transition into the deeper **Ocean Playback View (3D)**
+- keep the current 3D voxel / gridded basin logic
+- keep the depth section
+- selected surface cell should still support selected column inspection
+
+---
+
+## Most important correction: map data behavior
+
+### Current problem
+The current map matches the visual frame, but the water-body visualization does not yet behave correctly.
+
+Problems to fix:
+1. rivers still read too much like static styled lines instead of variable-driven model outputs
+2. the ocean basin is still too static as a single filled area
+3. playback does not visibly change the water-body values over time
+
+---
+
+## Required map visualization logic
+
+### 1. River layer = SWAT-style network visualization
+The river layer should behave like a **hydrological network of reaches / tributaries**.
+
+Use this visual rule set:
+
+- treat rivers as a connected river network
+- preserve hierarchy between:
+  - main channel
+  - secondary tributaries
+  - smaller branches
+- line weight / prominence can help communicate hierarchy
+- show the selected variable as **time-varying color on river reaches / segments**
+- each river should visibly change color as playback moves over time
+- do not show each river as one flat static color category only
+- keep it readable and productized, not raw engineering-software clutter
+
+The river should feel like:
+- a monitored network of reaches
+- carrying variable values over time
+
+Not like:
+- decorative linework
+- static classification only
+
+### 2. Ocean basin = time-varying scalar field
+The ocean basin should also respond to the selected variable and current timestep.
+
+Use:
+- the ocean basin geometry as the spatial container
+- a simplified heatmap / scalar-field logic
+- time-varying color change during playback
+- maintain product readability and restraint
+
+Do not keep the ocean basin as just one static blue fill.
+
+---
+
+## Playback behavior
+
+### Playback must visibly drive the map
+When the timeline moves:
+- river reach / segment colors must update
+- ocean basin values / color field must update
+- the map should visibly change with time
+
+The playback bar must not be decorative only.
+
+This is a **time-series playback viewer**.
+
+### Shared playback controls
+Keep and preserve:
+- previous / play-pause / next
+- timeline scrubber
+- month labels
+- speed selector
+- current week / date label
+
+---
+
+## Updated state behavior to implement
+
+### State 1 — Default Map Viewport
+This is the main overview state.
+
+Requirements:
+- top-down map of Shizugawa Bay
+- active variable shown in both river and ocean layers
+- playback visibly changes water-body colors over time
+- right panel lists water bodies:
+  - ocean basin
+  - rivers
+- user can select from map or list
+
+### State 2 — River Selected State
+When a river is selected:
+- stay in the same map shell
+- zoom in on the selected river
+- keep the river in 2D
+- show stronger local value detail than the overview
+- no separate detached river page
+- no depth representation
+
+### State 3 — Ocean Selected State
+When the ocean basin is selected:
+- keep the current 3D ocean playback direction
+- preserve voxel / gridded basin model
+- preserve selected surface cell → selected column logic
+- keep the depth section
+
+---
+
+## Numeric summaries
+
+### Default map state
+Do **not** show one combined basin-wide concentration across all rivers + ocean by default.
+The map itself already functions as the overview.
+
+### River selected state
+If you show a summary metric, make it contextual to the selected river only.
+
+Examples:
+- Reach Mean Concentration
+- Selected River Mean Concentration
+
+### Ocean selected state
+Keep ocean contextual summaries such as:
+- Basin Mean Concentration
+- selected column / selected pixel metric
+- depth-aware information
+
+---
+
+## Time window requirement
+Users must be able to configure:
+- **Start date**
+- **End date**
+
+This selected time range becomes the active playback window.
+
+Within that range:
+- playback runs only inside the selected time window
+- scrubbing works only inside the selected time window
+- the current active playback date remains visible separately
+
+This applies to:
+- default map state
+- river selected state
+- ocean selected state
+
+Do not remove the existing timeline.
+Treat the time window as an additional higher-level control above the current timeline logic.
+
+---
+
+## Preserve these parts
+Keep:
+- the existing GauDt visual language
+- the current shell / layout
+- top navigation
+- basin selector
+- variable selector
+- right-side utility panel
+- bottom playback bar
+- current ocean 3D direction
+- current selected ocean column logic
+
+Do not redesign the product into a new layout system.
+
+---
+
+## What to update in the implementation
+
+### Replace outdated structure
+The prototype may still reflect older assumptions like:
+- separate river playback page
+- detached 2D river view
+- static map colors
+
+Replace that with the new logic:
+- map overview is already live playback
+- river selection zooms in inside the same shell
+- river remains 2D map-based
+- ocean goes deeper into 3D
+- playback changes the actual water-body visualization
+
+---
+
+## Output expectation
+Update the prototype so it supports:
+1. **Default Map Viewport** with live time-varying river + ocean visualization
+2. **River Selected State** in the same map shell
+3. **Ocean Selected State** in 3D
+4. **Time window control** with start + end date
+5. correct contextual summaries instead of one combined global basin metric
+
+Before editing, first summarize:
+1. what parts of the old prototype behavior are now outdated
+2. how the default map will behave after the update
+3. how river selection differs from ocean selection now
+4. how playback and time-window control will affect the map visualization
+
+Then update the prototype.
