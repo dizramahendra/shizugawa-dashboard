@@ -69,7 +69,7 @@ interface RiverGrid2DProps {
 }
 
 const CELL = 24; // px per cell
-const GAP  = 1;  // px gap between cells
+const GAP  = 0;  // no gap — flush tiles like SWAT HRU output
 
 export default function RiverGrid2D({
   week,
@@ -116,7 +116,7 @@ export default function RiverGrid2D({
               <div
                 key={i}
                 className="flex items-center justify-end"
-                style={{ height: CELL + (i < ROWS - 1 ? GAP : 0) }}
+                style={{ height: CELL }}
               >
                 <span className="text-[8px] font-mono text-muted-foreground leading-none">{lbl}</span>
               </div>
@@ -152,16 +152,11 @@ export default function RiverGrid2D({
                       width: CELL,
                       height: CELL,
                       backgroundColor: inRiver ? bg : "#dde5ec",
-                      border: isSelected
-                        ? "2px solid hsl(var(--primary))"
-                        : inRiver
-                        ? "1px solid rgba(255,255,255,0.25)"
-                        : "1px solid rgba(200,212,220,0.5)",
-                      boxSizing: "border-box",
                       opacity: inRiver ? 1 : 0.45,
                       zIndex: isSelected ? 10 : 1,
-                      outline: isSelected ? "2px solid hsl(var(--primary) / 35%)" : "none",
-                      outlineOffset: 1,
+                      boxShadow: isSelected
+                        ? "inset 0 0 0 2px hsl(var(--primary)), 0 0 0 2px hsl(var(--primary) / 35%)"
+                        : "none",
                     }}
                   >
                     {/* Tooltip for active cells */}
