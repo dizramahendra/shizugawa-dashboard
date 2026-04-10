@@ -498,6 +498,19 @@ export default function MapLibreMap({
         </div>
       )}
 
+      {/* Color bar legend — hidden when grid overlay is active */}
+      {!showGrid && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none whitespace-nowrap">
+          <span className="text-[9px] text-muted-foreground font-medium">{variableLabel}</span>
+          <div
+            className="w-24 h-2.5 rounded-sm border border-border/20"
+            style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
+          />
+          <span className="text-[9px] text-muted-foreground font-mono">Low</span>
+          <span className="text-[9px] text-muted-foreground font-mono">High</span>
+        </div>
+      )}
+
       {/* Controls when zoomed into a river */}
       {selectedRiver && (
         <div className="absolute top-2 left-2 flex items-center gap-2">
