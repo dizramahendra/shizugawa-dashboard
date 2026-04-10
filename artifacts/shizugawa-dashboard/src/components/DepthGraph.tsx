@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { generateWeekData, valueToConcentration, DEPTH_LAYERS } from "@/lib/simulatedData";
+import { useMemo, useState } from "react";
+import { generateWeekData, DEPTH_LAYERS } from "@/lib/simulatedData";
 
 interface DepthGraphProps {
   week: number;
@@ -10,36 +10,83 @@ interface DepthGraphProps {
   sliceLevel?: number;
 }
 
-const DEPTH_LABELS = ["0–5m", "5–15m", "15–30m", "30–50m", "50–75m", "75–100m", "100–125m", "125–150m"];
-const DEPTH_MID_M = [2.5, 10, 22.5, 40, 62.5, 87.5, 112.5, 137.5];
-const MAX_DEPTH_M = 150;
+const DEPTH_LABELS = ["1m", "5", "15", "30", "50", "75", "100", "125"];
+const DEPTH_MID_M  = [2.5, 10, 22.5, 40, 62.5, 87.5, 112.5, 137.5];
 
-const CHART_W = 200;
-const CHART_H = 176;
-const PAD_LEFT = 46;
-const PAD_RIGHT = 12;
-const PAD_TOP = 10;
-const PAD_BOTTOM = 20;
-const INNER_W = CHART_W - PAD_LEFT - PAD_RIGHT;
-const INNER_H = CHART_H - PAD_TOP - PAD_BOTTOM;
+const ALL_VARS = [
+  { id: "nitrogen",    label: "Nitrogen",    color: "#c084fc" },
+  { id: "phosphorus",  label: "Phosphorus",  color: "#fb923c" },
+  { id: "chlorophyll", label: "Chlorophyll", color: "#4ade80" },
+  { id: "do",          label: "DO",          color: "#60a5fa" },
+];
 
-export default function DepthGraph({ week, variableId, variableLabel, unit, selectedPoint, sliceLevel }: DepthGraphProps) {
+const SVG_W = 240;
+const SVG_H = 160;
+const PL = 8;
+const PR = 46;
+const PT = 26;
+const PB = 30;
+const IW = SVG_W - PL - PR;
+const IH = SVG_H - PT - PB;
+
+function smooth(pts: [number, number][]): string {
+  if (pts.length < 2) return "";
+  let d = `M ${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p0[1]) / 6;
+    d += ` C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+
+export default function DepthGraph({
+  week,
+  variableId,
+  variableLabel,
+  unit,
+  selectedPoint,
+  sliceLevel,
+}: DepthGraphProps) {
+  const [hoveredDepth, setHoveredDepth] = useState<number | null>(null);
   const data = useMemo(() => generateWeekData(week), [week]);
 
-  const profile = useMemo(() => {
+  const profiles = useMemo(() => {
     if (!selectedPoint && sliceLevel === undefined) return null;
     const x = selectedPoint?.x ?? 0;
     const z = selectedPoint?.z ?? 0;
-    return Array.from({ length: DEPTH_LAYERS }, (_, d) => ({
-      depth: d,
-      label: DEPTH_LABELS[d],
-      depthM: DEPTH_MID_M[d],
-      value: valueToConcentration(data[z]?.[x]?.[d] ?? 0, variableId),
-      raw: data[z]?.[x]?.[d] ?? 0,
-    }));
-  }, [data, selectedPoint, sliceLevel, variableId]);
 
-  if (!profile) {
+    return ALL_VARS.map((v) => ({
+      ...v,
+      values: Array.from({ length: DEPTH_LAYERS }, (_, d) => {
+        const raw = data[z]?.[x]?.[d] ?? 0;
+        const f = d / (DEPTH_LAYERS - 1); // 0 = surface, 1 = bottom
+        let shaped: number;
+        if (v.id === "nitrogen") {
+          // River-driven: highest near surface, gradual decrease
+          shaped = raw * (1 - f * 0.5);
+        } else if (v.id === "phosphorus") {
+          // Sediment-driven: builds toward mid-bottom
+          shaped = raw * (0.5 + 0.5 * Math.sin(f * Math.PI * 0.9 + 0.1));
+        } else if (v.id === "chlorophyll") {
+          // Photosynthesis: peaks near surface, drops sharply at depth
+          shaped = raw * Math.exp(-f * 2.8);
+        } else {
+          // DO: high at surface (atm exchange), decreasing with depth
+          shaped = raw * (1 - f * 0.55 + f * f * 0.15);
+        }
+        return Math.min(1, Math.max(0, shaped));
+      }),
+    }));
+  }, [data, selectedPoint, sliceLevel]);
+
+  if (!profiles) {
     return (
       <div className="text-center py-6 text-muted-foreground text-xs">
         Select a cell to view depth profile
@@ -47,152 +94,133 @@ export default function DepthGraph({ week, variableId, variableLabel, unit, sele
     );
   }
 
-  const maxVal = Math.max(...profile.map((p) => p.value));
-  const minVal = Math.min(...profile.map((p) => p.value));
-  const valRange = maxVal - minVal || 1;
+  const toX = (di: number) => PL + (di / (DEPTH_LAYERS - 1)) * IW;
+  const toY = (v: number) => PT + (1 - v) * IH;
 
-  const toX = (val: number) => PAD_LEFT + ((val - minVal) / valRange) * INNER_W;
-  const toY = (depthM: number) => PAD_TOP + (depthM / MAX_DEPTH_M) * INNER_H;
+  // Dot grid pattern id
+  const patId = "dg-dots";
 
-  const points = profile.map((p) => ({ cx: toX(p.value), cy: toY(p.depthM), ...p }));
-
-  const polylinePoints = points.map((p) => `${p.cx},${p.cy}`).join(" ");
-
-  const areaPoints = [
-    `${PAD_LEFT},${toY(DEPTH_MID_M[0])}`,
-    ...points.map((p) => `${p.cx},${p.cy}`),
-    `${PAD_LEFT},${toY(DEPTH_MID_M[DEPTH_LAYERS - 1])}`,
-  ].join(" ");
-
-  const xTicks = [minVal, (minVal + maxVal) / 2, maxVal];
+  // Active depth index from hover
+  const hovIdx = hoveredDepth;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <div>
         <div className="panel-section-title">Depth Profile</div>
         {selectedPoint && (
           <div className="data-label text-[9px] mt-0.5">
-            Cell ({selectedPoint.x}, {selectedPoint.z}) · {variableLabel}
+            Cell ({selectedPoint.x}, {selectedPoint.z}) · all variables
           </div>
         )}
       </div>
 
       <svg
-        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+        viewBox={`0 0 ${SVG_W} ${SVG_H}`}
         width="100%"
-        style={{ display: "block", overflow: "visible" }}
+        style={{ display: "block", overflow: "visible", cursor: "crosshair" }}
+        onMouseMove={(e) => {
+          const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+          const svgX = ((e.clientX - rect.left) / rect.width) * SVG_W;
+          const fracX = (svgX - PL) / IW;
+          const idx = Math.round(fracX * (DEPTH_LAYERS - 1));
+          setHoveredDepth(idx >= 0 && idx < DEPTH_LAYERS ? idx : null);
+        }}
+        onMouseLeave={() => setHoveredDepth(null)}
       >
-        {/* Grid lines for depth */}
-        {profile.map((p) => {
-          const y = toY(p.depthM);
+        <defs>
+          <pattern id={patId} x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.8" fill="#d1d5db" />
+          </pattern>
+        </defs>
+
+        {/* Dotted background */}
+        <rect x={PL} y={PT} width={IW} height={IH} fill={`url(#${patId})`} />
+
+        {/* X-axis line at top */}
+        <line x1={PL} y1={PT} x2={PL + IW} y2={PT} stroke="#374151" strokeWidth={1.2} />
+
+        {/* Depth tick labels along top */}
+        {DEPTH_LABELS.map((lbl, i) => (
+          <text key={i} x={toX(i)} y={PT - 6} fontSize={8} textAnchor="middle" fill="#6b7280">
+            {lbl}
+          </text>
+        ))}
+
+        {/* "Depth" label at far right */}
+        <text x={PL + IW + 4} y={PT + 4} fontSize={8} fill="#374151" fontWeight="500">Depth</text>
+
+        {/* Y-axis left border */}
+        <line x1={PL} y1={PT} x2={PL} y2={PT + IH} stroke="#e5e7eb" strokeWidth={0.8} />
+
+        {/* Smooth variable curves */}
+        {profiles.map((prof) => {
+          const pts: [number, number][] = prof.values.map((v, i) => [toX(i), toY(v)]);
           return (
-            <line
-              key={p.depth}
-              x1={PAD_LEFT} y1={y}
-              x2={PAD_LEFT + INNER_W} y2={y}
-              stroke="hsl(var(--border))"
-              strokeWidth={0.5}
-              strokeDasharray="2 2"
+            <path
+              key={prof.id}
+              d={smooth(pts)}
+              fill="none"
+              stroke={prof.color}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.9}
             />
           );
         })}
 
-        {/* X grid line at min and max */}
-        {[PAD_LEFT, PAD_LEFT + INNER_W].map((x, i) => (
-          <line key={i} x1={x} y1={PAD_TOP} x2={x} y2={PAD_TOP + INNER_H}
-            stroke="hsl(var(--border))" strokeWidth={0.5} />
-        ))}
-
-        {/* Area fill */}
-        <polygon
-          points={areaPoints}
-          fill="hsl(var(--primary))"
-          fillOpacity={0.08}
-        />
-
-        {/* Main line */}
-        <polyline
-          points={polylinePoints}
-          fill="none"
-          stroke="hsl(var(--primary))"
-          strokeWidth={1.5}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Data points */}
-        {points.map((p) => {
-          const isSelected = selectedPoint?.depth === p.depth;
-          return (
-            <g key={p.depth}>
-              {isSelected && (
-                <circle cx={p.cx} cy={p.cy} r={6}
-                  fill="hsl(var(--primary))" fillOpacity={0.15} />
-              )}
+        {/* Hover vertical indicator */}
+        {hovIdx !== null && (
+          <>
+            <line
+              x1={toX(hovIdx)} y1={PT}
+              x2={toX(hovIdx)} y2={PT + IH}
+              stroke="#374151" strokeWidth={0.8} strokeDasharray="3 2"
+              opacity={0.5}
+            />
+            {profiles.map((prof) => (
               <circle
-                cx={p.cx} cy={p.cy}
-                r={isSelected ? 3.5 : 2.5}
-                fill={isSelected ? "hsl(var(--primary))" : "white"}
-                stroke="hsl(var(--primary))"
-                strokeWidth={1.5}
+                key={prof.id}
+                cx={toX(hovIdx)}
+                cy={toY(prof.values[hovIdx])}
+                r={3}
+                fill={prof.color}
+                stroke="white"
+                strokeWidth={1.2}
               />
-              {/* Value label for selected */}
-              {isSelected && (
-                <text
-                  x={p.cx + 5} y={p.cy + 3.5}
-                  fontSize={7} fill="hsl(var(--primary))"
-                  fontWeight="600"
-                >
-                  {p.value} {unit}
-                </text>
-              )}
+            ))}
+            {/* Depth label on hover */}
+            <rect
+              x={toX(hovIdx) - 14} y={PT + IH + 2}
+              width={28} height={11}
+              rx={2} fill="#1f2937" opacity={0.85}
+            />
+            <text
+              x={toX(hovIdx)} y={PT + IH + 10}
+              fontSize={7} textAnchor="middle" fill="white"
+            >
+              {DEPTH_MID_M[hovIdx]}m
+            </text>
+          </>
+        )}
+
+        {/* "Metric (mg/L)" bottom-left label */}
+        <text x={PL} y={SVG_H - 2} fontSize={7} fill="#9ca3af">
+          Metric ({unit})
+        </text>
+
+        {/* Legend bottom-right */}
+        {profiles.map((prof, i) => {
+          const lx = PL + IW + 4;
+          const ly = PT + 14 + i * 11;
+          return (
+            <g key={prof.id}>
+              <line x1={lx} y1={ly - 2} x2={lx + 10} y2={ly - 2}
+                stroke={prof.color} strokeWidth={2} strokeLinecap="round" />
+              <text x={lx + 13} y={ly + 1} fontSize={6.5} fill="#374151">{prof.label}</text>
             </g>
           );
         })}
-
-        {/* Y-axis depth labels */}
-        {profile.map((p) => (
-          <text
-            key={p.depth}
-            x={PAD_LEFT - 4} y={toY(p.depthM) + 3}
-            fontSize={7}
-            textAnchor="end"
-            fill="hsl(var(--muted-foreground))"
-          >
-            {p.label}
-          </text>
-        ))}
-
-        {/* X-axis value ticks */}
-        {xTicks.map((v, i) => (
-          <text
-            key={i}
-            x={toX(v)}
-            y={PAD_TOP + INNER_H + 12}
-            fontSize={7}
-            textAnchor="middle"
-            fill="hsl(var(--muted-foreground))"
-          >
-            {v.toFixed(1)}
-          </text>
-        ))}
-
-        {/* Axes */}
-        <line x1={PAD_LEFT} y1={PAD_TOP} x2={PAD_LEFT} y2={PAD_TOP + INNER_H}
-          stroke="hsl(var(--border))" strokeWidth={1} />
-        <line x1={PAD_LEFT} y1={PAD_TOP + INNER_H} x2={PAD_LEFT + INNER_W} y2={PAD_TOP + INNER_H}
-          stroke="hsl(var(--border))" strokeWidth={1} />
-
-        {/* Unit label */}
-        <text
-          x={PAD_LEFT + INNER_W / 2}
-          y={CHART_H - 2}
-          fontSize={7}
-          textAnchor="middle"
-          fill="hsl(var(--muted-foreground))"
-        >
-          {unit}
-        </text>
       </svg>
     </div>
   );
