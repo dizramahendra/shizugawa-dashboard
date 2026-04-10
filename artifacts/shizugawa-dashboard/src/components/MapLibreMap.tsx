@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RIVER_PATHS, SUB_BASIN_PATHS } from "@/lib/svgPaths";
 import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, RIVER_COLS, RIVER_ROWS } from "@/lib/simulatedData";
 
@@ -70,6 +70,95 @@ function computeOceanMean(week: number): number {
   return count > 0 ? sum / count : 0;
 }
 
+// ── Path flattener & arc-length sampler ─────────────────────────────────────
+
+function flattenPath(d: string): [number, number][] {
+  const pts: [number, number][] = [];
+  const re = /([MLCQTSAZHVmlcqtsazhv])|(-?\d*\.?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+  let cmd = "M", cx = 0, cy = 0;
+  const tokens: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(d)) !== null) tokens.push(m[0]);
+
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (/[MLCQTSAZHVmlcqtsazhv]/.test(t)) { cmd = t; i++; continue; }
+    const nums: number[] = [];
+    while (i < tokens.length && !/[MLCQTSAZHVmlcqtsazhv]/.test(tokens[i])) {
+      nums.push(parseFloat(tokens[i++]));
+    }
+    if (cmd === "M") { cx = nums[0]; cy = nums[1]; if (pts.length === 0) pts.push([cx, cy]); }
+    else if (cmd === "L") { cx = nums[0]; cy = nums[1]; pts.push([cx, cy]); }
+    else if (cmd === "l") { cx += nums[0]; cy += nums[1]; pts.push([cx, cy]); }
+    else if (cmd === "H") { cx = nums[0]; pts.push([cx, cy]); }
+    else if (cmd === "h") { cx += nums[0]; pts.push([cx, cy]); }
+    else if (cmd === "V") { cy = nums[0]; pts.push([cx, cy]); }
+    else if (cmd === "v") { cy += nums[0]; pts.push([cx, cy]); }
+    else if (cmd === "C" || cmd === "c") {
+      const abs = cmd === "C";
+      const x0 = cx, y0 = cy;
+      const x1 = abs ? nums[0] : cx + nums[0], y1 = abs ? nums[1] : cy + nums[1];
+      const x2 = abs ? nums[2] : cx + nums[2], y2 = abs ? nums[3] : cy + nums[3];
+      const x3 = abs ? nums[4] : cx + nums[4], y3 = abs ? nums[5] : cy + nums[5];
+      const STEPS = 10;
+      for (let s = 1; s <= STEPS; s++) {
+        const f = s / STEPS, g = 1 - f;
+        pts.push([
+          g*g*g*x0 + 3*g*g*f*x1 + 3*g*f*f*x2 + f*f*f*x3,
+          g*g*g*y0 + 3*g*g*f*y1 + 3*g*f*f*y2 + f*f*f*y3,
+        ]);
+      }
+      cx = x3; cy = y3;
+    }
+  }
+  return pts;
+}
+
+function samplePathPoints(d: string, n: number): [number, number][] {
+  const pts = flattenPath(d);
+  if (pts.length < 2) {
+    const p = pts[0] ?? [0, 0] as [number, number];
+    return Array(n + 1).fill(p) as [number, number][];
+  }
+  const arcLen: number[] = [0];
+  for (let k = 1; k < pts.length; k++) {
+    const dx = pts[k][0] - pts[k-1][0];
+    const dy = pts[k][1] - pts[k-1][1];
+    arcLen.push(arcLen[k-1] + Math.sqrt(dx*dx + dy*dy));
+  }
+  const total = arcLen[arcLen.length - 1];
+  if (total === 0) return Array(n + 1).fill(pts[0]) as [number, number][];
+
+  const sampled: [number, number][] = [];
+  for (let k = 0; k <= n; k++) {
+    const target = (k / n) * total;
+    let lo = 0, hi = arcLen.length - 2;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (arcLen[mid] <= target) lo = mid; else hi = mid - 1;
+    }
+    const segLen = arcLen[lo + 1] - arcLen[lo];
+    const f = segLen > 0 ? (target - arcLen[lo]) / segLen : 0;
+    sampled.push([
+      pts[lo][0] + (pts[lo+1][0] - pts[lo][0]) * f,
+      pts[lo][1] + (pts[lo+1][1] - pts[lo][1]) * f,
+    ]);
+  }
+  return sampled;
+}
+
+// Pre-compute sampled points once at module load (geometry never changes)
+const REACH_SAMPLES: Record<number, [number, number][]> = (() => {
+  const out: Record<number, [number, number][]> = {};
+  for (const [idStr, d] of Object.entries(RIVER_PATHS)) {
+    out[Number(idStr)] = samplePathPoints(d, RIVER_COLS);
+  }
+  return out;
+})();
+
+// ── SVG path bounds ──────────────────────────────────────────────────────────
+
 function parseSvgPath(d: string): [number, number][] {
   const pts: [number, number][] = [];
   const re = /([MLCQTSAZmlcqtsaz])|(-?\d*\.?\d+)/g;
@@ -117,6 +206,8 @@ function computeRiverSvgBounds(modelRiver: string): { x: number; y: number; w: n
   return { x: rx, y: ry, w: Math.max(60, rw), h: Math.max(60, rh) };
 }
 
+// ── Component ────────────────────────────────────────────────────────────────
+
 interface MapLibreMapProps {
   week: number;
   variableId: string;
@@ -137,17 +228,12 @@ export default function MapLibreMap({
   const [vb, setVb] = useState({ x: 0, y: 0, w: SVG_W, h: SVG_H });
 
   useEffect(() => {
-    if (!selectedRiver) {
-      setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H });
-    } else {
-      setVb(computeRiverSvgBounds(selectedRiver));
-    }
+    if (!selectedRiver) setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H });
+    else setVb(computeRiverSvgBounds(selectedRiver));
   }, [selectedRiver]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onSelectRiver(null);
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onSelectRiver(null); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onSelectRiver]);
@@ -155,11 +241,31 @@ export default function MapLibreMap({
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, computeOceanMean(week))));
 
-  const riverColors: Record<number, string> = {};
-  for (const idStr of Object.keys(RIVER_PATHS)) {
-    const id = Number(idStr);
-    riverColors[id] = interpolateColor(stops, Math.max(0, Math.min(1, computeReachValue(week, id))));
-  }
+  // Per-reach: RIVER_COLS column colors from the model grid
+  const reachSegmentColors = useMemo(() => {
+    const out: Record<number, string[]> = {};
+    for (const idStr of Object.keys(RIVER_PATHS)) {
+      const id = Number(idStr);
+      const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
+      const grid = generateRiverData(week, modelRiver);
+      out[id] = Array.from({ length: RIVER_COLS }, (_, col) => {
+        let sum = 0;
+        for (let row = 0; row < RIVER_ROWS; row++) sum += grid[row]?.[col] ?? 0;
+        return interpolateColor(stops, Math.max(0, Math.min(1, sum / RIVER_ROWS)));
+      });
+    }
+    return out;
+  }, [week, stops]);
+
+  // Sub-basin fill color (single value per basin)
+  const subBasinColors = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const idStr of Object.keys(SUB_BASIN_PATHS)) {
+      const id = Number(idStr);
+      out[id] = interpolateColor(stops, Math.max(0, Math.min(1, computeReachValue(week, id))));
+    }
+    return out;
+  }, [week, stops]);
 
   return (
     <div className="relative w-full h-full bg-[#f0f4f8] overflow-hidden">
@@ -168,11 +274,9 @@ export default function MapLibreMap({
         width="100%"
         height="100%"
         preserveAspectRatio="xMidYMid meet"
-        style={{
-          display: "block",
-          transition: "viewBox 0.6s ease",
-        }}
+        style={{ display: "block", transition: "viewBox 0.6s ease" }}
       >
+        {/* Geographic background */}
         <image
           href="/Sub-basin area.svg"
           x={0} y={0}
@@ -181,17 +285,17 @@ export default function MapLibreMap({
           opacity={0.9}
         />
 
+        {/* Sub-basin fills */}
         {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
           const id = Number(idStr);
-          const value = computeReachValue(week, id);
-          const color = interpolateColor(stops, Math.max(0, Math.min(1, value)));
           return (
-            <path key={id} d={d} fill={color} fillOpacity={0.28}
+            <path key={id} d={d} fill={subBasinColors[id] ?? "#7dd3fc"} fillOpacity={0.28}
               stroke="#6b7280" strokeWidth={0.5} strokeOpacity={0.5}
               style={{ pointerEvents: "none" }} />
           );
         })}
 
+        {/* Ocean polygon */}
         <path
           d={OCEAN_POLYGON_SVG}
           fill={`${oceanColor}55`}
@@ -204,23 +308,51 @@ export default function MapLibreMap({
           onClick={onSelectOcean}
         />
 
+        {/* Rivers: grid-segmented heatmap strips */}
         {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
           const id = Number(idStr);
-          const color = riverColors[id] ?? "#60a5fa";
           const isSelected = selectedRiver === MODEL_RIVER[id];
           const isHovered = hoveredRiver === id;
           const isMainStem = MAIN_STEMS.has(id);
           const sw = isMainStem
-            ? (isSelected || isHovered ? 7 : 4)
-            : (isSelected || isHovered ? 5 : 2.5);
+            ? (isSelected || isHovered ? 6 : 4)
+            : (isSelected || isHovered ? 4 : 2.5);
+          const samples = REACH_SAMPLES[id];
+          const segColors = reachSegmentColors[id] ?? [];
+
           return (
             <g key={id}>
+              {/* Glow halo when hovered/selected */}
               {(isSelected || isHovered) && (
-                <path d={d} stroke={color} strokeWidth={sw + 8} fill="none"
-                  strokeLinecap="round" opacity={0.22} style={{ pointerEvents: "none" }} />
+                <polyline
+                  points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
+                  fill="none"
+                  stroke={segColors[Math.floor(RIVER_COLS / 2)] ?? "#60a5fa"}
+                  strokeWidth={sw + 10}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.18}
+                  style={{ pointerEvents: "none" }}
+                />
               )}
-              <path d={d} stroke={color} strokeWidth={sw} fill="none"
-                strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
+
+              {/* Grid segments: one colored line per RIVER_COLS column, butt caps = no gap */}
+              {Array.from({ length: RIVER_COLS }, (_, col) => {
+                const [x1, y1] = samples[col];
+                const [x2, y2] = samples[col + 1];
+                return (
+                  <line
+                    key={col}
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={segColors[col] ?? "#60a5fa"}
+                    strokeWidth={sw}
+                    strokeLinecap="butt"
+                    style={{ pointerEvents: "none" }}
+                  />
+                );
+              })}
+
+              {/* Transparent wide hit zone */}
               <path d={d} stroke="transparent" strokeWidth={18} fill="none"
                 style={{ pointerEvents: "all", cursor: "pointer" }}
                 onMouseEnter={() => setHoveredRiver(id)}
@@ -232,6 +364,7 @@ export default function MapLibreMap({
         })}
       </svg>
 
+      {/* Ocean tooltip */}
       {hoveredOcean && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap pointer-events-none"
           style={{ fontSize: "11px" }}>
@@ -240,6 +373,7 @@ export default function MapLibreMap({
         </div>
       )}
 
+      {/* Back button when zoomed into a river */}
       {selectedRiver && (
         <button
           onClick={() => onSelectRiver(null)}
