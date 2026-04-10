@@ -87,6 +87,35 @@ function computeOceanMean(week: number): number {
   return count > 0 ? sum / count : 0;
 }
 
+function buildOceanGridGeoJSON(week: number, variableId: string) {
+  const data = generateWeekData(week);
+  const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+  const cellLon = (BAY_EAST - BAY_WEST) / GRID_W;
+  const cellLat = (BAY_NORTH - BAY_SOUTH) / GRID_D;
+
+  const features: object[] = [];
+  for (let z = 0; z < GRID_D; z++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (!BAY_MASK[z]?.[x]) continue;
+      const value = data[z]?.[x]?.[0] ?? 0;
+      const color = interpolateColor(stops, Math.max(0, Math.min(1, value)));
+      const west  = BAY_WEST  + x * cellLon;
+      const east  = BAY_WEST  + (x + 1) * cellLon;
+      const north = BAY_NORTH - z * cellLat;
+      const south = BAY_NORTH - (z + 1) * cellLat;
+      features.push({
+        type: "Feature",
+        properties: { color },
+        geometry: {
+          type: "Polygon",
+          coordinates: [[[west,south],[east,south],[east,north],[west,north],[west,south]]],
+        },
+      });
+    }
+  }
+  return { type: "FeatureCollection", features };
+}
+
 function parseSvgPath(d: string): [number, number][] {
   const points: [number, number][] = [];
   const segments = d.match(/[MmLlCcQqHhVvZz][^MmLlCcQqHhVvZz]*/g) ?? [];
@@ -156,7 +185,7 @@ interface RiverFeature {
   type: "Feature";
   id: number;
   properties: {
-    svgId: number;
+    reachId: number;
     modelRiver: string;
     isMainStem: boolean;
     color: string;
@@ -182,7 +211,7 @@ function buildRiverFeatures(week: number, variableId: string, selectedRiver: str
     return {
       type: "Feature",
       id,
-      properties: { svgId: id, modelRiver, isMainStem, color, lineWidth },
+      properties: { reachId: id, modelRiver, isMainStem, color, lineWidth },
       geometry: { type: "LineString", coordinates: coords.length >= 2 ? coords : [[svgToLon(200), svgToLat(300)], [svgToLon(201), svgToLat(301)]] },
     };
   });
@@ -296,7 +325,27 @@ export default function MapLibreMap({
         },
       });
 
-      map.addSource("ocean", {
+      const initialOceanGrid = buildOceanGridGeoJSON(
+        svgDataRef.current.week,
+        svgDataRef.current.variableId
+      );
+      map.addSource("ocean-grid", {
+        type: "geojson",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: initialOceanGrid as any,
+      });
+
+      map.addLayer({
+        id: "ocean-grid-fill",
+        type: "fill",
+        source: "ocean-grid",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.55,
+        },
+      });
+
+      map.addSource("ocean-boundary", {
         type: "geojson",
         data: {
           type: "Feature",
@@ -308,17 +357,17 @@ export default function MapLibreMap({
       map.addLayer({
         id: "ocean-fill",
         type: "fill",
-        source: "ocean",
+        source: "ocean-boundary",
         paint: {
           "fill-color": "#60a5fa",
-          "fill-opacity": 0.15,
+          "fill-opacity": 0.01,
         },
       });
 
       map.addLayer({
         id: "ocean-outline",
         type: "line",
-        source: "ocean",
+        source: "ocean-boundary",
         paint: {
           "line-color": "#60a5fa",
           "line-width": 1.8,
@@ -367,9 +416,15 @@ export default function MapLibreMap({
       });
 
       map.on("click", (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ["rivers-line", "ocean-fill"] });
+        const features = map.queryRenderedFeatures(e.point, {
+          layers: ["rivers-line", "ocean-fill", "ocean-grid-fill"],
+        });
         if (features.length === 0) {
           onSelectRiver(null);
+          map.fitBounds(
+            [[BAY_WEST, BAY_SOUTH], [BAY_EAST, BAY_NORTH]],
+            { padding: 40, duration: 700 }
+          );
         }
       });
 
@@ -394,24 +449,17 @@ export default function MapLibreMap({
     svgDataRef.current = { week, variableId, selectedRiver };
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const source = map.getSource("rivers") as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
-    const features = buildRiverFeatures(week, variableId, selectedRiver);
-    source.setData({ type: "FeatureCollection", features });
 
-    const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
-    const oceanMean = computeOceanMean(week);
-    const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, oceanMean)));
-
-    const hex = oceanColor.replace(/rgb\((\d+),(\d+),(\d+)\)/, (_, r, g, b) => {
-      return `#${Number(r).toString(16).padStart(2, "0")}${Number(g).toString(16).padStart(2, "0")}${Number(b).toString(16).padStart(2, "0")}`;
-    });
-
-    if (map.getLayer("ocean-fill")) {
-      map.setPaintProperty("ocean-fill", "fill-color", hex);
+    const riverSource = map.getSource("rivers") as maplibregl.GeoJSONSource | undefined;
+    if (riverSource) {
+      const features = buildRiverFeatures(week, variableId, selectedRiver);
+      riverSource.setData({ type: "FeatureCollection", features });
     }
-    if (map.getLayer("ocean-outline")) {
-      map.setPaintProperty("ocean-outline", "line-color", hex);
+
+    const oceanGridSource = map.getSource("ocean-grid") as maplibregl.GeoJSONSource | undefined;
+    if (oceanGridSource) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      oceanGridSource.setData(buildOceanGridGeoJSON(week, variableId) as any);
     }
   }, [week, variableId, selectedRiver, mapReady]);
 
