@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
-import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, RIVER_COLS, RIVER_ROWS } from "@/lib/simulatedData";
+import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
 
 const SVG_W = 465;
 const SVG_H = 586;
@@ -226,10 +226,11 @@ export default function MapLibreMap({
 }: MapLibreMapProps) {
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
   const [vb, setVb] = useState({ x: 0, y: 0, w: SVG_W, h: SVG_H });
 
   useEffect(() => {
-    if (!selectedRiver) setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H });
+    if (!selectedRiver) { setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H }); setShowGrid(false); }
     else setVb(computeRiverSvgBounds(selectedRiver));
   }, [selectedRiver]);
 
@@ -241,22 +242,29 @@ export default function MapLibreMap({
 
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, computeOceanMean(week))));
+  const variableLabel = VARIABLE_OPTIONS.find(v => v.id === variableId)?.label ?? variableId;
 
-  // Per-reach: RIVER_COLS column colors from the model grid
-  const reachSegmentColors = useMemo(() => {
-    const out: Record<number, string[]> = {};
+  // Single solid color per reach — averaged across all rows at that reach's column position
+  const reachColors = useMemo(() => {
+    const out: Record<number, string> = {};
     for (const idStr of Object.keys(RIVER_PATHS)) {
       const id = Number(idStr);
       const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
       const grid = generateRiverData(week, modelRiver);
-      out[id] = Array.from({ length: RIVER_COLS }, (_, col) => {
-        let sum = 0;
-        for (let row = 0; row < RIVER_ROWS; row++) sum += grid[row]?.[col] ?? 0;
-        return interpolateColor(stops, Math.max(0, Math.min(1, sum / RIVER_ROWS)));
-      });
+      const positionFrac = REACH_POSITION[id] ?? 0.5;
+      const col = Math.min(RIVER_COLS - 1, Math.round(positionFrac * (RIVER_COLS - 1)));
+      let sum = 0;
+      for (let row = 0; row < RIVER_ROWS; row++) sum += grid[row]?.[col] ?? 0;
+      out[id] = interpolateColor(stops, Math.max(0, Math.min(1, sum / RIVER_ROWS)));
     }
     return out;
   }, [week, stops]);
+
+  // Grid data for the selected river (used in grid view)
+  const gridData = useMemo(() => {
+    if (!selectedRiver) return null;
+    return generateRiverData(week, selectedRiver);
+  }, [selectedRiver, week]);
 
   // Sub-basin fill color (single value per basin)
   const subBasinColors = useMemo(() => {
@@ -309,7 +317,7 @@ export default function MapLibreMap({
           onClick={onSelectOcean}
         />
 
-        {/* Rivers: grid-segmented heatmap strips */}
+        {/* Rivers: single solid color per reach */}
         {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
           const id = Number(idStr);
           const isSelected = selectedRiver === MODEL_RIVER[id];
@@ -319,7 +327,7 @@ export default function MapLibreMap({
             ? (isSelected || isHovered ? 6 : 4)
             : (isSelected || isHovered ? 4 : 2.5);
           const samples = REACH_SAMPLES[id];
-          const segColors = reachSegmentColors[id] ?? [];
+          const color = reachColors[id] ?? "#60a5fa";
 
           return (
             <g key={id}>
@@ -328,30 +336,25 @@ export default function MapLibreMap({
                 <polyline
                   points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
                   fill="none"
-                  stroke={segColors[Math.floor(RIVER_COLS / 2)] ?? "#60a5fa"}
+                  stroke={color}
                   strokeWidth={sw + 10}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={0.18}
+                  opacity={0.22}
                   style={{ pointerEvents: "none" }}
                 />
               )}
 
-              {/* Grid segments: one colored line per RIVER_COLS column, butt caps = no gap */}
-              {Array.from({ length: RIVER_COLS }, (_, col) => {
-                const [x1, y1] = samples[col];
-                const [x2, y2] = samples[col + 1];
-                return (
-                  <line
-                    key={col}
-                    x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke={segColors[col] ?? "#60a5fa"}
-                    strokeWidth={sw}
-                    strokeLinecap="butt"
-                    style={{ pointerEvents: "none" }}
-                  />
-                );
-              })}
+              {/* Single solid-color stroke */}
+              <polyline
+                points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
+                fill="none"
+                stroke={color}
+                strokeWidth={sw}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ pointerEvents: "none" }}
+              />
 
               {/* Transparent wide hit zone */}
               <path d={d} stroke="transparent" strokeWidth={18} fill="none"
@@ -365,6 +368,78 @@ export default function MapLibreMap({
         })}
       </svg>
 
+      {/* Pixel grid view overlay */}
+      {showGrid && selectedRiver && gridData && (
+        <div className="absolute inset-0 bg-[#0f1923] flex flex-col p-4 gap-3">
+          {/* Header */}
+          <div className="flex items-center justify-between flex-shrink-0">
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+              ← Upstream
+            </div>
+            <div className="text-center">
+              <div className="text-xs font-semibold text-white capitalize">
+                {selectedRiver.charAt(0).toUpperCase() + selectedRiver.slice(1)} River
+              </div>
+              <div className="text-[9px] text-slate-400">{variableLabel} · pixel grid ({RIVER_ROWS}×{RIVER_COLS})</div>
+            </div>
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+              Downstream →
+            </div>
+          </div>
+
+          {/* Grid */}
+          <div className="flex-1 min-h-0 flex flex-col gap-0.5">
+            {/* Row labels */}
+            <div className="flex gap-px" style={{ paddingLeft: "2.5rem" }}>
+              {Array.from({ length: RIVER_COLS }, (_, col) => (
+                col % 6 === 0 ? (
+                  <div key={col} className="text-[7px] text-slate-500 font-mono"
+                    style={{ width: `${100 / RIVER_COLS}%`, flexShrink: 0 }}>
+                    {col}
+                  </div>
+                ) : <div key={col} style={{ width: `${100 / RIVER_COLS}%`, flexShrink: 0 }} />
+              ))}
+            </div>
+
+            {/* Pixel rows */}
+            {Array.from({ length: RIVER_ROWS }, (_, row) => (
+              <div key={row} className="flex items-center gap-px flex-1 min-h-0">
+                <div className="text-[8px] text-slate-500 font-mono w-8 flex-shrink-0 text-right pr-1">
+                  {row === 0 ? "surf" : row === RIVER_ROWS - 1 ? "bot" : row % 3 === 0 ? `r${row}` : ""}
+                </div>
+                {Array.from({ length: RIVER_COLS }, (_, col) => {
+                  const val = gridData[row]?.[col] ?? 0;
+                  const color = interpolateColor(stops, Math.max(0, Math.min(1, val)));
+                  return (
+                    <div
+                      key={col}
+                      title={`r${row} c${col}: ${val.toFixed(3)}`}
+                      style={{
+                        backgroundColor: color,
+                        width: `${100 / RIVER_COLS}%`,
+                        flexShrink: 0,
+                        height: "100%",
+                        borderRadius: 1,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Color scale bar */}
+          <div className="flex-shrink-0 flex items-center gap-2">
+            <span className="text-[8px] text-slate-500 font-mono">Low</span>
+            <div
+              className="flex-1 h-2 rounded"
+              style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
+            />
+            <span className="text-[8px] text-slate-500 font-mono">High</span>
+          </div>
+        </div>
+      )}
+
       {/* Ocean tooltip */}
       {hoveredOcean && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap pointer-events-none"
@@ -374,14 +449,31 @@ export default function MapLibreMap({
         </div>
       )}
 
-      {/* Back button when zoomed into a river */}
+      {/* Controls when zoomed into a river */}
       {selectedRiver && (
-        <button
-          onClick={() => onSelectRiver(null)}
-          className="absolute top-2 left-2 bg-white/90 border border-border rounded px-2 py-1 text-[10px] text-muted-foreground shadow-sm hover:bg-white"
-        >
-          ← Back to full map
-        </button>
+        <div className="absolute top-2 left-2 flex items-center gap-2">
+          <button
+            onClick={() => onSelectRiver(null)}
+            className="bg-white/90 border border-border rounded px-2 py-1 text-[10px] text-muted-foreground shadow-sm hover:bg-white"
+          >
+            ← Back
+          </button>
+          {/* Map / Grid toggle */}
+          <div className="flex rounded overflow-hidden border border-border shadow-sm">
+            <button
+              className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${!showGrid ? "bg-primary text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+              onClick={() => setShowGrid(false)}
+            >
+              Map
+            </button>
+            <button
+              className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${showGrid ? "bg-primary text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+              onClick={() => setShowGrid(true)}
+            >
+              Grid
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
