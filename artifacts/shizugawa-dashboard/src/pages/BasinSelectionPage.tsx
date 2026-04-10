@@ -235,6 +235,8 @@ export default function BasinSelectionPage() {
             onSpeedChange={setSpeed}
             onBack={handleBack}
             onForward={handleForward}
+            windowStart={startWeek}
+            windowEnd={endWeek}
           />
         </div>
 

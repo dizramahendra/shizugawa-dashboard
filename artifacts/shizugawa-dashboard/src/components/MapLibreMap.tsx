@@ -7,8 +7,8 @@ import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, VARIABLE
 const SVG_W = 465;
 const SVG_H = 586;
 
-const BAY_WEST = 141.383;
-const BAY_EAST = 141.468;
+const BAY_WEST  = 141.383;
+const BAY_EAST  = 141.468;
 const BAY_NORTH = 38.651;
 const BAY_SOUTH = 38.582;
 
@@ -30,30 +30,10 @@ const MODEL_RIVER: Record<number, string> = {
 
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
-type RiverBounds = [[number, number], [number, number]];
-
-const RIVER_BOUNDS: Record<number, RiverBounds> = {
-  1:  [[svgToLon(175), svgToLat(212)], [svgToLon(245), svgToLat(155)]],
-  2:  [[svgToLon(188), svgToLat(283)], [svgToLon(226), svgToLat(265)]],
-  3:  [[svgToLon(373), svgToLat(122)], [svgToLon(454), svgToLat(73)]],
-  4:  [[svgToLon(179), svgToLat(283)], [svgToLon(237), svgToLat(204)]],
-  5:  [[svgToLon(200), svgToLat(265)], [svgToLon(258), svgToLat(215)]],
-  6:  [[svgToLon(185), svgToLat(385)], [svgToLon(217), svgToLat(377)]],
-  7:  [[svgToLon(165), svgToLat(228)], [svgToLon(222), svgToLat(173)]],
-  8:  [[svgToLon(312), svgToLat(218)], [svgToLon(362), svgToLat(175)]],
-  9:  [[svgToLon(246), svgToLat(278)], [svgToLon(257), svgToLat(233)]],
-  10: [[svgToLon(169), svgToLat(541)], [svgToLon(257), svgToLat(418)]],
-  11: [[svgToLon(367), svgToLat(77)],  [svgToLon(376), svgToLat(62)]],
-  12: [[svgToLon(253), svgToLat(443)], [svgToLon(260), svgToLat(418)]],
-  13: [[svgToLon(137), svgToLat(443)], [svgToLon(189), svgToLat(378)]],
-  14: [[svgToLon(136), svgToLat(394)], [svgToLon(189), svgToLat(376)]],
-  15: [[svgToLon(69), svgToLat(343)],  [svgToLon(133), svgToLat(262)]],
-  16: [[svgToLon(186), svgToLat(360)], [svgToLon(258), svgToLat(300)]],
-  17: [[svgToLon(228), svgToLat(204)], [svgToLon(283), svgToLat(162)]],
-  18: [[svgToLon(241), svgToLat(238)], [svgToLon(257), svgToLat(220)]],
-  20: [[svgToLon(387), svgToLat(200)], [svgToLon(393), svgToLat(186)]],
-  24: [[svgToLon(177), svgToLat(210)], [svgToLon(246), svgToLat(153)]],
-  25: [[svgToLon(244), svgToLat(76)],  [svgToLon(376), svgToLat(57)]],
+const MODEL_RIVER_BOUNDS: Record<string, [number, number, number, number]> = {
+  shizugawa: [svgToLon(137), svgToLat(443), svgToLon(260), svgToLat(150)],
+  kitakami:  [svgToLon(60),  svgToLat(550), svgToLon(455), svgToLat(55)],
+  hachiman:  [svgToLon(180), svgToLat(370), svgToLon(400), svgToLat(155)],
 };
 
 const COLOR_STOPS: Record<string, string[]> = {
@@ -107,6 +87,107 @@ function computeOceanMean(week: number): number {
   return count > 0 ? sum / count : 0;
 }
 
+function parseSvgPath(d: string): [number, number][] {
+  const points: [number, number][] = [];
+  const segments = d.match(/[MmLlCcQqHhVvZz][^MmLlCcQqHhVvZz]*/g) ?? [];
+  let cx = 0, cy = 0;
+
+  for (const seg of segments) {
+    const cmd = seg[0];
+    const nums = (seg.slice(1).match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/g) ?? []).map(Number);
+    let ni = 0;
+
+    if (cmd === "M" || cmd === "L") {
+      while (ni + 1 < nums.length) {
+        cx = nums[ni++]; cy = nums[ni++];
+        points.push([cx, cy]);
+      }
+    } else if (cmd === "H") {
+      while (ni < nums.length) { cx = nums[ni++]; points.push([cx, cy]); }
+    } else if (cmd === "V") {
+      while (ni < nums.length) { cy = nums[ni++]; points.push([cx, cy]); }
+    } else if (cmd === "C") {
+      while (ni + 5 < nums.length) {
+        const cp1x = nums[ni++], cp1y = nums[ni++];
+        const cp2x = nums[ni++], cp2y = nums[ni++];
+        const ex = nums[ni++], ey = nums[ni++];
+        for (let t = 0.25; t <= 1.01; t += 0.25) {
+          const mt = 1 - t;
+          const x = mt*mt*mt*cx + 3*mt*mt*t*cp1x + 3*mt*t*t*cp2x + t*t*t*ex;
+          const y = mt*mt*mt*cy + 3*mt*mt*t*cp1y + 3*mt*t*t*cp2y + t*t*t*ey;
+          points.push([x, y]);
+        }
+        cx = ex; cy = ey;
+      }
+    } else if (cmd === "Q") {
+      while (ni + 3 < nums.length) {
+        const cpx = nums[ni++], cpy = nums[ni++];
+        const ex = nums[ni++], ey = nums[ni++];
+        for (let t = 0.5; t <= 1.01; t += 0.5) {
+          const mt = 1 - t;
+          const x = mt*mt*cx + 2*mt*t*cpx + t*t*ex;
+          const y = mt*mt*cy + 2*mt*t*cpy + t*t*ey;
+          points.push([x, y]);
+        }
+        cx = ex; cy = ey;
+      }
+    }
+  }
+  return points;
+}
+
+const OCEAN_SVG_POINTS: [number, number][] = [
+  [387,197],[392,215],[400,218],[408,215],[413,223],[413,241],[415,264],
+  [414,271],[408,283],[418,299],[404,308],[394,313],[400,336],[410,343],
+  [404,364],[392,400],[379,403],[380,397],[382,389],[378,390],[376,391],
+  [372,394],[371,397],[366,401],[360,399],[360,394],[356,390],[351,396],
+  [347,402],[337,401],[335,393],[330,384],[324,383],[314,385],[316,390],
+  [309,400],[297,407],[287,405],[282,398],[277,401],[270,398],[265,399],
+  [255,419],[257,440],[188,380],[138,391],[131,263],[60,312],[50,340],
+  [68,395],[65,440],[70,470],[80,500],[100,540],[140,570],[180,580],
+  [230,586],[280,580],[330,565],[370,545],[400,520],[425,490],[440,460],
+  [450,430],[455,400],[460,370],[463,340],[465,300],[460,265],[450,240],
+  [440,220],[430,205],[415,195],[400,192],[387,197],
+];
+
+const OCEAN_COORDS: [number, number][] = OCEAN_SVG_POINTS.map(([x, y]) => [svgToLon(x), svgToLat(y)]);
+
+interface RiverFeature {
+  type: "Feature";
+  id: number;
+  properties: {
+    svgId: number;
+    modelRiver: string;
+    isMainStem: boolean;
+    color: string;
+    lineWidth: number;
+  };
+  geometry: { type: "LineString"; coordinates: [number, number][] };
+}
+
+function buildRiverFeatures(week: number, variableId: string, selectedRiver: string | null): RiverFeature[] {
+  const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+  return Object.entries(RIVER_PATHS).map(([idStr, d]) => {
+    const id = Number(idStr);
+    const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
+    const isMainStem = MAIN_STEMS.has(id);
+    const mean = computeRiverMean(week, modelRiver);
+    const color = interpolateColor(stops, Math.max(0, Math.min(1, mean)));
+    const isSelected = selectedRiver === modelRiver;
+    const lineWidth = isMainStem
+      ? (isSelected ? 8 : 5)
+      : (isSelected ? 5 : 3);
+    const svgPts = parseSvgPath(d);
+    const coords = svgPts.map(([x, y]) => [svgToLon(x), svgToLat(y)] as [number, number]);
+    return {
+      type: "Feature",
+      id,
+      properties: { svgId: id, modelRiver, isMainStem, color, lineWidth },
+      geometry: { type: "LineString", coordinates: coords.length >= 2 ? coords : [[svgToLon(200), svgToLat(300)], [svgToLon(201), svgToLat(301)]] },
+    };
+  });
+}
+
 interface MapLibreMapProps {
   week: number;
   variableId: string;
@@ -118,7 +199,7 @@ interface MapLibreMapProps {
 
 type SvgTransform = { translateX: number; translateY: number; scaleX: number; scaleY: number };
 
-const OCEAN_POLYGON = "M387 197 L392 215 L400 218 L408 215 L413 223 L413 241 L415 264 L414 271 L408 283 L418 299 L404 308 L394 313 L400 336 L410 343 L404 364 L392 400 L379 403 L380 397 L382 389 L378 390 L376 391 L372 394 L371 397 L366 401 L360 399 L360 394 L356 390 L351 396 L347 402 L337 401 L335 393 L330 384 L324 383 L314 385 L316 390 L309 400 L297 407 L287 405 L282 398 L277 401 L270 398 L265 399 L255 419 L257 440 L255 440 L188 380 L187 380 L138 391 L131 263 L130 263 L60 312 L50 340 L68 395 L65 440 L70 470 L80 500 L100 540 L140 570 L180 580 L230 586 L280 580 L330 565 L370 545 L400 520 L425 490 L440 460 L450 430 L455 400 L460 370 L463 340 L465 300 L460 265 L450 240 L440 220 L430 205 L415 195 L400 192 Z";
+const OCEAN_POLYGON_SVG = "M387 197 L392 215 L400 218 L408 215 L413 223 L413 241 L415 264 L414 271 L408 283 L418 299 L404 308 L394 313 L400 336 L410 343 L404 364 L392 400 L379 403 L380 397 L382 389 L378 390 L376 391 L372 394 L371 397 L366 401 L360 399 L360 394 L356 390 L351 396 L347 402 L337 401 L335 393 L330 384 L324 383 L314 385 L316 390 L309 400 L297 407 L287 405 L282 398 L277 401 L270 398 L265 399 L255 419 L257 440 L188 380 L138 391 L131 263 L60 312 L50 340 L68 395 L65 440 L70 470 L80 500 L100 540 L140 570 L180 580 L230 586 L280 580 L330 565 L370 545 L400 520 L425 490 L440 460 L450 430 L455 400 L460 370 L463 340 L465 300 L460 265 L450 240 L440 220 L430 205 L415 195 L400 192 Z";
 
 export default function MapLibreMap({
   week,
@@ -126,11 +207,9 @@ export default function MapLibreMap({
   selectedRiver,
   onSelectRiver,
   onSelectOcean,
-  selectedWatershed,
 }: MapLibreMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const svgOverlayRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState<SvgTransform>({
     translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
   });
@@ -138,6 +217,7 @@ export default function MapLibreMap({
   const [webglError, setWebglError] = useState(false);
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
+  const svgDataRef = useRef({ week, variableId, selectedRiver });
 
   const updateTransform = useCallback((map: maplibregl.Map) => {
     const nw = map.project([BAY_WEST, BAY_NORTH]);
@@ -151,8 +231,7 @@ export default function MapLibreMap({
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    if (mapRef.current) return;
+    if (!containerRef.current || mapRef.current) return;
 
     let map: maplibregl.Map;
     try {
@@ -171,13 +250,129 @@ export default function MapLibreMap({
     }
 
     map.on("error", (e) => {
-      if ((e as { error?: { type?: string } }).error?.type === "webglcontextlost" ||
-          String(e).toLowerCase().includes("webgl")) {
+      if (String((e as { error?: unknown }).error).toLowerCase().includes("webgl")) {
         setWebglError(true);
       }
     });
 
     map.on("load", () => {
+      const initialFeatures = buildRiverFeatures(
+        svgDataRef.current.week,
+        svgDataRef.current.variableId,
+        svgDataRef.current.selectedRiver
+      );
+
+      map.addSource("rivers", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: initialFeatures },
+        generateId: false,
+      });
+
+      map.addLayer({
+        id: "rivers-glow",
+        type: "line",
+        source: "rivers",
+        filter: ["==", ["get", "isMainStem"], true],
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": ["get", "lineWidth"],
+          "line-opacity": 0.18,
+          "line-blur": 8,
+        },
+      });
+
+      map.addLayer({
+        id: "rivers-line",
+        type: "line",
+        source: "rivers",
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": ["get", "lineWidth"],
+          "line-opacity": 0.88,
+        },
+      });
+
+      map.addSource("ocean", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Polygon", coordinates: [OCEAN_COORDS] },
+        },
+      });
+
+      map.addLayer({
+        id: "ocean-fill",
+        type: "fill",
+        source: "ocean",
+        paint: {
+          "fill-color": "#60a5fa",
+          "fill-opacity": 0.15,
+        },
+      });
+
+      map.addLayer({
+        id: "ocean-outline",
+        type: "line",
+        source: "ocean",
+        paint: {
+          "line-color": "#60a5fa",
+          "line-width": 1.8,
+          "line-opacity": 0.6,
+        },
+      });
+
+      map.on("click", "rivers-line", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const modelRiver = f.properties.modelRiver;
+        onSelectRiver(modelRiver);
+        const bounds = MODEL_RIVER_BOUNDS[modelRiver];
+        if (bounds) {
+          map.fitBounds(
+            [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+            { padding: 60, duration: 700 }
+          );
+        }
+      });
+
+      map.on("mouseenter", "rivers-line", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const id = e.features?.[0]?.id as number | undefined;
+        setHoveredRiver(id ?? null);
+      });
+
+      map.on("mouseleave", "rivers-line", () => {
+        map.getCanvas().style.cursor = "";
+        setHoveredRiver(null);
+      });
+
+      map.on("click", "ocean-fill", (e) => {
+        e.originalEvent.stopPropagation();
+        onSelectOcean();
+      });
+
+      map.on("mouseenter", "ocean-fill", () => {
+        map.getCanvas().style.cursor = "pointer";
+        setHoveredOcean(true);
+      });
+
+      map.on("mouseleave", "ocean-fill", () => {
+        map.getCanvas().style.cursor = "";
+        setHoveredOcean(false);
+      });
+
+      map.on("click", (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ["rivers-line", "ocean-fill"] });
+        if (features.length === 0) {
+          onSelectRiver(null);
+        }
+      });
+
       updateTransform(map);
       setMapReady(true);
     });
@@ -193,28 +388,65 @@ export default function MapLibreMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [updateTransform]);
+  }, [updateTransform, onSelectRiver, onSelectOcean]);
 
-  const handleRiverClick = useCallback((svgRiverId: number) => {
-    const modelId = MODEL_RIVER[svgRiverId] ?? "shizugawa";
-    onSelectRiver(modelId);
-    const bounds = RIVER_BOUNDS[svgRiverId];
-    if (bounds && mapRef.current) {
-      const paddedBounds: [number, number, number, number] = [
-        bounds[0][0] - 0.004,
-        bounds[0][1] - 0.004,
-        bounds[1][0] + 0.004,
-        bounds[1][1] + 0.004,
-      ];
-      mapRef.current.fitBounds(paddedBounds, { padding: 60, duration: 700 });
+  useEffect(() => {
+    svgDataRef.current = { week, variableId, selectedRiver };
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const source = map.getSource("rivers") as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    const features = buildRiverFeatures(week, variableId, selectedRiver);
+    source.setData({ type: "FeatureCollection", features });
+
+    const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+    const oceanMean = computeOceanMean(week);
+    const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, oceanMean)));
+
+    const hex = oceanColor.replace(/rgb\((\d+),(\d+),(\d+)\)/, (_, r, g, b) => {
+      return `#${Number(r).toString(16).padStart(2, "0")}${Number(g).toString(16).padStart(2, "0")}${Number(b).toString(16).padStart(2, "0")}`;
+    });
+
+    if (map.getLayer("ocean-fill")) {
+      map.setPaintProperty("ocean-fill", "fill-color", hex);
     }
-  }, [onSelectRiver]);
+    if (map.getLayer("ocean-outline")) {
+      map.setPaintProperty("ocean-outline", "line-color", hex);
+    }
+  }, [week, variableId, selectedRiver, mapReady]);
 
-  const handleMapClick = useCallback(() => {
-    onSelectRiver(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !selectedRiver) return;
+    const bounds = MODEL_RIVER_BOUNDS[selectedRiver];
+    if (bounds) {
+      map.fitBounds(
+        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+        { padding: 60, duration: 700 }
+      );
+    }
+  }, [selectedRiver, mapReady]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onSelectRiver(null);
+        const map = mapRef.current;
+        if (map) {
+          map.fitBounds(
+            [[BAY_WEST, BAY_SOUTH], [BAY_EAST, BAY_NORTH]],
+            { padding: 40, duration: 700 }
+          );
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   }, [onSelectRiver]);
 
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+  const oceanMean = computeOceanMean(week);
+  const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, oceanMean)));
 
   const riverColors = Object.fromEntries(
     Object.keys(RIVER_PATHS).map((idStr) => {
@@ -224,9 +456,6 @@ export default function MapLibreMap({
       return [id, interpolateColor(stops, Math.max(0, Math.min(1, mean)))];
     })
   );
-
-  const oceanMean = computeOceanMean(week);
-  const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, oceanMean)));
 
   const svgStyle: React.CSSProperties = {
     position: "absolute",
@@ -239,7 +468,20 @@ export default function MapLibreMap({
     pointerEvents: "none",
   };
 
-  const svgOverlayContent = (
+  const svgBackgroundOverlay = (
+    <div style={svgStyle}>
+      <img
+        src="/Sub-basin area.svg"
+        width={SVG_W}
+        height={SVG_H}
+        style={{ position: "absolute", top: 0, left: 0, opacity: 0.6, pointerEvents: "none" }}
+        draggable={false}
+        alt="basin"
+      />
+    </div>
+  );
+
+  const svgFallbackContent = (
     <>
       <img
         src="/Sub-basin area.svg"
@@ -249,7 +491,6 @@ export default function MapLibreMap({
         draggable={false}
         alt="basin"
       />
-
       <svg
         viewBox={`0 0 ${SVG_W} ${SVG_H}`}
         width={SVG_W}
@@ -257,7 +498,7 @@ export default function MapLibreMap({
         style={{ position: "absolute", top: 0, left: 0, overflow: "visible" }}
       >
         <path
-          d={OCEAN_POLYGON}
+          d={OCEAN_POLYGON_SVG}
           fill={`${oceanColor}55`}
           stroke={oceanColor}
           strokeWidth={hoveredOcean ? 2.5 : 1.5}
@@ -265,133 +506,69 @@ export default function MapLibreMap({
           style={{ pointerEvents: "all", cursor: "pointer" }}
           onMouseEnter={() => setHoveredOcean(true)}
           onMouseLeave={() => setHoveredOcean(false)}
-          onClick={(e) => { e.stopPropagation(); onSelectOcean(); }}
+          onClick={onSelectOcean}
         />
-
         {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
           const id = Number(idStr);
           const color = riverColors[id] ?? "#60a5fa";
           const isSelected = selectedRiver === MODEL_RIVER[id];
           const isHovered = hoveredRiver === id;
           const isMainStem = MAIN_STEMS.has(id);
-          const strokeWidth = isMainStem ? (isSelected || isHovered ? 8 : 6) : (isSelected || isHovered ? 5 : 3.5);
+          const strokeWidth = isMainStem
+            ? (isSelected || isHovered ? 8 : 5)
+            : (isSelected || isHovered ? 5 : 3);
           return (
             <g key={id}>
               {(isSelected || isHovered) && (
-                <path
-                  d={d}
-                  stroke={color}
-                  strokeWidth={strokeWidth + 8}
-                  fill="none"
-                  strokeLinecap="round"
-                  opacity={0.25}
-                  style={{ pointerEvents: "none" }}
-                />
+                <path d={d} stroke={color} strokeWidth={strokeWidth + 8} fill="none"
+                  strokeLinecap="round" opacity={0.25} style={{ pointerEvents: "none" }} />
               )}
-              <path
-                d={d}
-                stroke={color}
-                strokeWidth={strokeWidth}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ pointerEvents: "none" }}
-              />
-              <path
-                d={d}
-                stroke="transparent"
-                strokeWidth={16}
-                fill="none"
+              <path d={d} stroke={color} strokeWidth={strokeWidth} fill="none"
+                strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
+              <path d={d} stroke="transparent" strokeWidth={16} fill="none"
                 style={{ pointerEvents: "all", cursor: "pointer" }}
                 onMouseEnter={() => setHoveredRiver(id)}
                 onMouseLeave={() => setHoveredRiver(null)}
-                onClick={(e) => { e.stopPropagation(); handleRiverClick(id); }}
+                onClick={() => onSelectRiver(MODEL_RIVER[id] ?? null)}
               />
             </g>
           );
         })}
       </svg>
-
-      {hoveredOcean && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "60%",
-            transform: "translate(-50%,-50%)",
-            pointerEvents: "none",
-          }}
-        >
-          <div className="bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap"
-            style={{ fontSize: "11px", lineHeight: 1.4 }}>
-            <div className="font-semibold text-primary">Shizugawa Bay (Ocean)</div>
-            <div className="text-muted-foreground mt-0.5" style={{ fontSize: "9px" }}>Click → 3D Ocean Playback</div>
-          </div>
-        </div>
-      )}
-
-      {hoveredRiver !== null && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "20%",
-            transform: "translate(-50%,-50%)",
-            pointerEvents: "none",
-          }}
-        >
-          <div className="bg-white border border-blue-200 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap"
-            style={{ fontSize: "11px", lineHeight: 1.4 }}>
-            <div className="font-semibold text-blue-600">
-              River Reach {hoveredRiver}
-            </div>
-            <div className="text-muted-foreground mt-0.5" style={{ fontSize: "9px" }}>
-              {MODEL_RIVER[hoveredRiver] === "shizugawa" ? "Shizugawa R." :
-               MODEL_RIVER[hoveredRiver] === "kitakami"  ? "Kitakami Trib." :
-                                                           "Hachiman R."} · Click to zoom in
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 
   if (webglError) {
     return (
-      <div className="relative w-full h-full flex items-center justify-center bg-slate-100 overflow-hidden"
-        onClick={handleMapClick}>
+      <div className="relative w-full h-full flex items-center justify-center bg-slate-50 overflow-hidden">
         <div
           style={{
             position: "absolute",
-            top: "50%",
-            left: "50%",
+            top: "50%", left: "50%",
             transform: "translate(-50%, -50%)",
-            width: SVG_W,
-            height: SVG_H,
+            width: SVG_W, height: SVG_H,
           }}
         >
-          {svgOverlayContent}
+          {svgFallbackContent}
         </div>
-        <div className="absolute top-2 right-2 bg-white/80 text-[10px] text-muted-foreground rounded px-2 py-1 pointer-events-none">
+        <div className="absolute top-2 right-2 bg-white/90 text-[10px] text-muted-foreground rounded px-2 py-1 pointer-events-none border border-border shadow-sm">
           SVG mode · WebGL unavailable
         </div>
+        {hoveredOcean && (
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap pointer-events-none"
+            style={{ fontSize: "11px" }}>
+            <div className="font-semibold text-primary">Shizugawa Bay (Ocean)</div>
+            <div className="text-muted-foreground mt-0.5" style={{ fontSize: "9px" }}>Click → 3D Ocean Playback</div>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className="relative w-full h-full">
-      <div
-        ref={containerRef}
-        className="absolute inset-0 cursor-pointer"
-        onClick={handleMapClick}
-      />
-
-      {mapReady && (
-        <div style={svgStyle}>
-          {svgOverlayContent}
-        </div>
-      )}
+      <div ref={containerRef} className="absolute inset-0" />
+      {mapReady && svgBackgroundOverlay}
     </div>
   );
 }
