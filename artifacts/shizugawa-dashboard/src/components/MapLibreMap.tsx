@@ -330,8 +330,15 @@ export default function MapLibreMap({
       return;
     }
 
+    const fallbackTimer = setTimeout(() => {
+      if (!mapRef.current?.loaded()) {
+        setWebglError(true);
+      }
+    }, 6000);
+
     map.on("error", (e) => {
-      if (String((e as { error?: unknown }).error).toLowerCase().includes("webgl")) {
+      const msg = String((e as { error?: unknown }).error).toLowerCase();
+      if (msg.includes("webgl") || msg.includes("style") || msg.includes("failed to fetch")) {
         setWebglError(true);
       }
     });
@@ -509,6 +516,7 @@ export default function MapLibreMap({
         }
       });
 
+      clearTimeout(fallbackTimer);
       setMapReady(true);
     });
 
@@ -517,6 +525,7 @@ export default function MapLibreMap({
     mapRef.current = map;
 
     return () => {
+      clearTimeout(fallbackTimer);
       map.remove();
       mapRef.current = null;
     };
@@ -648,9 +657,15 @@ export default function MapLibreMap({
     </>
   );
 
-  if (webglError) {
-    return (
-      <div className="relative w-full h-full flex items-center justify-center bg-slate-50 overflow-hidden">
+  const showSvg = webglError || !mapReady;
+
+  return (
+    <div className="relative w-full h-full bg-slate-50 overflow-hidden">
+      {/* SVG fallback — visible immediately and whenever MapLibre hasn't loaded */}
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ pointerEvents: showSvg ? "auto" : "none", opacity: showSvg ? 1 : 0 }}
+      >
         <div
           style={{
             position: "absolute",
@@ -661,23 +676,33 @@ export default function MapLibreMap({
         >
           {svgFallbackContent}
         </div>
+      </div>
+
+      {/* MapLibre container — always in DOM for initialization, fades in when ready */}
+      <div
+        ref={containerRef}
+        className="absolute inset-0"
+        style={{
+          opacity: mapReady && !webglError ? 1 : 0,
+          transition: "opacity 0.4s ease",
+          pointerEvents: mapReady && !webglError ? "auto" : "none",
+        }}
+      />
+
+      {/* Status badge */}
+      {webglError && (
         <div className="absolute top-2 right-2 bg-white/90 text-[10px] text-muted-foreground rounded px-2 py-1 pointer-events-none border border-border shadow-sm">
           SVG mode · WebGL unavailable
         </div>
-        {hoveredOcean && (
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap pointer-events-none"
-            style={{ fontSize: "11px" }}>
-            <div className="font-semibold text-primary">Shizugawa Bay (Ocean)</div>
-            <div className="text-muted-foreground mt-0.5" style={{ fontSize: "9px" }}>Click → 3D Ocean Playback</div>
-          </div>
-        )}
-      </div>
-    );
-  }
+      )}
 
-  return (
-    <div className="relative w-full h-full">
-      <div ref={containerRef} className="absolute inset-0" />
+      {hoveredOcean && showSvg && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap pointer-events-none"
+          style={{ fontSize: "11px" }}>
+          <div className="font-semibold text-primary">Shizugawa Bay (Ocean)</div>
+          <div className="text-muted-foreground mt-0.5" style={{ fontSize: "9px" }}>Click → 3D Ocean Playback</div>
+        </div>
+      )}
     </div>
   );
 }
