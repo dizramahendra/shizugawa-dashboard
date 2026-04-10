@@ -49,55 +49,63 @@ function cosineInterp(pts: CP[], t: number): number {
 
 // Per-river control points: rows 0=N bank, RIVER_ROWS-1=S bank
 // center: row index of thalweg (0..RIVER_ROWS-1)
-// halfW:  half-width in row units (inclusive: |row-center| <= halfW)
+// halfW:  half-width in row units — goes from near-trickle to wide delta
 const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
   shizugawa: {
-    // Arch: starts near S bank, sweeps up to N, eases back down
+    // Double-meander snake: S-bank start → sweeps N → belly south → rises N again
     center: [
-      [0.00, 13.5], [0.06, 13.0], [0.12, 12.0], [0.20, 10.5],
-      [0.30,  8.5], [0.40,  6.5], [0.50,  5.0], [0.58,  4.2],
-      [0.65,  5.0], [0.74,  6.8], [0.83,  8.5], [0.91,  9.8],
-      [1.00, 11.0],
+      [0.00, 19.0], [0.05, 18.5], [0.10, 17.0], [0.17, 14.5],
+      [0.25, 11.0], [0.32,  7.5], [0.40,  4.5], [0.46,  3.0],
+      [0.52,  3.8], [0.58,  6.0], [0.64,  9.0], [0.70, 13.0],
+      [0.75, 16.5], [0.80, 18.0], [0.85, 17.5], [0.90, 14.5],
+      [0.94, 11.0], [0.97,  8.5], [1.00,  7.0],
     ],
     halfW: [
-      [0.00, 1.2], [0.06, 2.0], [0.14, 3.2], [0.22, 4.0],
-      [0.32, 3.5], [0.42, 2.5], [0.52, 1.8], [0.60, 2.5],
-      [0.68, 3.8], [0.78, 4.8], [0.87, 3.8], [0.94, 3.0],
-      [1.00, 2.2],
+      [0.00, 0.8], [0.05, 1.5], [0.12, 3.5], [0.20, 5.5],
+      [0.28, 4.0], [0.36, 2.5], [0.44, 1.5], [0.50, 1.2],
+      [0.56, 2.5], [0.63, 6.0], [0.69, 8.0], [0.74, 7.5],
+      [0.79, 4.5], [0.84, 2.5], [0.88, 2.0], [0.92, 4.0],
+      [0.96, 5.5], [1.00, 4.0],
     ],
   },
   kitakami: {
-    // S-curve: N bank → meanders to S → rises back
+    // Full S-curve: starts at N, plunges deep south, rises sharply back to N
     center: [
-      [0.00, 5.0], [0.10, 4.5], [0.22, 5.5], [0.35, 7.5],
-      [0.46, 9.5], [0.55, 11.0], [0.63, 11.5], [0.72, 10.5],
-      [0.82,  8.5], [0.90,  6.5], [1.00,  5.5],
+      [0.00,  3.5], [0.06,  3.0], [0.13,  4.5], [0.20,  7.5],
+      [0.28, 11.0], [0.35, 14.5], [0.42, 17.5], [0.49, 19.5],
+      [0.55, 19.0], [0.61, 17.0], [0.67, 13.5], [0.73,  9.5],
+      [0.80,  5.5], [0.86,  3.0], [0.92,  2.5], [0.96,  3.5],
+      [1.00,  5.0],
     ],
     halfW: [
-      [0.00, 2.0], [0.12, 3.2], [0.25, 2.0], [0.38, 3.5],
-      [0.50, 2.2], [0.60, 3.0], [0.70, 2.5], [0.80, 4.0],
-      [0.90, 3.2], [1.00, 2.5],
+      [0.00, 1.5], [0.07, 3.5], [0.15, 2.0], [0.24, 4.5],
+      [0.32, 3.0], [0.40, 2.0], [0.47, 5.5], [0.53, 7.0],
+      [0.58, 5.5], [0.65, 3.0], [0.72, 2.0], [0.79, 4.5],
+      [0.85, 3.0], [0.90, 1.5], [0.95, 3.0], [1.00, 4.5],
     ],
   },
   hachiman: {
-    // Steep plunge: starts at N third, dives to S, climbs back
+    // Hairpin: starts mid-N, wide approach, tight hairpin at S, wide exit
     center: [
-      [0.00, 5.0], [0.12, 6.0], [0.24, 8.0], [0.36, 10.5],
-      [0.48, 12.5], [0.58, 12.0], [0.68, 10.0], [0.78, 7.5],
-      [0.88,  5.5], [1.00,  4.5],
+      [0.00,  6.0], [0.07,  5.0], [0.14,  6.0], [0.22,  8.5],
+      [0.30, 12.0], [0.37, 16.0], [0.43, 19.0], [0.50, 20.5],
+      [0.56, 20.0], [0.62, 18.5], [0.68, 15.5], [0.75, 11.5],
+      [0.82,  7.5], [0.88,  4.5], [0.93,  3.0], [0.97,  3.5],
+      [1.00,  5.0],
     ],
     halfW: [
-      [0.00, 2.0], [0.12, 3.0], [0.26, 2.5], [0.38, 4.5],
-      [0.50, 3.5], [0.62, 2.5], [0.74, 4.0], [0.86, 3.2],
-      [1.00, 2.5],
+      [0.00, 2.0], [0.08, 4.5], [0.17, 3.5], [0.26, 6.0],
+      [0.33, 4.5], [0.40, 2.5], [0.47, 1.0], [0.52, 1.5],
+      [0.58, 2.5], [0.65, 4.5], [0.72, 3.0], [0.79, 6.5],
+      [0.85, 4.0], [0.90, 2.5], [0.95, 3.5], [1.00, 4.5],
     ],
   },
 };
 
-// Small deterministic jitter to roughen the bank edges
+// Deterministic jitter to roughen the bank edges — ±1.2 row variation
 function edgeJitter(col: number, side: "top" | "bot"): number {
   const seed = col * 7 + (side === "top" ? 3 : 11);
-  return (Math.sin(seed * 2.399) * 0.5); // ±0.5 row
+  return Math.sin(seed * 2.399) * 0.8 + Math.sin(seed * 5.17) * 0.4;
 }
 
 function buildMask(riverId: string): boolean[][] {
@@ -121,15 +129,15 @@ const MASKS: Record<string, boolean[][]> = {
 };
 
 // ── km tick positions ─────────────────────────────────────────
-// RIVER_COLS=90, total length=18 km → every 15 cols = 3 km
-const KM_TICKS = [0, 15, 30, 45, 60, 75, 90].map(col => ({
+// RIVER_COLS=120, total length=18 km → every 20 cols = 3 km
+const KM_TICKS = [0, 20, 40, 60, 80, 100, 120].map(col => ({
   col: Math.min(col, RIVER_COLS),
   label: `${Math.round((Math.min(col, RIVER_COLS) / RIVER_COLS) * 18)} km`,
 }));
 
 // ── Layout constants ──────────────────────────────────────────
-const CELL = 9;   // px per cell — smaller cells, more columns = longer river feel
-const GAP  = 0;   // no gap — cells butt up against each other
+const CELL = 7;   // px per cell — 120 cols × 7px = 840px wide
+const GAP  = 0;   // no gap
 
 interface RiverGrid2DProps {
   week: number;
