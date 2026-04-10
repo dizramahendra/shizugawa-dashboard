@@ -1,14 +1,15 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { RIVER_PATHS } from "@/lib/svgPaths";
-import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+import { RIVER_PATHS, SUB_BASIN_PATHS } from "@/lib/svgPaths";
+import { generateReachValue, generateWeekData, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
 
 type LonLat = [number, number];
 type Ring = LonLat[];
 type PolygonGeom = { type: "Polygon"; coordinates: Ring[] };
 type LineStringGeom = { type: "LineString"; coordinates: LonLat[] };
 type OceanCellProps = { color: string };
+type SubBasinProps = { basinId: number; color: string; fillOpacity: number };
 type RiverReachProps = { reachId: number; modelRiver: string; isMainStem: boolean; color: string; lineWidth: number };
 
 interface OceanCellFeature {
@@ -20,6 +21,17 @@ interface OceanCellFeature {
 interface OceanCellCollection {
   type: "FeatureCollection";
   features: OceanCellFeature[];
+}
+
+interface SubBasinFeature {
+  type: "Feature";
+  properties: SubBasinProps;
+  geometry: PolygonGeom;
+}
+
+interface SubBasinCollection {
+  type: "FeatureCollection";
+  features: SubBasinFeature[];
 }
 
 interface RiverReachFeature {
@@ -92,17 +104,6 @@ function interpolateColor(stops: string[], t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function computeRiverMean(week: number, riverId: string): number {
-  const data = generateRiverData(week, riverId);
-  let sum = 0, count = 0;
-  for (let row = 0; row < data.length; row++) {
-    for (let col = 0; col < (data[row]?.length ?? 0); col++) {
-      sum += data[row][col] ?? 0;
-      count++;
-    }
-  }
-  return count > 0 ? sum / count : 0;
-}
 
 function computeOceanMean(week: number): number {
   const data = generateWeekData(week);
@@ -143,6 +144,23 @@ function buildOceanGridGeoJSON(week: number, variableId: string): OceanCellColle
       });
     }
   }
+  return { type: "FeatureCollection", features };
+}
+
+function buildSubBasinGeoJSON(week: number, variableId: string): SubBasinCollection {
+  const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+  const features: SubBasinFeature[] = Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
+    const basinId = Number(idStr);
+    const value = generateReachValue(week, basinId);
+    const color = interpolateColor(stops, Math.max(0, Math.min(1, value)));
+    const svgPts = parseSvgPathClosed(d);
+    const ring: LonLat[] = svgPts.map(([x, y]) => [svgToLon(x), svgToLat(y)]);
+    return {
+      type: "Feature",
+      properties: { basinId, color, fillOpacity: 0.55 },
+      geometry: { type: "Polygon", coordinates: [ring] },
+    };
+  });
   return { type: "FeatureCollection", features };
 }
 
@@ -195,6 +213,15 @@ function parseSvgPath(d: string): [number, number][] {
   return points;
 }
 
+function parseSvgPathClosed(d: string): [number, number][] {
+  const pts = parseSvgPath(d);
+  if (pts.length < 3) return pts;
+  const [fx, fy] = pts[0];
+  const [lx, ly] = pts[pts.length - 1];
+  if (lx !== fx || ly !== fy) pts.push([fx, fy]);
+  return pts;
+}
+
 const OCEAN_SVG_POINTS: [number, number][] = [
   [387,197],[392,215],[400,218],[408,215],[413,223],[413,241],[415,264],
   [414,271],[408,283],[418,299],[404,308],[394,313],[400,336],[410,343],
@@ -217,8 +244,8 @@ function buildRiverFeatures(week: number, variableId: string, selectedRiver: str
     const id = Number(idStr);
     const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
     const isMainStem = MAIN_STEMS.has(id);
-    const mean = computeRiverMean(week, modelRiver);
-    const color = interpolateColor(stops, Math.max(0, Math.min(1, mean)));
+    const value = generateReachValue(week, id);
+    const color = interpolateColor(stops, Math.max(0, Math.min(1, value)));
     const isSelected = selectedRiver === modelRiver;
     const lineWidth = isMainStem ? (isSelected ? 8 : 5) : (isSelected ? 5 : 3);
     const svgPts = parseSvgPath(d);
@@ -304,6 +331,36 @@ export default function MapLibreMap({
     });
 
     map.on("load", () => {
+      const initialSubBasins = buildSubBasinGeoJSON(
+        svgDataRef.current.week,
+        svgDataRef.current.variableId
+      );
+      map.addSource("sub-basins", {
+        type: "geojson",
+        data: initialSubBasins,
+      });
+
+      map.addLayer({
+        id: "sub-basins-fill",
+        type: "fill",
+        source: "sub-basins",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": ["get", "fillOpacity"],
+        },
+      });
+
+      map.addLayer({
+        id: "sub-basins-outline",
+        type: "line",
+        source: "sub-basins",
+        paint: {
+          "line-color": "#98A2B3",
+          "line-width": 0.6,
+          "line-opacity": 0.7,
+        },
+      });
+
       const initialFeatures = buildRiverFeatures(
         svgDataRef.current.week,
         svgDataRef.current.variableId,
@@ -468,6 +525,11 @@ export default function MapLibreMap({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
+    const subBasinSource = map.getSource("sub-basins") as GeoJSONSource | undefined;
+    if (subBasinSource) {
+      subBasinSource.setData(buildSubBasinGeoJSON(week, variableId));
+    }
+
     const riverSource = map.getSource("rivers") as GeoJSONSource | undefined;
     if (riverSource) {
       riverSource.setData(buildRiverFeatures(week, variableId, selectedRiver));
@@ -515,34 +577,9 @@ export default function MapLibreMap({
   const riverColors = Object.fromEntries(
     Object.keys(RIVER_PATHS).map((idStr) => {
       const id = Number(idStr);
-      const modelId = MODEL_RIVER[id] ?? "shizugawa";
-      const mean = computeRiverMean(week, modelId);
-      return [id, interpolateColor(stops, Math.max(0, Math.min(1, mean)))];
+      const value = generateReachValue(week, id);
+      return [id, interpolateColor(stops, Math.max(0, Math.min(1, value)))];
     })
-  );
-
-  const svgStyle: React.CSSProperties = {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: SVG_W,
-    height: SVG_H,
-    transformOrigin: "0 0",
-    transform: `translate(${transform.translateX}px, ${transform.translateY}px) scale(${transform.scaleX}, ${transform.scaleY})`,
-    pointerEvents: "none",
-  };
-
-  const svgBackgroundOverlay = (
-    <div style={svgStyle}>
-      <img
-        src="/Sub-basin area.svg"
-        width={SVG_W}
-        height={SVG_H}
-        style={{ position: "absolute", top: 0, left: 0, opacity: 0.6, pointerEvents: "none" }}
-        draggable={false}
-        alt="basin"
-      />
-    </div>
   );
 
   const svgFallbackContent = (
@@ -632,7 +669,6 @@ export default function MapLibreMap({
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
-      {mapReady && svgBackgroundOverlay}
     </div>
   );
 }
