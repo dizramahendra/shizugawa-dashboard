@@ -661,15 +661,13 @@ export default function MapLibreMap({
     </>
   );
 
-  const showSvg = webglError || !mapReady;
-
   return (
     <div className="relative w-full h-full bg-slate-50 overflow-hidden">
-      {/* SVG fallback — visible immediately and whenever MapLibre hasn't loaded */}
-      <div
-        className="absolute inset-0 flex items-center justify-center"
-        style={{ pointerEvents: showSvg ? "auto" : "none", opacity: showSvg ? 1 : 0 }}
-      >
+      {/* MapLibre container — always hidden behind SVG, kept in DOM for future pan/zoom */}
+      <div ref={containerRef} className="absolute inset-0" style={{ opacity: 0, pointerEvents: "none" }} />
+
+      {/* SVG visualization — always visible, handles all interaction */}
+      <div className="absolute inset-0 flex items-center justify-center">
         <div
           style={{
             position: "absolute",
@@ -682,25 +680,7 @@ export default function MapLibreMap({
         </div>
       </div>
 
-      {/* MapLibre container — always in DOM for initialization, fades in when ready */}
-      <div
-        ref={containerRef}
-        className="absolute inset-0"
-        style={{
-          opacity: mapReady && !webglError ? 1 : 0,
-          transition: "opacity 0.4s ease",
-          pointerEvents: mapReady && !webglError ? "auto" : "none",
-        }}
-      />
-
-      {/* Status badge */}
-      {webglError && (
-        <div className="absolute top-2 right-2 bg-white/90 text-[10px] text-muted-foreground rounded px-2 py-1 pointer-events-none border border-border shadow-sm">
-          SVG mode · WebGL unavailable
-        </div>
-      )}
-
-      {hoveredOcean && showSvg && (
+      {hoveredOcean && (
         <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white border border-primary/30 rounded-md px-3 py-2 shadow-md text-center whitespace-nowrap pointer-events-none"
           style={{ fontSize: "11px" }}>
           <div className="font-semibold text-primary">Shizugawa Bay (Ocean)</div>
