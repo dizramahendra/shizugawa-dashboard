@@ -59,6 +59,33 @@ function interpolateColor(stops: string[], t: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+// ── River channel mask (sinusoidal meander shape per river) ──────────────────
+
+function buildChannelMask(riverId: string): boolean[][] {
+  const seed = riverId === "shizugawa" ? 0 : riverId === "kitakami" ? 1 : 2;
+  const phase = seed * (Math.PI * 2 / 3);
+  const mask: boolean[][] = Array.from({ length: RIVER_ROWS }, () =>
+    new Array(RIVER_COLS).fill(false));
+  for (let col = 0; col < RIVER_COLS; col++) {
+    const t = col / (RIVER_COLS - 1);
+    const center = (RIVER_ROWS - 1) / 2 + (RIVER_ROWS * 0.28) * Math.sin(t * Math.PI * 1.5 + phase);
+    const halfW = 1.6 + 1.1 * Math.sin(t * Math.PI);
+    for (let row = 0; row < RIVER_ROWS; row++) {
+      if (Math.abs(row - center) <= halfW) mask[row][col] = true;
+    }
+  }
+  return mask;
+}
+
+const CHANNEL_MASKS: Record<string, boolean[][]> = {
+  shizugawa: buildChannelMask("shizugawa"),
+  kitakami:  buildChannelMask("kitakami"),
+  hachiman:  buildChannelMask("hachiman"),
+};
+
+// km per column (18 km total for 36 columns)
+const KM_PER_COL = 18 / RIVER_COLS;
+
 function computeOceanMean(week: number): number {
   const data = generateWeekData(week);
   let sum = 0, count = 0;
@@ -368,77 +395,120 @@ export default function MapLibreMap({
         })}
       </svg>
 
-      {/* Pixel grid view overlay */}
-      {showGrid && selectedRiver && gridData && (
-        <div className="absolute inset-0 bg-[#0f1923] flex flex-col p-4 gap-3">
-          {/* Header */}
-          <div className="flex items-center justify-between flex-shrink-0">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
-              ← Upstream
-            </div>
-            <div className="text-center">
-              <div className="text-xs font-semibold text-white capitalize">
-                {selectedRiver.charAt(0).toUpperCase() + selectedRiver.slice(1)} River
-              </div>
-              <div className="text-[9px] text-slate-400">{variableLabel} · pixel grid ({RIVER_ROWS}×{RIVER_COLS})</div>
-            </div>
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
-              Downstream →
-            </div>
-          </div>
-
-          {/* Grid */}
-          <div className="flex-1 min-h-0 flex flex-col gap-0.5">
-            {/* Row labels */}
-            <div className="flex gap-px" style={{ paddingLeft: "2.5rem" }}>
-              {Array.from({ length: RIVER_COLS }, (_, col) => (
-                col % 6 === 0 ? (
-                  <div key={col} className="text-[7px] text-slate-500 font-mono"
-                    style={{ width: `${100 / RIVER_COLS}%`, flexShrink: 0 }}>
-                    {col}
-                  </div>
-                ) : <div key={col} style={{ width: `${100 / RIVER_COLS}%`, flexShrink: 0 }} />
-              ))}
-            </div>
-
-            {/* Pixel rows */}
-            {Array.from({ length: RIVER_ROWS }, (_, row) => (
-              <div key={row} className="flex items-center gap-px flex-1 min-h-0">
-                <div className="text-[8px] text-slate-500 font-mono w-8 flex-shrink-0 text-right pr-1">
-                  {row === 0 ? "surf" : row === RIVER_ROWS - 1 ? "bot" : row % 3 === 0 ? `r${row}` : ""}
+      {/* Pixel grid view overlay — light theme, channel shape, km axis */}
+      {showGrid && selectedRiver && gridData && (() => {
+        const mask = CHANNEL_MASKS[selectedRiver] ?? CHANNEL_MASKS.shizugawa;
+        // SVG coordinate system: each cell = 1 unit
+        const ML = 4.2; // left margin for Y labels
+        const MR = 0.6;
+        const MT = 0.8;
+        const MB = 3.8; // bottom margin for X labels + scale bar
+        const VW = ML + RIVER_COLS + MR;
+        const VH = MT + RIVER_ROWS + MB;
+        // Unique gradient ID per river to avoid collisions
+        const gradId = `cscale-${selectedRiver}`;
+        return (
+          <div className="absolute inset-0 bg-[#f8fafc] flex flex-col">
+            {/* Title bar */}
+            <div className="flex-shrink-0 flex items-center justify-between px-5 pt-3 pb-1">
+              <div>
+                <div className="text-xs font-semibold text-gray-700 capitalize">
+                  {selectedRiver.charAt(0).toUpperCase() + selectedRiver.slice(1)} River
                 </div>
-                {Array.from({ length: RIVER_COLS }, (_, col) => {
-                  const val = gridData[row]?.[col] ?? 0;
-                  const color = interpolateColor(stops, Math.max(0, Math.min(1, val)));
+                <div className="text-[9px] text-gray-400 mt-0.5">Raster channel · upstream → downstream</div>
+              </div>
+              <div className="text-[9px] text-gray-400 font-medium tracking-wide">
+                {RIVER_ROWS} × {RIVER_COLS} grid
+              </div>
+            </div>
+
+            {/* SVG grid */}
+            <div className="flex-1 min-h-0 px-4 pb-2">
+              <svg
+                width="100%" height="100%"
+                viewBox={`0 0 ${VW} ${VH}`}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <defs>
+                  <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
+                    {stops.map((c, i) => (
+                      <stop key={i} offset={`${(i / (stops.length - 1)) * 100}%`} stopColor={c} />
+                    ))}
+                  </linearGradient>
+                </defs>
+
+                {/* White grid background */}
+                <rect x={ML} y={MT} width={RIVER_COLS} height={RIVER_ROWS} fill="white"
+                  stroke="#e2e8f0" strokeWidth={0.04} rx={0.1} />
+
+                {/* Subtle column grid lines */}
+                {Array.from({ length: RIVER_COLS + 1 }, (_, i) => (
+                  <line key={i} x1={ML + i} y1={MT} x2={ML + i} y2={MT + RIVER_ROWS}
+                    stroke="#e2e8f0" strokeWidth={0.03} />
+                ))}
+                {/* Subtle row grid lines */}
+                {Array.from({ length: RIVER_ROWS + 1 }, (_, i) => (
+                  <line key={i} x1={ML} y1={MT + i} x2={ML + RIVER_COLS} y2={MT + i}
+                    stroke="#e2e8f0" strokeWidth={0.03} />
+                ))}
+
+                {/* Channel cells */}
+                {Array.from({ length: RIVER_ROWS }, (_, row) =>
+                  Array.from({ length: RIVER_COLS }, (_, col) => {
+                    const inCh = mask[row]?.[col] ?? false;
+                    if (!inCh) return null;
+                    const val = gridData[row]?.[col] ?? 0;
+                    return (
+                      <rect key={`${row}-${col}`}
+                        x={ML + col + 0.03} y={MT + row + 0.03}
+                        width={0.94} height={0.94}
+                        fill={interpolateColor(stops, Math.max(0, Math.min(1, val)))}
+                        rx={0.08}
+                      />
+                    );
+                  })
+                )}
+
+                {/* Y-axis labels */}
+                <text x={ML - 0.25} y={MT + 0.6} textAnchor="end" fontSize={0.68} fill="#94a3b8" fontFamily="monospace">N bank</text>
+                <text x={ML - 0.25} y={MT + RIVER_ROWS / 2 + 0.25} textAnchor="end" fontSize={0.68} fill="#94a3b8" fontFamily="monospace">thalweg</text>
+                <text x={ML - 0.25} y={MT + RIVER_ROWS - 0.05} textAnchor="end" fontSize={0.68} fill="#94a3b8" fontFamily="monospace">S bank</text>
+
+                {/* X-axis tick marks and km labels — every 6 columns = 3 km */}
+                {Array.from({ length: 7 }, (_, i) => {
+                  const col = i * 6;
+                  const km = (col * KM_PER_COL).toFixed(0);
                   return (
-                    <div
-                      key={col}
-                      title={`r${row} c${col}: ${val.toFixed(3)}`}
-                      style={{
-                        backgroundColor: color,
-                        width: `${100 / RIVER_COLS}%`,
-                        flexShrink: 0,
-                        height: "100%",
-                        borderRadius: 1,
-                      }}
-                    />
+                    <g key={i}>
+                      <line x1={ML + col} y1={MT + RIVER_ROWS} x2={ML + col} y2={MT + RIVER_ROWS + 0.3}
+                        stroke="#cbd5e1" strokeWidth={0.07} />
+                      <text x={ML + col} y={MT + RIVER_ROWS + 0.85} textAnchor="middle"
+                        fontSize={0.65} fill="#94a3b8" fontFamily="monospace">
+                        {km} km
+                      </text>
+                    </g>
                   );
                 })}
-              </div>
-            ))}
-          </div>
 
-          {/* Color scale bar */}
-          <div className="flex-shrink-0 flex items-center gap-2">
-            <span className="text-[8px] text-slate-500 font-mono">Low</span>
-            <div
-              className="flex-1 h-2 rounded"
-              style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
-            />
-            <span className="text-[8px] text-slate-500 font-mono">High</span>
+                {/* X-axis direction label */}
+                <text x={ML + RIVER_COLS / 2} y={MT + RIVER_ROWS + 1.7} textAnchor="middle"
+                  fontSize={0.65} fill="#cbd5e1" fontFamily="sans-serif">
+                  ← upstream · downstream →
+                </text>
+
+                {/* Color scale bar */}
+                <rect x={ML} y={VH - 1.5} width={RIVER_COLS} height={0.55}
+                  fill={`url(#${gradId})`} rx={0.12} />
+                <text x={ML} y={VH - 0.75} fontSize={0.6} fill="#94a3b8" fontFamily="monospace">Low</text>
+                <text x={ML + RIVER_COLS} y={VH - 0.75} textAnchor="end" fontSize={0.6} fill="#94a3b8" fontFamily="monospace">High</text>
+                <text x={ML + RIVER_COLS / 2} y={VH - 0.75} textAnchor="middle" fontSize={0.6} fill="#94a3b8" fontFamily="sans-serif">
+                  {variableLabel}
+                </text>
+              </svg>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Ocean tooltip */}
       {hoveredOcean && (
