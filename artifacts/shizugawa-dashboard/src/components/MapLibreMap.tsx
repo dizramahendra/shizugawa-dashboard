@@ -1,8 +1,8 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { RIVER_PATHS, SUB_BASIN_PATHS } from "@/lib/svgPaths";
-import { generateReachValue, generateWeekData, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, RIVER_COLS, RIVER_ROWS } from "@/lib/simulatedData";
 
 type LonLat = [number, number];
 type Ring = LonLat[];
@@ -69,6 +69,32 @@ const MODEL_RIVER: Record<number, string> = {
   17: "hachiman",  18: "shizugawa", 20: "hachiman", 24: "shizugawa",
   25: "kitakami",
 };
+
+const REACH_POSITION: Record<number, number> = (() => {
+  const groups: Record<string, number[]> = {};
+  for (const [idStr, river] of Object.entries(MODEL_RIVER)) {
+    if (!groups[river]) groups[river] = [];
+    groups[river].push(Number(idStr));
+  }
+  const result: Record<number, number> = {};
+  for (const ids of Object.values(groups)) {
+    ids.sort((a, b) => a - b);
+    ids.forEach((id, i) => { result[id] = i / Math.max(1, ids.length - 1); });
+  }
+  return result;
+})();
+
+function computeReachValue(week: number, reachId: number): number {
+  const modelRiver = MODEL_RIVER[reachId] ?? "shizugawa";
+  const positionFrac = REACH_POSITION[reachId] ?? 0.5;
+  const data = generateRiverData(week, modelRiver);
+  const col = Math.min(RIVER_COLS - 1, Math.floor(positionFrac * RIVER_COLS));
+  let sum = 0;
+  for (let row = 0; row < RIVER_ROWS; row++) {
+    sum += data[row]?.[col] ?? 0;
+  }
+  return sum / RIVER_ROWS;
+}
 
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
@@ -151,7 +177,7 @@ function buildSubBasinGeoJSON(week: number, variableId: string): SubBasinCollect
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const features: SubBasinFeature[] = Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
     const basinId = Number(idStr);
-    const value = generateReachValue(week, basinId);
+    const value = computeReachValue(week, basinId);
     const color = interpolateColor(stops, Math.max(0, Math.min(1, value)));
     const svgPts = parseSvgPathClosed(d);
     const ring: LonLat[] = svgPts.map(([x, y]) => [svgToLon(x), svgToLat(y)]);
@@ -244,20 +270,17 @@ function buildRiverFeatures(week: number, variableId: string, selectedRiver: str
     const id = Number(idStr);
     const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
     const isMainStem = MAIN_STEMS.has(id);
-    const value = generateReachValue(week, id);
+    const value = computeReachValue(week, id);
     const color = interpolateColor(stops, Math.max(0, Math.min(1, value)));
     const isSelected = selectedRiver === modelRiver;
     const lineWidth = isMainStem ? (isSelected ? 8 : 5) : (isSelected ? 5 : 3);
     const svgPts = parseSvgPath(d);
     const coords: LonLat[] = svgPts.map(([x, y]) => [svgToLon(x), svgToLat(y)]);
-    const safeCoords: LonLat[] = coords.length >= 2
-      ? coords
-      : [[svgToLon(200), svgToLat(300)], [svgToLon(201), svgToLat(301)]];
     return {
       type: "Feature",
       id,
       properties: { reachId: id, modelRiver, isMainStem, color, lineWidth },
-      geometry: { type: "LineString", coordinates: safeCoords },
+      geometry: { type: "LineString", coordinates: coords },
     };
   });
   return { type: "FeatureCollection", features };
@@ -269,10 +292,7 @@ interface MapLibreMapProps {
   selectedRiver: string | null;
   onSelectRiver: (id: string | null) => void;
   onSelectOcean: () => void;
-  selectedWatershed: string | null;
 }
-
-type SvgTransform = { translateX: number; translateY: number; scaleX: number; scaleY: number };
 
 const OCEAN_POLYGON_SVG = "M387 197 L392 215 L400 218 L408 215 L413 223 L413 241 L415 264 L414 271 L408 283 L418 299 L404 308 L394 313 L400 336 L410 343 L404 364 L392 400 L379 403 L380 397 L382 389 L378 390 L376 391 L372 394 L371 397 L366 401 L360 399 L360 394 L356 390 L351 396 L347 402 L337 401 L335 393 L330 384 L324 383 L314 385 L316 390 L309 400 L297 407 L287 405 L282 398 L277 401 L270 398 L265 399 L255 419 L257 440 L188 380 L138 391 L131 263 L60 312 L50 340 L68 395 L65 440 L70 470 L80 500 L100 540 L140 570 L180 580 L230 586 L280 580 L330 565 L370 545 L400 520 L425 490 L440 460 L450 430 L455 400 L460 370 L463 340 L465 300 L460 265 L450 240 L440 220 L430 205 L415 195 L400 192 Z";
 
@@ -285,25 +305,11 @@ export default function MapLibreMap({
 }: MapLibreMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const [transform, setTransform] = useState<SvgTransform>({
-    translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
-  });
   const [mapReady, setMapReady] = useState(false);
   const [webglError, setWebglError] = useState(false);
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
   const svgDataRef = useRef({ week, variableId, selectedRiver });
-
-  const updateTransform = useCallback((map: maplibregl.Map) => {
-    const nw = map.project([BAY_WEST, BAY_NORTH]);
-    const se = map.project([BAY_EAST, BAY_SOUTH]);
-    setTransform({
-      translateX: nw.x,
-      translateY: nw.y,
-      scaleX: (se.x - nw.x) / SVG_W,
-      scaleY: (se.y - nw.y) / SVG_H,
-    });
-  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -503,12 +509,8 @@ export default function MapLibreMap({
         }
       });
 
-      updateTransform(map);
       setMapReady(true);
     });
-
-    map.on("move", () => updateTransform(map));
-    map.on("zoom", () => updateTransform(map));
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-left");
 
@@ -518,7 +520,7 @@ export default function MapLibreMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [updateTransform, onSelectRiver, onSelectOcean]);
+  }, [onSelectRiver, onSelectOcean]);
 
   useEffect(() => {
     svgDataRef.current = { week, variableId, selectedRiver };
@@ -538,6 +540,13 @@ export default function MapLibreMap({
     const oceanGridSource = map.getSource("ocean-grid") as GeoJSONSource | undefined;
     if (oceanGridSource) {
       oceanGridSource.setData(buildOceanGridGeoJSON(week, variableId));
+    }
+
+    const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+    const oceanMeanColor = interpolateColor(stops, Math.max(0, Math.min(1, computeOceanMean(week))));
+    if (map.getLayer("ocean-fill")) {
+      map.setPaintProperty("ocean-fill", "fill-color", oceanMeanColor);
+      map.setPaintProperty("ocean-fill", "fill-opacity", 0.15);
     }
   }, [week, variableId, selectedRiver, mapReady]);
 
@@ -577,7 +586,7 @@ export default function MapLibreMap({
   const riverColors = Object.fromEntries(
     Object.keys(RIVER_PATHS).map((idStr) => {
       const id = Number(idStr);
-      const value = generateReachValue(week, id);
+      const value = computeReachValue(week, id);
       return [id, interpolateColor(stops, Math.max(0, Math.min(1, value)))];
     })
   );

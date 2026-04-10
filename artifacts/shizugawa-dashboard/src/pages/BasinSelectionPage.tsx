@@ -214,7 +214,6 @@ export default function BasinSelectionPage() {
               selectedRiver={selectedRiver}
               onSelectRiver={handleSelectRiver}
               onSelectOcean={handleSelectOcean}
-              selectedWatershed={selectedWatershed}
             />
           </div>
 

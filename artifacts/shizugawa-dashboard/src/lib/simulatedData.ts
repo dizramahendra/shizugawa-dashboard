@@ -245,24 +245,6 @@ export function getColumnMean(data: number[][][], x: number, z: number): number 
   return sumW > 0 ? sumWV / sumW : 0;
 }
 
-/**
- * Compute a single scalar concentration value (0–1) for a specific river reach
- * identified by its numeric SVG reachId. Each reach gets a unique phase offset
- * derived from its ID, so reaches that share the same model basin still have
- * visually distinct, independently-varying colors.
- */
-export function generateReachValue(week: number, reachId: number): number {
-  const t = (week / TOTAL_WEEKS) * Math.PI * 2;
-  const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
-  const phaseA = (reachId * 1.618033) % (Math.PI * 2);
-  const phaseB = (reachId * 2.718281) % (Math.PI * 2);
-  const v =
-    Math.sin(t + phaseA) * 0.22 +
-    Math.cos(t * 1.3 + phaseB) * 0.16 +
-    Math.sin(t * 0.7 + phaseA * 0.5) * 0.12;
-  return Math.min(1, Math.max(0, seasonalBase + v));
-}
-
 /** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
 export function generateRiverData(week: number, riverId: string): number[][] {
   const t = (week / TOTAL_WEEKS) * Math.PI * 2;
