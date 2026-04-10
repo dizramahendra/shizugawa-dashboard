@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import {
   generateRiverData,
   valueToConcentration,
@@ -29,8 +29,7 @@ function interpolateColor(stops: string[], t: number): string {
 }
 
 // ── Organic mask generation ───────────────────────────────────
-// Cosine-blend between control points for smooth-but-varied curves
-type CP = [number, number]; // [t, value]
+type CP = [number, number];
 
 function cosineInterp(pts: CP[], t: number): number {
   if (t <= pts[0][0]) return pts[0][1];
@@ -47,12 +46,8 @@ function cosineInterp(pts: CP[], t: number): number {
   return pts[pts.length - 1][1];
 }
 
-// Per-river control points: rows 0=N bank, RIVER_ROWS-1=S bank
-// center: row index of thalweg (0..RIVER_ROWS-1)
-// halfW:  half-width in row units — goes from near-trickle to wide delta
 const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
   shizugawa: {
-    // Double-meander snake: S-bank start → sweeps N → belly south → rises N again
     center: [
       [0.00, 19.0], [0.05, 18.5], [0.10, 17.0], [0.17, 14.5],
       [0.25, 11.0], [0.32,  7.5], [0.40,  4.5], [0.46,  3.0],
@@ -69,7 +64,6 @@ const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
     ],
   },
   kitakami: {
-    // Full S-curve: starts at N, plunges deep south, rises sharply back to N
     center: [
       [0.00,  3.5], [0.06,  3.0], [0.13,  4.5], [0.20,  7.5],
       [0.28, 11.0], [0.35, 14.5], [0.42, 17.5], [0.49, 19.5],
@@ -85,7 +79,6 @@ const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
     ],
   },
   hachiman: {
-    // Hairpin: starts mid-N, wide approach, tight hairpin at S, wide exit
     center: [
       [0.00,  6.0], [0.07,  5.0], [0.14,  6.0], [0.22,  8.5],
       [0.30, 12.0], [0.37, 16.0], [0.43, 19.0], [0.50, 20.5],
@@ -102,7 +95,6 @@ const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
   },
 };
 
-// Deterministic jitter to roughen the bank edges — ±1.2 row variation
 function edgeJitter(col: number, side: "top" | "bot"): number {
   const seed = col * 7 + (side === "top" ? 3 : 11);
   return Math.sin(seed * 2.399) * 0.8 + Math.sin(seed * 5.17) * 0.4;
@@ -128,16 +120,17 @@ const MASKS: Record<string, boolean[][]> = {
   hachiman:  buildMask("hachiman"),
 };
 
-// ── km tick positions ─────────────────────────────────────────
-// RIVER_COLS=120, total length=18 km → every 20 cols = 3 km
-const KM_TICKS = [0, 20, 40, 60, 80, 100, 120].map(col => ({
-  col: Math.min(col, RIVER_COLS),
-  label: `${Math.round((Math.min(col, RIVER_COLS) / RIVER_COLS) * 18)} km`,
-}));
+// ── Coordinate axis config ────────────────────────────────────
+const EAST_KM  = 18;   // total distance eastward (along-stream)
+const NORTH_KM = 10;   // total distance northward (cross-stream)
+const X_TICKS  = [0, 3, 6, 9, 12, 15, 18];  // km marks on X
+const Y_TICKS  = [0, 2, 4, 6, 8, 10];       // km marks on Y
 
 // ── Layout constants ──────────────────────────────────────────
-const CELL = 7;   // px per cell — 120 cols × 7px = 840px wide
-const GAP  = 0;   // no gap
+const CELL      = 7;   // px per cell
+const GAP       = 0;
+const Y_AXIS_W  = 62;  // px reserved for left Y-axis strip
+const X_AXIS_H  = 40;  // px reserved for bottom X-axis strip
 
 interface RiverGrid2DProps {
   week: number;
@@ -150,115 +143,189 @@ interface RiverGrid2DProps {
 export default function RiverGrid2D({
   week, variableId, riverId, selectedCell, onCellClick,
 }: RiverGrid2DProps) {
-  const data  = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
-  const mask  = MASKS[riverId] ?? MASKS.shizugawa;
-  const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
+  const data     = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
+  const mask     = MASKS[riverId] ?? MASKS.shizugawa;
+  const stops    = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const variable = VARIABLE_OPTIONS.find(v => v.id === variableId) ?? VARIABLE_OPTIONS[0];
 
-  const gridW = RIVER_COLS * CELL + (RIVER_COLS - 1) * GAP;
-  const gridH = RIVER_ROWS * CELL + (RIVER_ROWS - 1) * GAP;
+  const gridW = RIVER_COLS * (CELL + GAP);
+  const gridH = RIVER_ROWS * (CELL + GAP);
+
+  // Measure the content area so we can align axis ticks to the grid
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentSize, setContentSize] = useState({ w: 840, h: 300 });
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const obs = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      setContentSize({ w: width, h: height });
+    });
+    obs.observe(contentRef.current);
+    return () => obs.disconnect();
+  }, []);
+
+  // Grid top-left offset within the content area (centered)
+  const gridOffsetX = (contentSize.w - gridW) / 2;
+  const gridOffsetY = (contentSize.h - gridH) / 2;
+
+  // Map a km value → pixel position within the content area
+  // X: 0 km = grid left, EAST_KM = grid right
+  const xKmToPx = (km: number) => gridOffsetX + (km / EAST_KM) * gridW;
+  // Y: 0 km = grid bottom (S bank), NORTH_KM = grid top (N bank)
+  const yKmToPx = (km: number) => gridOffsetY + (1 - km / NORTH_KM) * gridH;
 
   return (
     <div
-      className="w-full h-full flex flex-col items-center justify-center relative select-none overflow-hidden"
+      className="w-full h-full relative select-none overflow-hidden"
       style={{
         background: "#eaf2f5",
         backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.30) 1.5px, transparent 1.5px)",
         backgroundSize: "23px 23px",
       }}
     >
-      {/* Badge */}
-      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-md shadow-sm border border-border px-3 py-2 z-10 pointer-events-none">
-        <div className="text-xs font-semibold text-foreground">River Playback (2D)</div>
-        <div className="text-[10px] font-mono text-muted-foreground">Raster channel · upstream → downstream</div>
-      </div>
-
-      {/* Grid + axes */}
-      <div className="flex flex-col items-start">
-
-        {/* Y-axis + grid */}
-        <div className="flex items-start">
-
-          {/* Y-axis labels — aligned to grid rows */}
-          <div
-            className="flex flex-col justify-between text-right pr-2 flex-shrink-0"
-            style={{ height: gridH, width: 54 }}
-          >
-            <span className="text-[9px] font-mono text-muted-foreground leading-none" style={{ marginTop: CELL / 2 - 5 }}>N bank</span>
-            <span className="text-[9px] font-mono text-muted-foreground leading-none">thalweg</span>
-            <span className="text-[9px] font-mono text-muted-foreground leading-none" style={{ marginBottom: CELL / 2 - 5 }}>S bank</span>
-          </div>
-
-          {/* Pixel grid */}
-          <div
-            className="relative flex-shrink-0 overflow-visible"
-            style={{ width: gridW, height: gridH }}
-          >
-            {Array.from({ length: RIVER_ROWS }, (_, row) =>
-              Array.from({ length: RIVER_COLS }, (_, col) => {
-                const inCh = mask[row][col];
-                const isSelected = selectedCell?.row === row && selectedCell?.col === col;
-                const val = data[row]?.[col] ?? 0;
-                const color = inCh ? interpolateColor(stops, Math.max(0, Math.min(1, val))) : "transparent";
-                const conc = inCh ? valueToConcentration(val, variableId) : null;
-
-                return (
-                  <div
-                    key={`${row}-${col}`}
-                    onClick={() => inCh && onCellClick(row, col)}
-                    className={`absolute group ${inCh ? "cursor-crosshair" : "cursor-default"}`}
-                    style={{
-                      left:   col * (CELL + GAP),
-                      top:    row * (CELL + GAP),
-                      width:  CELL,
-                      height: CELL,
-                      borderRadius: 0,
-                      backgroundColor: color,
-                      outline: isSelected ? "2px solid hsl(var(--primary))" : "none",
-                      outlineOffset: "-1px",
-                      zIndex: isSelected ? 10 : 1,
-                    }}
-                  >
-                    {inCh && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5
-                                      bg-foreground/85 text-white text-[9px] font-mono rounded whitespace-nowrap
-                                      opacity-0 group-hover:opacity-100 pointer-events-none z-20 transition-opacity">
-                        {conc} {variable.unit}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* X-axis km labels */}
-        <div className="flex items-start mt-2" style={{ paddingLeft: 54 }}>
-          <div className="relative" style={{ width: gridW, height: 14 }}>
-            {KM_TICKS.map(({ col, label }) => (
-              <span
-                key={col}
-                className="absolute text-[9px] font-mono text-muted-foreground -translate-x-1/2"
-                style={{ left: col * (CELL + GAP) + (col < RIVER_COLS ? CELL / 2 : 0) }}
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Direction */}
+      {/* ── Y axis strip — left edge ──────────────────────────── */}
+      <div
+        className="absolute left-0 top-0 flex flex-col items-end pointer-events-none"
+        style={{ width: Y_AXIS_W, bottom: X_AXIS_H }}
+      >
+        {/* Rotated axis label */}
         <div
-          className="mt-5 text-[9px] font-mono text-muted-foreground/60 text-center"
-          style={{ paddingLeft: 54, width: gridW + 54 }}
+          className="absolute text-[9px] font-mono text-slate-400 tracking-wide whitespace-nowrap"
+          style={{
+            transform: "rotate(-90deg)",
+            transformOrigin: "center center",
+            left: -28,
+            top: "50%",
+          }}
         >
-          ← upstream · downstream →
+          Distance Northward (km)
+        </div>
+
+        {/* Tick marks — positioned relative to content area */}
+        {Y_TICKS.map(km => {
+          const py = yKmToPx(km);
+          if (py < 0 || py > contentSize.h) return null;
+          return (
+            <div
+              key={km}
+              className="absolute right-0 flex items-center gap-1"
+              style={{ top: py, transform: "translateY(-50%)" }}
+            >
+              <span className="text-[9px] font-mono text-slate-500 leading-none">{km}</span>
+              <div className="w-2 h-px bg-slate-300" />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Main content area — holds the grid, centered ─────── */}
+      <div
+        ref={contentRef}
+        className="absolute overflow-visible"
+        style={{
+          left: Y_AXIS_W,
+          top: 0,
+          right: 0,
+          bottom: X_AXIS_H,
+        }}
+      >
+        {/* Grid container, centered */}
+        <div
+          className="absolute"
+          style={{
+            left: gridOffsetX,
+            top:  gridOffsetY,
+            width: gridW,
+            height: gridH,
+          }}
+        >
+          {Array.from({ length: RIVER_ROWS }, (_, row) =>
+            Array.from({ length: RIVER_COLS }, (_, col) => {
+              const inCh = mask[row][col];
+              const isSelected = selectedCell?.row === row && selectedCell?.col === col;
+              const val   = data[row]?.[col] ?? 0;
+              const color = inCh ? interpolateColor(stops, Math.max(0, Math.min(1, val))) : "transparent";
+              const conc  = inCh ? valueToConcentration(val, variableId) : null;
+
+              return (
+                <div
+                  key={`${row}-${col}`}
+                  onClick={() => inCh && onCellClick(row, col)}
+                  className={`absolute group ${inCh ? "cursor-crosshair" : "cursor-default"}`}
+                  style={{
+                    left:            col * (CELL + GAP),
+                    top:             row * (CELL + GAP),
+                    width:           CELL,
+                    height:          CELL,
+                    borderRadius:    0,
+                    backgroundColor: color,
+                    outline: isSelected ? "2px solid hsl(var(--primary))" : "none",
+                    outlineOffset: "-1px",
+                    zIndex: isSelected ? 10 : 1,
+                  }}
+                >
+                  {inCh && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5
+                                    bg-foreground/85 text-white text-[9px] font-mono rounded whitespace-nowrap
+                                    opacity-0 group-hover:opacity-100 pointer-events-none z-20 transition-opacity">
+                      {conc} {variable.unit}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
-      {/* Color scale legend */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap">
+      {/* ── X axis strip — bottom edge ────────────────────────── */}
+      <div
+        className="absolute bottom-0 right-0 pointer-events-none"
+        style={{ left: Y_AXIS_W, height: X_AXIS_H }}
+      >
+        {/* Tick marks */}
+        {X_TICKS.map(km => {
+          const px = xKmToPx(km);
+          if (px < 0 || px > contentSize.w) return null;
+          return (
+            <div
+              key={km}
+              className="absolute top-0 flex flex-col items-center gap-0.5"
+              style={{ left: px, transform: "translateX(-50%)" }}
+            >
+              <div className="w-px h-2 bg-slate-300" />
+              <span className="text-[9px] font-mono text-slate-500 leading-none">{km}</span>
+            </div>
+          );
+        })}
+
+        {/* Axis label */}
+        <div
+          className="absolute bottom-1 text-[9px] font-mono text-slate-400 tracking-wide whitespace-nowrap"
+          style={{ left: "50%", transform: "translateX(-50%)" }}
+        >
+          Distance Eastward (km)
+        </div>
+      </div>
+
+      {/* ── Axis border lines ─────────────────────────────────── */}
+      {/* Left axis line */}
+      <div
+        className="absolute bg-slate-300 pointer-events-none"
+        style={{ left: Y_AXIS_W, top: 0, bottom: X_AXIS_H, width: 1 }}
+      />
+      {/* Bottom axis line */}
+      <div
+        className="absolute bg-slate-300 pointer-events-none"
+        style={{ left: Y_AXIS_W, bottom: X_AXIS_H, right: 0, height: 1 }}
+      />
+
+      {/* ── Color scale legend ────────────────────────────────── */}
+      <div
+        className="absolute bg-white/90 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap pointer-events-none"
+        style={{ bottom: X_AXIS_H + 12, left: Y_AXIS_W + 12 }}
+      >
         <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
         <div
           className="h-3 w-32 border border-border/30"
@@ -268,6 +335,15 @@ export default function RiverGrid2D({
           <span>{variable.min} {variable.unit}</span>
           <span>{variable.max} {variable.unit}</span>
         </div>
+      </div>
+
+      {/* ── Badge ─────────────────────────────────────────────── */}
+      <div
+        className="absolute top-3 bg-white/90 backdrop-blur-sm rounded-md shadow-sm border border-border px-3 py-2 z-10 pointer-events-none"
+        style={{ left: Y_AXIS_W + 12 }}
+      >
+        <div className="text-xs font-semibold text-foreground">River Playback (2D)</div>
+        <div className="text-[10px] font-mono text-muted-foreground">Raster channel · upstream → downstream</div>
       </div>
     </div>
   );
