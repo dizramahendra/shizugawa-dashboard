@@ -16,19 +16,19 @@ const RIVER_PATHS: {
 }[] = [
   {
     id: "shizugawa",
-    label: "Shizugawa River",
+    label: "Shizugawa",
     points: [[180, 90], [210, 130], [230, 170], [245, 215]],
     labelPos: [158, 78],
   },
   {
     id: "kitakami",
-    label: "Kitakami Tributary",
+    label: "Kitakami",
     points: [[100, 60], [140, 100], [175, 140], [210, 180], [230, 210]],
     labelPos: [60, 52],
   },
   {
     id: "hachiman",
-    label: "Hachiman River",
+    label: "Hachiman",
     points: [[310, 80], [295, 120], [270, 160], [255, 200], [245, 220]],
     labelPos: [302, 68],
   },

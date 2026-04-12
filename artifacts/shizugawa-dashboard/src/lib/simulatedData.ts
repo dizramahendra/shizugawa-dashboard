@@ -200,9 +200,9 @@ export const RIVER_COLS = 120; // along-stream axis (x)
 export const RIVER_ROWS = 22;  // cross-stream axis (z)
 
 export const RIVERS = [
-  { id: "shizugawa", name: "Shizugawa River", sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
-  { id: "kitakami", name: "Kitakami Upper Tributary", sub: "Motoyoshi · 21.3 km²", length: "12.1 km" },
-  { id: "hachiman", name: "Hachiman River", sub: "Minamisanriku · 24.1 km²", length: "9.7 km" },
+  { id: "shizugawa", name: "Shizugawa", sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
+  { id: "kitakami", name: "Kitakami", sub: "Motoyoshi · 21.3 km²", length: "12.1 km" },
+  { id: "hachiman", name: "Hachiman", sub: "Minamisanriku · 24.1 km²", length: "9.7 km" },
 ];
 
 // ── Depth geometry constants (non-uniform sigma-coordinate layers) ───────────

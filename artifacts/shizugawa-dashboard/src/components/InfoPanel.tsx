@@ -29,10 +29,10 @@ interface InfoPanelProps {
 const BASIN_LIST = [
   { id: 1, name: "Shizugawa Bay (Ocean)", sub: "Shizugawa · 32.8 km²", icon: true },
   { id: 2, name: "Estuary Basin", sub: "Minamisanriku · 12.8 km²" },
-  { id: 3, name: "Kitakami Tributary", sub: "Motoyoshi · 21.3 km²" },
+  { id: 3, name: "Kitakami", sub: "Motoyoshi · 21.3 km²" },
   { id: 4, name: "Tokura Mountain", sub: "Minamisanriku · 17.2 km²" },
-  { id: 5, name: "Hachiman River", sub: "Minamisanriku · 24.1 km²" },
-  { id: 6, name: "Shizugawa River", sub: "Minamisanriku · 25.0 km²" },
+  { id: 5, name: "Hachiman", sub: "Minamisanriku · 24.1 km²" },
+  { id: 6, name: "Shizugawa", sub: "Minamisanriku · 25.0 km²" },
   { id: 7, name: "Oritate River", sub: "Minamisanriku · 14.2 km²" },
   { id: 8, name: "Utatsu Highland", sub: "Motoyoshi · 24.1 km²" },
 ];
