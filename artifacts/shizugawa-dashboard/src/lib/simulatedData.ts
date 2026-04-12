@@ -201,8 +201,12 @@ export const RIVER_ROWS = 22;  // cross-stream axis (z)
 
 export const RIVERS = [
   { id: "shizugawa", name: "Shizugawa", sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
-  { id: "kitakami", name: "Kitakami", sub: "Motoyoshi · 21.3 km²", length: "12.1 km" },
-  { id: "hachiman", name: "Hachiman", sub: "Minamisanriku · 24.1 km²", length: "9.7 km" },
+  { id: "kitakami", name: "Kitakami", sub: "Motoyoshi · 21.3 km²",       length: "12.1 km" },
+  { id: "hachiman", name: "Hachiman", sub: "Minamisanriku · 24.1 km²",   length: "9.7 km"  },
+  { id: "oritate",  name: "Oritate",  sub: "Minamisanriku · 14.2 km²",   length: "7.3 km"  },
+  { id: "sakura",   name: "Sakura",   sub: "Minamisanriku · 11.2 km²",   length: "5.8 km"  },
+  { id: "niida",    name: "Niida",    sub: "Oshika District · 30.5 km²", length: "14.6 km" },
+  { id: "mitobe",   name: "Mitobe",   sub: "Minamisanriku · 22.6 km²",   length: "11.2 km" },
 ];
 
 // ── Depth geometry constants (non-uniform sigma-coordinate layers) ───────────
@@ -251,7 +255,11 @@ export function generateRiverData(week: number, riverId: string, year: number = 
   const yearShift = (year - 2023) * 0.31;
   const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
   const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
-  const riverOffset = riverId === "kitakami" ? 1.2 : riverId === "hachiman" ? 0.6 : 0;
+  const RIVER_OFFSETS: Record<string, number> = {
+    shizugawa: 0, kitakami: 1.2, hachiman: 0.6,
+    oritate: 1.8, sakura: 2.4, niida: 0.9, mitobe: 1.5,
+  };
+  const riverOffset = RIVER_OFFSETS[riverId] ?? 0;
 
   const data: number[][] = [];
   for (let row = 0; row < RIVER_ROWS; row++) {

@@ -32,6 +32,30 @@ const RIVER_PATHS: {
     points: [[310, 80], [295, 120], [270, 160], [255, 200], [245, 220]],
     labelPos: [302, 68],
   },
+  {
+    id: "oritate",
+    label: "Oritate",
+    points: [[55, 200], [88, 232], [115, 260], [140, 282]],
+    labelPos: [30, 188],
+  },
+  {
+    id: "niida",
+    label: "Niida",
+    points: [[505, 152], [478, 182], [452, 220], [420, 262], [400, 292]],
+    labelPos: [488, 140],
+  },
+  {
+    id: "sakura",
+    label: "Sakura",
+    points: [[295, 392], [278, 362], [264, 335], [254, 308]],
+    labelPos: [278, 400],
+  },
+  {
+    id: "mitobe",
+    label: "Mitobe",
+    points: [[128, 392], [152, 364], [170, 342], [182, 314]],
+    labelPos: [108, 400],
+  },
 ];
 
 export default function BasinOverview({

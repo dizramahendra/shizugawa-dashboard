@@ -62,7 +62,10 @@ function interpolateColor(stops: string[], t: number): string {
 // ── River channel mask (sinusoidal meander shape per river) ──────────────────
 
 function buildChannelMask(riverId: string): boolean[][] {
-  const seed = riverId === "shizugawa" ? 0 : riverId === "kitakami" ? 1 : 2;
+  const RIVER_SEEDS: Record<string, number> = {
+    shizugawa: 0, kitakami: 1, hachiman: 2, oritate: 3, sakura: 4, niida: 5, mitobe: 6,
+  };
+  const seed = RIVER_SEEDS[riverId] ?? 0;
   const phase = seed * (Math.PI * 2 / 3);
   const mask: boolean[][] = Array.from({ length: RIVER_ROWS }, () =>
     new Array(RIVER_COLS).fill(false));
@@ -81,6 +84,10 @@ const CHANNEL_MASKS: Record<string, boolean[][]> = {
   shizugawa: buildChannelMask("shizugawa"),
   kitakami:  buildChannelMask("kitakami"),
   hachiman:  buildChannelMask("hachiman"),
+  oritate:   buildChannelMask("oritate"),
+  sakura:    buildChannelMask("sakura"),
+  niida:     buildChannelMask("niida"),
+  mitobe:    buildChannelMask("mitobe"),
 };
 
 // km per column (18 km total for 36 columns)
