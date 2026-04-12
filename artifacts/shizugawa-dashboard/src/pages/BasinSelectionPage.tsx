@@ -245,7 +245,7 @@ export default function BasinSelectionPage() {
           <div className="px-4 py-3.5 border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground">Map Viewport</h2>
-              <span className="text-xs text-muted-foreground">{filteredWatersheds.length + filtered.length} features</span>
+              <span className="text-xs text-muted-foreground">{filtered.length} features</span>
             </div>
           </div>
 
@@ -313,6 +313,7 @@ export default function BasinSelectionPage() {
               </div>
             ) : (
               <>
+                {/* HIDDEN – uncomment to restore Watersheds section
                 <div className="px-4 pt-3 pb-1">
                   <div className="flex items-center gap-1.5">
                     <Map size={11} className="text-muted-foreground" />
@@ -366,7 +367,9 @@ export default function BasinSelectionPage() {
                     </div>
                   );
                 })}
+                */}
 
+                {/* HIDDEN – uncomment to restore Load Watershed button (requires Cross-Section)
                 {activeWS && (
                   <div className="mx-3 mb-3">
                     <button
@@ -383,6 +386,7 @@ export default function BasinSelectionPage() {
                     </div>
                   </div>
                 )}
+                */}
 
                 {filtered.some((b) => b.type === "ocean") && (
                   <>
