@@ -104,6 +104,7 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
         >
           Map Viewport
         </NavLink>
+        {/* HIDDEN – uncomment to restore Cross-Section tab
         <NavLink
           to={buildCSHref()}
           className={`tab-item ${isCS ? "tab-item-active" : ""}`}
@@ -113,6 +114,7 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
             Cross-Section
           </span>
         </NavLink>
+        */}
         <NavLink
           to="/river"
           className={`tab-item ${isRiver ? "tab-item-active" : ""}`}
