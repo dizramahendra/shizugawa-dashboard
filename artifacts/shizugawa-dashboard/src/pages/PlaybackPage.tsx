@@ -348,7 +348,7 @@ export default function PlaybackPage() {
               </div>
             </div>
 
-            {/* Process Indicators */}
+            {/* HIDDEN – uncomment to restore Process Indicators section
             <div className="px-4 py-4">
               <div className="panel-section-title mb-2 flex items-center gap-1.5">
                 <Activity size={11} />
@@ -389,6 +389,7 @@ export default function PlaybackPage() {
                 </label>
               </div>
             </div>
+            */}
 
             {/* Slice level */}
             {(activeTool === "slice-h" || activeTool === "slice-v") && (
