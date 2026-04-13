@@ -329,9 +329,12 @@ export default function MapLibreMap({
         {/* Sub-basin fills */}
         {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
           const id = Number(idStr);
+          const dimmed = !!selectedRiver;
           return (
-            <path key={id} d={d} fill={subBasinColors[id] ?? "#7dd3fc"} fillOpacity={0.28}
-              stroke="#6b7280" strokeWidth={0.5} strokeOpacity={0.5}
+            <path key={id} d={d} fill={subBasinColors[id] ?? "#7dd3fc"}
+              fillOpacity={dimmed ? 0.06 : 0.28}
+              stroke="#6b7280" strokeWidth={0.5}
+              strokeOpacity={dimmed ? 0.12 : 0.5}
               style={{ pointerEvents: "none" }} />
           );
         })}
@@ -354,15 +357,17 @@ export default function MapLibreMap({
           const id = Number(idStr);
           const isSelected = selectedRiver === MODEL_RIVER[id];
           const isHovered = hoveredRiver === id;
+          const isOther = !!selectedRiver && !isSelected;
           const isMainStem = MAIN_STEMS.has(id);
           const sw = isMainStem
             ? (isSelected || isHovered ? 6 : 4)
             : (isSelected || isHovered ? 4 : 2.5);
           const samples = REACH_SAMPLES[id];
           const color = reachColors[id] ?? "#60a5fa";
+          const strokeOpacity = isOther ? 0.15 : 1;
 
           return (
-            <g key={id}>
+            <g key={id} opacity={strokeOpacity}>
               {/* Glow halo when hovered/selected */}
               {(isSelected || isHovered) && (
                 <polyline
