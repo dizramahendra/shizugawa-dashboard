@@ -6,11 +6,11 @@ const SVG_W = 465;
 const SVG_H = 586;
 
 const MODEL_RIVER: Record<number, string> = {
-  1: "shizugawa", 2: "shizugawa", 3: "shizugawa", 4: "shizugawa", 5: "shizugawa",
-  6: "shizugawa", 7: "shizugawa", 8: "kitakami", 9: "kitakami", 10: "kitakami",
-  11: "kitakami", 12: "kitakami", 13: "hachiman", 14: "hachiman", 15: "hachiman",
-  16: "hachiman", 17: "hachiman", 18: "hachiman", 19: "hachiman", 20: "hachiman",
-  21: "hachiman", 22: "hachiman", 23: "hachiman", 24: "hachiman", 25: "hachiman",
+  1: "shizugawa", 2: "oura",      3: "karakuwa", 4: "togura",   5: "urashiro",
+  6: "iriya",     7: "okawa",     8: "niida",    9: "karakuwa2", 10: "tomaya",
+  11: "shishiori", 12: "onagawa", 13: "hachiman", 14: "motoyoshi", 15: "mitobe",
+  16: "sakura",   17: "oritate",  18: "kitakami", 20: "moriya",  24: "oya",
+  25: "kamaishi",
 };
 
 const REACH_POSITION: Record<number, number> = (() => {

@@ -196,13 +196,27 @@ export const RIVER_COLS = 120; // along-stream axis (x)
 export const RIVER_ROWS = 22;  // cross-stream axis (z)
 
 export const RIVERS = [
-  { id: "shizugawa", name: "Shizugawa", sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
-  { id: "kitakami", name: "Kitakami", sub: "Motoyoshi · 21.3 km²",       length: "12.1 km" },
-  { id: "hachiman", name: "Hachiman", sub: "Minamisanriku · 24.1 km²",   length: "9.7 km"  },
-  { id: "oritate",  name: "Oritate",  sub: "Minamisanriku · 14.2 km²",   length: "7.3 km"  },
-  { id: "sakura",   name: "Sakura",   sub: "Minamisanriku · 11.2 km²",   length: "5.8 km"  },
-  { id: "niida",    name: "Niida",    sub: "Oshika District · 30.5 km²", length: "14.6 km" },
-  { id: "mitobe",   name: "Mitobe",   sub: "Minamisanriku · 22.6 km²",   length: "11.2 km" },
+  { id: "shizugawa", name: "Shizugawa",      sub: "Minamisanriku · 25.0 km²", length: "18.4 km" },
+  { id: "oura",      name: "Oura",           sub: "Minamisanriku · 8.7 km²",  length: "6.2 km"  },
+  { id: "karakuwa",  name: "Karakuwa",       sub: "Kesennuma · 12.4 km²",     length: "9.1 km"  },
+  { id: "togura",    name: "Togura",         sub: "Minamisanriku · 10.3 km²", length: "7.8 km"  },
+  { id: "urashiro",  name: "Urashiro",       sub: "Minamisanriku · 9.5 km²",  length: "5.9 km"  },
+  { id: "iriya",     name: "Iriya",          sub: "Minamisanriku · 7.1 km²",  length: "4.3 km"  },
+  { id: "okawa",     name: "Okawa",          sub: "Minamisanriku · 13.8 km²", length: "11.0 km" },
+  { id: "niida",     name: "Niida",          sub: "Oshika District · 30.5 km²", length: "14.6 km" },
+  { id: "karakuwa2", name: "Karakuwa East",  sub: "Kesennuma · 6.9 km²",      length: "5.4 km"  },
+  { id: "tomaya",    name: "Tomaya",         sub: "Oshika District · 18.2 km²", length: "9.3 km" },
+  { id: "shishiori", name: "Shishiori",      sub: "Kesennuma · 22.7 km²",     length: "13.1 km" },
+  { id: "onagawa",   name: "Onagawa",        sub: "Oshika District · 15.6 km²", length: "8.7 km" },
+  { id: "hachiman",  name: "Hachiman",       sub: "Minamisanriku · 24.1 km²", length: "9.7 km"  },
+  { id: "motoyoshi", name: "Motoyoshi",      sub: "Motoyoshi · 21.3 km²",     length: "12.1 km" },
+  { id: "mitobe",    name: "Mitobe",         sub: "Minamisanriku · 22.6 km²", length: "11.2 km" },
+  { id: "sakura",    name: "Sakura",         sub: "Minamisanriku · 11.2 km²", length: "5.8 km"  },
+  { id: "oritate",   name: "Oritate",        sub: "Minamisanriku · 14.2 km²", length: "7.3 km"  },
+  { id: "kitakami",  name: "Kitakami",       sub: "Motoyoshi · 16.4 km²",     length: "10.5 km" },
+  { id: "moriya",    name: "Moriya",         sub: "Minamisanriku · 8.1 km²",  length: "5.1 km"  },
+  { id: "oya",       name: "Oya",            sub: "Minamisanriku · 17.9 km²", length: "10.2 km" },
+  { id: "kamaishi",  name: "Kamaishi",       sub: "Kamaishi · 19.3 km²",      length: "11.7 km" },
 ];
 
 // ── Depth geometry constants (non-uniform sigma-coordinate layers) ───────────
@@ -252,8 +266,12 @@ export function generateRiverData(week: number, riverId: string, year: number = 
   const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
   const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
   const RIVER_OFFSETS: Record<string, number> = {
-    shizugawa: 0, kitakami: 1.2, hachiman: 0.6,
-    oritate: 1.8, sakura: 2.4, niida: 0.9, mitobe: 1.5,
+    shizugawa: 0,    oura: 0.3,    karakuwa: 0.6,  togura: 0.9,
+    urashiro: 1.1,   iriya: 1.4,   okawa: 1.7,     niida: 0.9,
+    karakuwa2: 0.75, tomaya: 1.05, shishiori: 1.35, onagawa: 1.65,
+    hachiman: 0.6,   motoyoshi: 1.2, mitobe: 1.5,  sakura: 2.4,
+    oritate: 1.8,    kitakami: 1.2,  moriya: 2.1,  oya: 2.0,
+    kamaishi: 2.3,
   };
   const riverOffset = RIVER_OFFSETS[riverId] ?? 0;
 
