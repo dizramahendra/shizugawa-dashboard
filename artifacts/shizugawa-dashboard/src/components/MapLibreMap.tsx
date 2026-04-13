@@ -14,14 +14,8 @@ const MODEL_RIVER: Record<number, string> = {
 };
 
 const REACH_POSITION: Record<number, number> = (() => {
-  const groups: Record<string, number[]> = {};
-  for (const [idStr, river] of Object.entries(MODEL_RIVER)) {
-    (groups[river] ??= []).push(Number(idStr));
-  }
   const pos: Record<number, number> = {};
-  for (const [, ids] of Object.entries(groups)) {
-    ids.forEach((id, i) => { pos[id] = i / Math.max(1, ids.length - 1); });
-  }
+  for (const id of Object.keys(MODEL_RIVER)) { pos[Number(id)] = 0.5; }
   return pos;
 })();
 
@@ -231,12 +225,12 @@ function computeRiverSvgBounds(modelRiver: string): { x: number; y: number; w: n
     }
   }
   if (!isFinite(minX)) return { x: 0, y: 0, w: SVG_W, h: SVG_H };
-  const PAD = 50;
+  const PAD = 80;
   const rx = Math.max(0, minX - PAD);
   const ry = Math.max(0, minY - PAD);
   const rw = Math.min(SVG_W, maxX + PAD) - rx;
   const rh = Math.min(SVG_H, maxY + PAD) - ry;
-  return { x: rx, y: ry, w: Math.max(60, rw), h: Math.max(60, rh) };
+  return { x: rx, y: ry, w: Math.max(120, rw), h: Math.max(120, rh) };
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
