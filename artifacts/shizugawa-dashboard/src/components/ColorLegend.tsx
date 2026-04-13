@@ -15,15 +15,10 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
     low: "10 μg/L",
     high: "130 μg/L",
   },
-  chlorophyll: {
-    stops: ["#1a4a2e", "#2d7a4a", "#5aab6e", "#a8d898", "#e8f4b0", "#f5f5dc"],
-    low: "0.5 μg/L",
-    high: "18.5 μg/L",
-  },
-  oxygen: {
-    stops: ["#c8401c", "#e8a030", "#f0e68c", "#b8dce8", "#6ca0c8", "#3b6fa0"],
-    low: "4.0 mg/L",
-    high: "10.0 mg/L",
+  flow: {
+    stops: ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
+    low: "0 cm/s",
+    high: "80 cm/s",
   },
   all: {
     stops: ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],

@@ -140,8 +140,7 @@ export default function Dashboard() {
             >
               <option value="nitrogen">Total Nitrogen</option>
               <option value="phosphorus">Total Phosphorus</option>
-              <option value="chlorophyll">Chlorophyll-a</option>
-              <option value="do">Dissolved Oxygen</option>
+              <option value="flow">Water Flow</option>
             </select>
           </div>
           <div className="ml-auto flex items-center gap-2">

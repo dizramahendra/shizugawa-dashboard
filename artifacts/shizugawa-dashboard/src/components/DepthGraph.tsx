@@ -14,10 +14,9 @@ const DEPTH_LABELS = ["1m", "5", "15", "30", "50", "75", "100", "125"];
 const DEPTH_MID_M  = [2.5, 10, 22.5, 40, 62.5, 87.5, 112.5, 137.5];
 
 const ALL_VARS = [
-  { id: "nitrogen",    label: "Nitrogen",    color: "#c084fc" },
-  { id: "phosphorus",  label: "Phosphorus",  color: "#fb923c" },
-  { id: "chlorophyll", label: "Chlorophyll", color: "#4ade80" },
-  { id: "do",          label: "DO",          color: "#60a5fa" },
+  { id: "nitrogen",   label: "Nitrogen",   color: "#c084fc" },
+  { id: "phosphorus", label: "Phosphorus", color: "#fb923c" },
+  { id: "flow",       label: "Flow",       color: "#26c6da" },
 ];
 
 const SVG_W = 240;
@@ -69,17 +68,14 @@ export default function DepthGraph({
         const f = d / (DEPTH_LAYERS - 1); // 0 = surface, 1 = bottom
         let shaped: number;
         if (v.id === "nitrogen") {
-          // River-driven: highest near surface, gradual decrease
+          // River-driven: highest near surface, gradual decrease with depth
           shaped = raw * (1 - f * 0.5);
         } else if (v.id === "phosphorus") {
           // Sediment-driven: builds toward mid-bottom
           shaped = raw * (0.5 + 0.5 * Math.sin(f * Math.PI * 0.9 + 0.1));
-        } else if (v.id === "chlorophyll") {
-          // Photosynthesis: peaks near surface, drops sharply at depth
-          shaped = raw * Math.exp(-f * 2.8);
         } else {
-          // DO: high at surface (atm exchange), decreasing with depth
-          shaped = raw * (1 - f * 0.55 + f * f * 0.15);
+          // Flow: peaks in upper-mid column, attenuates near bottom (friction)
+          shaped = raw * Math.exp(-Math.pow(f - 0.2, 2) * 4);
         }
         return Math.min(1, Math.max(0, shaped));
       }),

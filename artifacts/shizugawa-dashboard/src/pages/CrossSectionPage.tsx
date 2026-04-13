@@ -130,8 +130,7 @@ export default function CrossSectionPage() {
           >
             <option value="nitrogen">Total Nitrogen</option>
             <option value="phosphorus">Total Phosphorus</option>
-            <option value="chlorophyll">Chlorophyll-a</option>
-            <option value="do">Dissolved Oxygen</option>
+            <option value="flow">Water Flow</option>
           </select>
         </div>
 
