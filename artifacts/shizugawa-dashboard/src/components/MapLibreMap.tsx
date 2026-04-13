@@ -317,40 +317,41 @@ export default function MapLibreMap({
         preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", transition: "viewBox 0.6s ease" }}
       >
-        {/* Geographic background */}
-        <image
-          href="/Sub-basin area.svg"
-          x={0} y={0}
-          width={SVG_W} height={SVG_H}
-          preserveAspectRatio="xMidYMid meet"
-          opacity={0.9}
-        />
+        {/* Background layer — grayscale + dimmed when a river is selected */}
+        <g style={selectedRiver ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" } : { transition: "opacity 0.3s, filter 0.3s" }}>
+          {/* Geographic background */}
+          <image
+            href="/Sub-basin area.svg"
+            x={0} y={0}
+            width={SVG_W} height={SVG_H}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={0.9}
+          />
 
-        {/* Sub-basin fills */}
-        {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
-          const id = Number(idStr);
-          const dimmed = !!selectedRiver;
-          return (
-            <path key={id} d={d} fill={subBasinColors[id] ?? "#7dd3fc"}
-              fillOpacity={dimmed ? 0.06 : 0.28}
-              stroke="#6b7280" strokeWidth={0.5}
-              strokeOpacity={dimmed ? 0.12 : 0.5}
-              style={{ pointerEvents: "none" }} />
-          );
-        })}
+          {/* Sub-basin fills */}
+          {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
+            const id = Number(idStr);
+            return (
+              <path key={id} d={d} fill={subBasinColors[id] ?? "#7dd3fc"}
+                fillOpacity={0.28}
+                stroke="#6b7280" strokeWidth={0.5} strokeOpacity={0.5}
+                style={{ pointerEvents: "none" }} />
+            );
+          })}
 
-        {/* Ocean polygon — exact Shizugawa Bay (Ocean Basin) shape from SVG */}
-        <path
-          d={OCEAN_BASIN_PATH}
-          fill={`${oceanColor}55`}
-          stroke={oceanColor}
-          strokeWidth={hoveredOcean ? 2.5 : 1.5}
-          strokeOpacity={0.8}
-          style={{ pointerEvents: "all", cursor: "pointer" }}
-          onMouseEnter={() => setHoveredOcean(true)}
-          onMouseLeave={() => setHoveredOcean(false)}
-          onClick={onSelectOcean}
-        />
+          {/* Ocean polygon — exact Shizugawa Bay (Ocean Basin) shape from SVG */}
+          <path
+            d={OCEAN_BASIN_PATH}
+            fill={`${oceanColor}55`}
+            stroke={oceanColor}
+            strokeWidth={hoveredOcean ? 2.5 : 1.5}
+            strokeOpacity={0.8}
+            style={{ pointerEvents: selectedRiver ? "none" : "all", cursor: "pointer" }}
+            onMouseEnter={() => setHoveredOcean(true)}
+            onMouseLeave={() => setHoveredOcean(false)}
+            onClick={onSelectOcean}
+          />
+        </g>
 
         {/* Rivers: single solid color per reach */}
         {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
@@ -364,10 +365,12 @@ export default function MapLibreMap({
             : (isSelected || isHovered ? 4 : 2.5);
           const samples = REACH_SAMPLES[id];
           const color = reachColors[id] ?? "#60a5fa";
-          const strokeOpacity = isOther ? 0.15 : 1;
+          const otherStyle = isOther
+            ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" }
+            : { transition: "opacity 0.3s, filter 0.3s" };
 
           return (
-            <g key={id} opacity={strokeOpacity}>
+            <g key={id} style={otherStyle}>
               {/* Glow halo when hovered/selected */}
               {(isSelected || isHovered) && (
                 <polyline
