@@ -28,33 +28,34 @@ export const GRID_D = 24;
 export const DEPTH_LAYERS = 8;
 export const TOTAL_WEEKS = 52;
 
-// 2× upscale of the original 12×14 mask → 24×28
+// Rasterized from the actual OCEAN_BASIN_PATH SVG polygon (main connected component)
+// gz 0 = south shore, gz 23 = north; gx 0 = west (inner bay head), gx 27 = east (bay mouth)
 const T = true, F = false;
 const BAY_MASK: boolean[][] = [
-  [F,F,F,F,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F], // gz  0
-  [F,F,F,F,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F], // gz  2
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F], // gz  3
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  4
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  5
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F], // gz  6
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F], // gz  7
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F], // gz  8
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F], // gz  9
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F], // gz 10
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F], // gz 11
-  [F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 12
-  [F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 13
-  [F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 14
-  [F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 15
-  [F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F], // gz 16
-  [F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F], // gz 17
-  [F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F], // gz 18
-  [F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F], // gz 19
-  [F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F], // gz 20
-  [F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F], // gz 21
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,F,F,F,F,F,F,F,F,F,F], // gz 22
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,F,F,F,F,F,F,F,F,F,F], // gz 23
+  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  0
+  [F,F,F,F,F,T,T,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
+  [F,F,F,F,F,T,T,T,F,F,F,F,F,T,F,T,T,F,F,F,F,T,T,T,F,T,F,F], // gz  2
+  [F,F,F,F,F,T,T,T,F,F,F,F,T,T,T,T,T,F,T,T,T,T,T,T,T,T,F,F], // gz  3
+  [F,F,F,F,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  4
+  [F,F,F,F,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  5
+  [F,F,T,T,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  6
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  7
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  8
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  9
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,T,T,F,F], // gz 10
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,T,T,T,T,T,T,T,T,T,T,F], // gz 11
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T], // gz 12
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T], // gz 13
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,T,T,T,T,T,T,T,T,F], // gz 14
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,T,T,T,T,T,T,T,T], // gz 15
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,T,T,T,T,T,T,T,F], // gz 16
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,T,T,T,T,T,T,F], // gz 17
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,T,T,T,T,T,F], // gz 18
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,T,T,T,T,F], // gz 19
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,T,T,T,T,T], // gz 20
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,T,T,T,F], // gz 21
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,T,F,F], // gz 22
+  [F,F,T,T,T,F,F,F,T,T,T,F,F,T,F,T,T,T,F,F,F,F,F,F,F,T,F,F], // gz 23
 ];
 
 export { BAY_MASK };
