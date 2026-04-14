@@ -23,15 +23,17 @@ export interface SelectedPoint {
   unit: string;
 }
 
-export const GRID_W = 28;
-export const GRID_D = 24;
+// Grid at 56×48 (2× from original 28×24) — STEP=0.5 in OceanBasin3D keeps the
+// same physical bay dimensions while halving voxel size for a denser look.
+export const GRID_W = 56;
+export const GRID_D = 48;
 export const DEPTH_LAYERS = 8;
 export const TOTAL_WEEKS = 52;
 
-// Rasterized from the actual OCEAN_BASIN_PATH SVG polygon.
+// Original 28×24 mask — expanded to 56×48 via 2×2 block doubling below.
 // gz 0 = south shore, gz 23 = north; gx 0 = west (inner bay head), gx 27 = east (bay mouth)
 const T = true, F = false;
-const BAY_MASK: boolean[][] = [
+const BAY_MASK_SRC: boolean[][] = [
   [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  0
   [F,F,F,F,F,T,T,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
   [F,F,F,F,F,T,T,T,F,F,F,F,F,T,F,T,T,F,F,F,F,T,T,T,F,T,F,F], // gz  2
@@ -58,12 +60,16 @@ const BAY_MASK: boolean[][] = [
   [F,F,T,T,T,F,F,F,T,T,T,F,F,T,F,T,T,T,F,F,F,F,F,F,F,T,F,F], // gz 23
 ];
 
-export { BAY_MASK };
+// 56×48 mask — each original cell becomes a 2×2 block of identical cells.
+export const BAY_MASK: boolean[][] = Array.from({ length: GRID_D }, (_, gz) =>
+  Array.from({ length: GRID_W }, (_, gx) =>
+    BAY_MASK_SRC[Math.floor(gz / 2)]?.[Math.floor(gx / 2)] ?? false
+  )
+);
 
-// ── River voxel cells (gz >= 24, north of bay) ──────────────────────────────
-// Each cell maps to one voxel in the 3D scene rendered as a single shallow layer.
-// Rivers widen near gz=24 (delta mouth) and narrow upstream (higher gz).
-// mouthGx = center gx used to sample bay-mouth data for the colour value.
+// ── River voxel cells ────────────────────────────────────────────────────────
+// Spines authored in 28×24 space, densified ×2 to match the 56×48 grid.
+// mouthGx / mouthGz are in 56×48 coords (original × 2).
 
 export interface RiverCell {
   gx: number;
@@ -124,13 +130,49 @@ function buildRiverEast(
   return cells;
 }
 
-// ── River spines — east/shallow side of bay ──────────────────────────────────
-// Bay mouth mask row gz=23: active at gx=2-4, 8-10, 13, 15-17, 25
-// Bay mouth mask row gz=0 : active at gx=15 only
+// ── Spine densifiers ─────────────────────────────────────────────────────────
+// Original spines step by 1 in gz/gx. After ×2 scaling they'd have gaps of 2,
+// so we insert one interpolated entry between each pair of adjacent points.
 
-// North river — exits gz=23 near gx=16 (mid-east cluster), body goes north
-// Start 2 rows inside bay (gz=21,22,23) to fill boundary gap cells
-const SPINE_NORTH = [
+function densifyNS(
+  sparse: Array<{ gz: number; cx: number }>,
+): Array<{ gz: number; cx: number }> {
+  const out: Array<{ gz: number; cx: number }> = [];
+  for (let i = 0; i < sparse.length; i++) {
+    const { gz, cx } = sparse[i];
+    out.push({ gz: gz * 2, cx: cx * 2 });
+    if (i < sparse.length - 1) {
+      const { gz: gz2, cx: cx2 } = sparse[i + 1];
+      out.push({
+        gz: gz * 2 + Math.sign(gz2 - gz),
+        cx: Math.round((cx * 2 + cx2 * 2) / 2),
+      });
+    }
+  }
+  return out;
+}
+
+function densifyEW(
+  sparse: Array<{ gx: number; cz: number }>,
+): Array<{ gx: number; cz: number }> {
+  const out: Array<{ gx: number; cz: number }> = [];
+  for (let i = 0; i < sparse.length; i++) {
+    const { gx, cz } = sparse[i];
+    out.push({ gx: gx * 2, cz: cz * 2 });
+    if (i < sparse.length - 1) {
+      const { gx: gx2, cz: cz2 } = sparse[i + 1];
+      out.push({
+        gx: gx * 2 + Math.sign(gx2 - gx),
+        cz: Math.round((cz * 2 + cz2 * 2) / 2),
+      });
+    }
+  }
+  return out;
+}
+
+// ── River spines (authored in 28×24 coords, densified to 56×48) ──────────────
+// North river — exits at gz=23 near gx=16, extends 2 rows into bay for gap-fill
+const SPINE_NORTH = densifyNS([
   { gz:21, cx:16 }, { gz:22, cx:16 }, { gz:23, cx:16 },
   { gz:24, cx:16 }, { gz:25, cx:16 }, { gz:26, cx:15 }, { gz:27, cx:14 },
   { gz:28, cx:15 }, { gz:29, cx:16 }, { gz:30, cx:17 }, { gz:31, cx:18 },
@@ -138,11 +180,10 @@ const SPINE_NORTH = [
   { gz:36, cx:15 }, { gz:37, cx:16 }, { gz:38, cx:17 }, { gz:39, cx:18 },
   { gz:40, cx:17 }, { gz:41, cx:16 }, { gz:42, cx:15 }, { gz:43, cx:16 },
   { gz:44, cx:17 },
-];
+]);
 
-// Northeast river — exits gz=23 at gx=25 (isolated NE cell), body goes northeast
-// Start 2 rows inside bay (gz=21,22,23) to fill boundary gap cells
-const SPINE_NE = [
+// Northeast river — exits at gz=23 gx=25, extends 2 rows into bay for gap-fill
+const SPINE_NE = densifyNS([
   { gz:21, cx:25 }, { gz:22, cx:25 }, { gz:23, cx:25 },
   { gz:24, cx:25 }, { gz:25, cx:26 }, { gz:26, cx:26 }, { gz:27, cx:25 },
   { gz:28, cx:25 }, { gz:29, cx:26 }, { gz:30, cx:26 }, { gz:31, cx:27 },
@@ -150,39 +191,35 @@ const SPINE_NE = [
   { gz:36, cx:27 }, { gz:37, cx:27 }, { gz:38, cx:26 }, { gz:39, cx:25 },
   { gz:40, cx:26 }, { gz:41, cx:27 }, { gz:42, cx:27 }, { gz:43, cx:26 },
   { gz:44, cx:25 },
-];
+]);
 
-// Southeast river — exits gz=0 near gx=16, body goes south (negative gz)
-// Start 2 rows inside bay (gz=2,1,0) to fill boundary gap cells
-const SPINE_SE = [
+// Southeast river — exits at gz=0 near gx=16, extends 2 rows into bay
+const SPINE_SE = densifyNS([
   { gz:2,   cx:16 }, { gz:1,   cx:16 }, { gz:0,   cx:16 },
   { gz:-1,  cx:16 }, { gz:-2,  cx:17 }, { gz:-3,  cx:18 }, { gz:-4,  cx:19 },
   { gz:-5,  cx:20 }, { gz:-6,  cx:19 }, { gz:-7,  cx:18 }, { gz:-8,  cx:17 },
   { gz:-9,  cx:18 }, { gz:-10, cx:19 }, { gz:-11, cx:20 }, { gz:-12, cx:19 },
   { gz:-13, cx:18 }, { gz:-14, cx:17 }, { gz:-15, cx:18 }, { gz:-16, cx:19 },
   { gz:-17, cx:20 }, { gz:-18, cx:19 }, { gz:-19, cx:18 }, { gz:-20, cx:17 },
-];
+]);
 
-// East river — exits eastern bay wall near gz=13 (gx=27 active there),
-// body flows eastward (gx=28→47), spreads in gz, gently curving north-south.
-// Start 2 columns inside bay (gx=25,26,27) to fill east-boundary gap cells.
-// mouthGx=27 (eastern bay column), mouthGz=13 (row where gx=27 is active).
-const SPINE_EAST_RIVER = [
+// East river — exits east bay wall at gz=13/gx=27, extends 2 cols into bay
+const SPINE_EAST_RIVER = densifyEW([
   { gx:25, cz:13 }, { gx:26, cz:13 }, { gx:27, cz:13 },
   { gx:28, cz:13 }, { gx:29, cz:13 }, { gx:30, cz:14 }, { gx:31, cz:15 },
   { gx:32, cz:15 }, { gx:33, cz:14 }, { gx:34, cz:13 }, { gx:35, cz:12 },
   { gx:36, cz:12 }, { gx:37, cz:13 }, { gx:38, cz:14 }, { gx:39, cz:15 },
   { gx:40, cz:16 }, { gx:41, cz:16 }, { gx:42, cz:15 }, { gx:43, cz:14 },
   { gx:44, cz:13 }, { gx:45, cz:12 }, { gx:46, cz:11 }, { gx:47, cz:11 },
-];
+]);
 
 export const RIVER_CELLS: RiverCell[] = [
-  // args: spine, halfWDelta (mouth), halfWUpstream (source), mouthGx, mouthGz
-  // Scaled to realistic proportions: ~500m delta, ~250m channel vs ~7km bay
-  ...buildRiver(SPINE_NORTH,          2, 0, 16, GRID_D - 1),  // north — 5-cell delta → 1-cell channel
-  ...buildRiver(SPINE_NE,             1, 0, 25, GRID_D - 1),  // northeast — 3-cell delta → 1-cell channel
-  ...buildRiver(SPINE_SE,             2, 0, 15, 0),            // southeast — 5-cell delta → 1-cell channel
-  ...buildRiverEast(SPINE_EAST_RIVER, 2, 0, 27, 13),          // east — 5-cell delta → 1-cell channel
+  // halfW values doubled (×2) to preserve the same physical width at STEP=0.5.
+  // mouthGx / mouthGz doubled to refer to the correct 56×48 grid cell.
+  ...buildRiver(SPINE_NORTH,          4, 0, 32, GRID_D - 1),  // north  — 9-cell delta → 1-cell channel
+  ...buildRiver(SPINE_NE,             2, 0, 50, GRID_D - 1),  // NE     — 5-cell delta → 1-cell channel
+  ...buildRiver(SPINE_SE,             4, 0, 30, 0),            // SE     — 9-cell delta → 1-cell channel
+  ...buildRiverEast(SPINE_EAST_RIVER, 4, 0, 55, 26),          // east   — 9-cell delta → 1-cell channel
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {

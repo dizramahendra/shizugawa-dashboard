@@ -17,7 +17,7 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const STEP   = 1.0;    // scene units per grid cell
+const STEP   = 0.5;    // scene units per grid cell (56×48 grid, same physical bay size)
 const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
