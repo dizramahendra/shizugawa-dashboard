@@ -6,7 +6,7 @@ interface ColorLegendProps {
 
 const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   nitrogen: {
-    stops: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
+    stops: ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
     low: "0.2 mg/L",
     high: "3.0 mg/L",
   },

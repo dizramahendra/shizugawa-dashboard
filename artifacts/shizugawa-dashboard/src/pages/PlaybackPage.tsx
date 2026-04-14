@@ -8,9 +8,14 @@ import WeekRangePicker from "@/components/WeekRangePicker";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
-import ColorLegend from "@/components/ColorLegend";
 import DepthGraph from "@/components/DepthGraph";
 import FlowIndicators from "@/components/FlowIndicators";
+
+const COLOR_STOPS: Record<string, string[]> = {
+  nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
+  phosphorus: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
+  flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
+};
 
 type ToolState = "none" | "point-select" | "slice-h" | "slice-v" | "depth-graph";
 
@@ -239,9 +244,39 @@ export default function PlaybackPage() {
               );
             })()}
 
-            <div className="absolute bottom-3 left-3 bg-white/80 border border-border rounded-md px-2.5 py-1.5 pointer-events-none shadow-sm">
-              <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click surface cell to inspect column</div>
-            </div>
+            {/* Bottom-left: legend overlay (same system as Map & River views) */}
+            {(() => {
+              const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
+              return (
+                <div className="absolute bottom-3 left-3 z-10 pointer-events-none flex flex-col gap-2">
+                  <div className="bg-white/95 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap">
+                    <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex rounded-sm overflow-hidden border border-border/30">
+                        {stops.map((color, i) => {
+                          const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(variable.id === "phosphorus" ? 3 : 1);
+                          const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(variable.id === "phosphorus" ? 3 : 1);
+                          return <div key={i} style={{ backgroundColor: color, width: 22, height: 11 }} title={`${lo}–${hi} ${variable.unit}`} />;
+                        })}
+                      </div>
+                      <div className="flex">
+                        {stops.map((_, i) => (
+                          <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 22 }}>
+                            {(variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(variable.id === "phosphorus" ? 3 : 1)}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-[7px] font-mono text-slate-400 text-right" style={{ width: stops.length * 22 }}>
+                        {variable.unit}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white/80 border border-border rounded-md px-2.5 py-1.5 shadow-sm">
+                    <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click surface cell to inspect column</div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <PlaybackControls
@@ -315,12 +350,6 @@ export default function PlaybackPage() {
                   <path d="M2 12V8m20 4V8" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2"/>
                 </svg>
               </div>
-            </div>
-
-            {/* Legend */}
-            <div className="px-4 py-4">
-              <div className="panel-section-title mb-3">Data Legend</div>
-              <ColorLegend variableId={selectedVariable} variableLabel={variable.label} unit={variable.unit} />
             </div>
 
             {/* Analysis tools */}

@@ -41,58 +41,26 @@ const BAY_LON_E = 141.468;
 const BAY_LAT_S = 38.582;
 const BAY_LAT_N = 38.651;
 
-// ── Color scales ──────────────────────────────────────────────────────────────
-const COLOR_SCALES: Record<string, [number, number, number][]> = {
-  nitrogen: [
-    [0.17, 0.37, 0.54],
-    [0.24, 0.44, 0.63],
-    [0.42, 0.62, 0.75],
-    [0.56, 0.77, 0.87],
-    [0.77, 0.87, 0.91],
-    [0.96, 0.94, 0.85],
-    [0.94, 0.82, 0.56],
-    [0.91, 0.63, 0.19],
-    [0.83, 0.35, 0.13],
-    [0.78, 0.25, 0.11],
-  ],
-  phosphorus: [
-    [0.10, 0.42, 0.29],
-    [0.18, 0.54, 0.37],
-    [0.30, 0.66, 0.46],
-    [0.49, 0.78, 0.60],
-    [0.72, 0.88, 0.75],
-    [0.94, 0.92, 0.72],
-    [0.94, 0.82, 0.50],
-    [0.91, 0.63, 0.19],
-    [0.83, 0.35, 0.13],
-    [0.78, 0.25, 0.11],
-  ],
-  flow: [
-    [0.059, 0.020, 0.153],
-    [0.122, 0.039, 0.306],
-    [0.227, 0.059, 0.478],
-    [0.353, 0.118, 0.690],
-    [0.486, 0.227, 0.847],
-    [0.616, 0.380, 0.910],
-    [0.733, 0.557, 0.949],
-    [0.831, 0.714, 0.969],
-    [0.914, 0.843, 0.984],
-    [0.969, 0.941, 0.996],
-  ],
-  all: [
-    [0.27, 0.00, 0.33],
-    [0.13, 0.37, 0.60],
-    [0.09, 0.59, 0.55],
-    [0.21, 0.72, 0.43],
-    [0.68, 0.85, 0.19],
-    [0.99, 0.91, 0.15],
-  ],
+// ── Color scales (hex — shared with map & river views) ────────────────────────
+const COLOR_SCALES: Record<string, string[]> = {
+  nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
+  phosphorus: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
+  flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
+  all:        ["#45007e","#2060a0","#168c8c","#35b870","#aadb30","#fce820"],
 };
 
-function lerpColor(stops: [number, number, number][], t: number): [number, number, number] {
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255,
+  ];
+}
+
+function lerpColor(stops: string[], t: number): [number, number, number] {
   const n = stops.length;
   const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
-  return stops[idx];
+  return hexToRgb(stops[idx]);
 }
 
 // ── VoxelGrid ─────────────────────────────────────────────────────────────────
