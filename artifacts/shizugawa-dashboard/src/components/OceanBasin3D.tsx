@@ -17,7 +17,7 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const STEP   = 1.0;    // scene units per grid cell
+const STEP   = 2.0;    // scene units per grid cell  (2 = 2× ocean footprint)
 const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
@@ -452,7 +452,7 @@ export default function OceanBasin3D({
 }: OceanBasin3DProps) {
   return (
     <Canvas
-      camera={{ position: [38, 22, 46], fov: 38 }}
+      camera={{ position: [76, 44, 92], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
@@ -481,8 +481,8 @@ export default function OceanBasin3D({
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={15}
-        maxDistance={95}
+        minDistance={30}
+        maxDistance={190}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>
