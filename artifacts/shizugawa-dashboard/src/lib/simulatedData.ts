@@ -72,17 +72,23 @@ export interface RiverCell {
   mouthGz: number; // bay-boundary row  for value / colour sampling
 }
 
-// buildRiver: sweeps a (2*halfW+1)-wide cross-section along a centerline.
-// spine = [{gz, cx}] from mouth outward. Deduplication via Set.
+// buildRiver: sweeps a cross-section along a centerline, tapering from a wide
+// delta at the mouth (spine index 0) to a narrow channel upstream (last index).
+// halfWDelta = half-width at the bay mouth; halfWUpstream = half-width at source.
 function buildRiver(
   spine: Array<{ gz: number; cx: number }>,
-  halfW: number,
+  halfWDelta: number,
+  halfWUpstream: number,
   mouthGx: number,
   mouthGz: number,
 ): RiverCell[] {
   const cells: RiverCell[] = [];
   const seen = new Set<string>();
-  for (const { gz, cx } of spine) {
+  const n = spine.length;
+  spine.forEach(({ gz, cx }, i) => {
+    // Linear taper: wide at mouth (i=0), narrow upstream (i=n-1)
+    const t    = n > 1 ? i / (n - 1) : 0;
+    const halfW = Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
     for (let dx = -halfW; dx <= halfW; dx++) {
       const gx = cx + dx;
       if (gx < 0 || gx >= GRID_W) continue;
@@ -91,7 +97,7 @@ function buildRiver(
       seen.add(key);
       cells.push({ gx, gz, mouthGx, mouthGz });
     }
-  }
+  });
   return cells;
 }
 
@@ -129,9 +135,10 @@ const SPINE_SE = [
 ];
 
 export const RIVER_CELLS: RiverCell[] = [
-  ...buildRiver(SPINE_NORTH, 2, 16, GRID_D - 1),  // 5-wide, samples north bay edge (gz=23)
-  ...buildRiver(SPINE_NE,    1, 25, GRID_D - 1),  // 3-wide, samples NE corner (gz=23,gx=25)
-  ...buildRiver(SPINE_SE,    2, 16, 0),            // 5-wide, samples south bay edge (gz=0)
+  // args: spine, halfWDelta (mouth), halfWUpstream (source), mouthGx, mouthGz
+  ...buildRiver(SPINE_NORTH, 4, 1, 16, GRID_D - 1),  // wide delta→narrow channel, north
+  ...buildRiver(SPINE_NE,    3, 1, 25, GRID_D - 1),  // wide delta→narrow channel, NE
+  ...buildRiver(SPINE_SE,    4, 1, 15, 0),            // wide delta→narrow channel, SE (mouthGx=15 ✓)
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {
