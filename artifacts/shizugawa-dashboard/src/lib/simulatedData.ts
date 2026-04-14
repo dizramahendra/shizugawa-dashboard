@@ -183,60 +183,76 @@ function densifyEW(
 }
 
 // ── River spines (authored in 28×24 coords, densified to 56×48) ──────────────
-// w = half-width override in 28×24 space (gets ×2 after densify).
-// No w = linear taper from halfWDelta→halfWUpstream supplied to buildRiver.
-// Positive w values mark meander pools; narrower between them.
+// Shapes traced from SVG river paths in svgPaths.ts using the affine mapping:
+//   cx  (28×24) ≈ 0.0535 × svgX + 5
+//   Δgz (28×24) ≈ −ΔsvgY / 13.3   (each 13.3 SVG pixels north = +1 gz step)
+//
+// River 24 (oya)      → NORTH:  mild left drift,  mostly straight
+// River  3 (karakuwa) → NE:     hugs right edge, slight sinusoid near boundary
+// River 13 (hachiman) → SE:     consistent left drift going south
+// River  7 (okawa)    → EAST:   gentle northward drift going east
 
-// North river — big sweeping meanders, wide pools at bends, narrow rapids between
+// North river — traced from river 24 (oya): straight with a very mild left drift
 const SPINE_NORTH = densifyNS([
-  { gz:21, cx:16 }, { gz:22, cx:16 }, { gz:23, cx:16 },             // bay gap-fill
-  { gz:24, cx:16 },                                                  // exit
-  { gz:25, cx:14 }, { gz:26, cx:11 }, { gz:27, cx:9,  w:3 },        // sharp left — pool
-  { gz:28, cx:11 }, { gz:29, cx:14 }, { gz:30, cx:17 },             // cross back
-  { gz:31, cx:20 }, { gz:32, cx:22, w:2 },                          // right bank — pool
-  { gz:33, cx:21 }, { gz:34, cx:18 }, { gz:35, cx:15 },             // return
-  { gz:36, cx:12 }, { gz:37, cx:10, w:2 },                          // left — pool
-  { gz:38, cx:12 }, { gz:39, cx:15 }, { gz:40, cx:19 },             // wide sweep right
-  { gz:41, cx:22, w:3 }, { gz:42, cx:21 },                          // large right pool
-  { gz:43, cx:18 }, { gz:44, cx:16 },                               // straighten
+  { gz:21, cx:16 }, { gz:22, cx:16 }, { gz:23, cx:16 }, // bay gap-fill
+  { gz:24, cx:16 },                                       // exit
+  { gz:25, cx:15 }, { gz:26, cx:15 },
+  { gz:27, cx:15 }, { gz:28, cx:14 },
+  { gz:29, cx:14 }, { gz:30, cx:15 },                    // small right undulation
+  { gz:31, cx:15 }, { gz:32, cx:14 },
+  { gz:33, cx:14 }, { gz:34, cx:14 },
+  { gz:35, cx:13 }, { gz:36, cx:13 },
+  { gz:37, cx:14 }, { gz:38, cx:14 },                    // slight right return
+  { gz:39, cx:13 }, { gz:40, cx:13 },
+  { gz:41, cx:13 }, { gz:42, cx:13 },
+  { gz:43, cx:12 }, { gz:44, cx:12 },                    // final gentle drift left
 ]);
 
-// Northeast river — tighter, jerkier bends, overall narrower
+// NE river — traced from river 3 (karakuwa): exits from the right side,
+// hugs gx=25-27 with a slow sinusoid
 const SPINE_NE = densifyNS([
-  { gz:21, cx:25 }, { gz:22, cx:25 }, { gz:23, cx:25 },             // bay gap-fill
-  { gz:24, cx:25 },                                                  // exit
-  { gz:25, cx:24 }, { gz:26, cx:23 }, { gz:27, cx:24, w:1 },        // slight left wobble
-  { gz:28, cx:26 }, { gz:29, cx:27 },                               // sharp right
-  { gz:30, cx:26 }, { gz:31, cx:24 }, { gz:32, cx:23 },             // back left
-  { gz:33, cx:24 }, { gz:34, cx:26 }, { gz:35, cx:27, w:1 },        // right pool
-  { gz:36, cx:25 }, { gz:37, cx:23 }, { gz:38, cx:22 },             // left
-  { gz:39, cx:23 }, { gz:40, cx:25 }, { gz:41, cx:26 },             // right
-  { gz:42, cx:25 }, { gz:43, cx:24 }, { gz:44, cx:23 },             // winding end
+  { gz:21, cx:25 }, { gz:22, cx:25 }, { gz:23, cx:25 }, // bay gap-fill
+  { gz:24, cx:25 },                                       // exit
+  { gz:25, cx:25 }, { gz:26, cx:26 },
+  { gz:27, cx:27 }, { gz:28, cx:27 },                    // swing right to boundary
+  { gz:29, cx:26 }, { gz:30, cx:26 },
+  { gz:31, cx:25 }, { gz:32, cx:26 },
+  { gz:33, cx:27 }, { gz:34, cx:27 },                    // right again
+  { gz:35, cx:26 }, { gz:36, cx:25 },
+  { gz:37, cx:25 }, { gz:38, cx:26 },
+  { gz:39, cx:27 }, { gz:40, cx:27 },                    // third oscillation
+  { gz:41, cx:26 }, { gz:42, cx:25 },
+  { gz:43, cx:25 }, { gz:44, cx:26 },
 ]);
 
-// Southeast river — asymmetric curves, lopsided pools on alternate sides
+// SE river — traced from river 13 (hachiman): consistent left drift going south
 const SPINE_SE = densifyNS([
-  { gz:2,   cx:16 }, { gz:1,   cx:16 }, { gz:0,   cx:16 },          // bay gap-fill
-  { gz:-1,  cx:17 }, { gz:-2,  cx:20 }, { gz:-3,  cx:22, w:2 },     // right bank — pool
-  { gz:-4,  cx:21 }, { gz:-5,  cx:18 }, { gz:-6,  cx:15 },          // cross
-  { gz:-7,  cx:12, w:2 }, { gz:-8,  cx:13 }, { gz:-9,  cx:16 },     // left pool
-  { gz:-10, cx:19 }, { gz:-11, cx:22 }, { gz:-12, cx:23, w:2 },     // wide right
-  { gz:-13, cx:21 }, { gz:-14, cx:18 }, { gz:-15, cx:14 },          // return
-  { gz:-16, cx:11, w:2 }, { gz:-17, cx:13 },                        // far-left pool
-  { gz:-18, cx:16 }, { gz:-19, cx:19 }, { gz:-20, cx:21 },          // end rightward
+  { gz:2,   cx:15 }, { gz:1,   cx:15 }, { gz:0,   cx:15 }, // bay gap-fill
+  { gz:-1,  cx:15 },                                          // exit
+  { gz:-2,  cx:15 }, { gz:-3,  cx:14 },
+  { gz:-4,  cx:14 }, { gz:-5,  cx:14 },
+  { gz:-6,  cx:13 }, { gz:-7,  cx:13 },
+  { gz:-8,  cx:13 }, { gz:-9,  cx:12 },
+  { gz:-10, cx:12 }, { gz:-11, cx:12 },
+  { gz:-12, cx:11 }, { gz:-13, cx:11 },
+  { gz:-14, cx:12 }, { gz:-15, cx:12 },                     // slight right undulation
+  { gz:-16, cx:11 }, { gz:-17, cx:11 },
+  { gz:-18, cx:10 }, { gz:-19, cx:10 }, { gz:-20, cx:10 },
 ]);
 
-// East river — slow wide curves, larger amplitude north/south swings
+// East river — traced from river 7 (okawa, reversed): gentle northward drift
 const SPINE_EAST_RIVER = densifyEW([
-  { gx:25, cz:13 }, { gx:26, cz:13 }, { gx:27, cz:13 },            // bay gap-fill
-  { gx:28, cz:13 },                                                  // exit
-  { gx:29, cz:15 }, { gx:30, cz:17 }, { gx:31, cz:18, w:2 },       // north sweep — pool
-  { gx:32, cz:16 }, { gx:33, cz:14 }, { gx:34, cz:11 },            // south sweep
-  { gx:35, cz:10, w:2 }, { gx:36, cz:11 }, { gx:37, cz:13 },       // south pool
-  { gx:38, cz:16 }, { gx:39, cz:18 }, { gx:40, cz:19, w:3 },       // large north pool
-  { gx:41, cz:18 }, { gx:42, cz:15 }, { gx:43, cz:12 },            // south
-  { gx:44, cz:10, w:2 }, { gx:45, cz:11 }, { gx:46, cz:13 },       // south pool
-  { gx:47, cz:14 },                                                  // end
+  { gx:25, cz:13 }, { gx:26, cz:13 }, { gx:27, cz:13 }, // bay gap-fill
+  { gx:28, cz:13 },                                        // exit
+  { gx:29, cz:13 }, { gx:30, cz:14 },
+  { gx:31, cz:14 }, { gx:32, cz:14 },
+  { gx:33, cz:15 }, { gx:34, cz:15 },
+  { gx:35, cz:14 }, { gx:36, cz:15 },                     // slight south dip
+  { gx:37, cz:15 }, { gx:38, cz:16 },
+  { gx:39, cz:16 }, { gx:40, cz:16 },
+  { gx:41, cz:15 }, { gx:42, cz:16 },                     // slight south dip
+  { gx:43, cz:17 }, { gx:44, cz:17 },
+  { gx:45, cz:16 }, { gx:46, cz:17 }, { gx:47, cz:17 },
 ]);
 
 export const RIVER_CELLS: RiverCell[] = [
