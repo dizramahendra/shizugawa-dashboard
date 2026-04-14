@@ -319,9 +319,15 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
       gz >= 0      ? Math.max(0, gz - GRID_D) :
                      -gz;
 
+    // Cells that extend into the bay grid are gap-fillers only — render as a
+    // single surface tile so they don't conflict with ocean depth stacks.
+    const inBayBounds = gz >= 0 && gz < GRID_D && gx >= 0 && gx < GRID_W;
+
     // How many depth layers to render at this cell
     // (mouth = DELTA_ROWS, decreasing to 1 as we go upstream)
-    const numLayers = Math.max(1, DELTA_ROWS - upstreamDist + 1);
+    const numLayers = inBayBounds
+      ? 1
+      : Math.max(1, DELTA_ROWS - upstreamDist + 1);
 
     // Colour: sample bay-edge top layer, amplify slightly upstream
     const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;

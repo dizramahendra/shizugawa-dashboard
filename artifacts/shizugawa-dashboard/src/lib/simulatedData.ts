@@ -129,7 +129,9 @@ function buildRiverEast(
 // Bay mouth mask row gz=0 : active at gx=15 only
 
 // North river — exits gz=23 near gx=16 (mid-east cluster), body goes north
+// Start 2 rows inside bay (gz=21,22,23) to fill boundary gap cells
 const SPINE_NORTH = [
+  { gz:21, cx:16 }, { gz:22, cx:16 }, { gz:23, cx:16 },
   { gz:24, cx:16 }, { gz:25, cx:16 }, { gz:26, cx:15 }, { gz:27, cx:14 },
   { gz:28, cx:15 }, { gz:29, cx:16 }, { gz:30, cx:17 }, { gz:31, cx:18 },
   { gz:32, cx:17 }, { gz:33, cx:16 }, { gz:34, cx:15 }, { gz:35, cx:14 },
@@ -139,7 +141,9 @@ const SPINE_NORTH = [
 ];
 
 // Northeast river — exits gz=23 at gx=25 (isolated NE cell), body goes northeast
+// Start 2 rows inside bay (gz=21,22,23) to fill boundary gap cells
 const SPINE_NE = [
+  { gz:21, cx:25 }, { gz:22, cx:25 }, { gz:23, cx:25 },
   { gz:24, cx:25 }, { gz:25, cx:26 }, { gz:26, cx:26 }, { gz:27, cx:25 },
   { gz:28, cx:25 }, { gz:29, cx:26 }, { gz:30, cx:26 }, { gz:31, cx:27 },
   { gz:32, cx:27 }, { gz:33, cx:26 }, { gz:34, cx:25 }, { gz:35, cx:26 },
@@ -149,7 +153,9 @@ const SPINE_NE = [
 ];
 
 // Southeast river — exits gz=0 near gx=16, body goes south (negative gz)
+// Start 2 rows inside bay (gz=2,1,0) to fill boundary gap cells
 const SPINE_SE = [
+  { gz:2,   cx:16 }, { gz:1,   cx:16 }, { gz:0,   cx:16 },
   { gz:-1,  cx:16 }, { gz:-2,  cx:17 }, { gz:-3,  cx:18 }, { gz:-4,  cx:19 },
   { gz:-5,  cx:20 }, { gz:-6,  cx:19 }, { gz:-7,  cx:18 }, { gz:-8,  cx:17 },
   { gz:-9,  cx:18 }, { gz:-10, cx:19 }, { gz:-11, cx:20 }, { gz:-12, cx:19 },
@@ -159,8 +165,10 @@ const SPINE_SE = [
 
 // East river — exits eastern bay wall near gz=13 (gx=27 active there),
 // body flows eastward (gx=28→47), spreads in gz, gently curving north-south.
+// Start 2 columns inside bay (gx=25,26,27) to fill east-boundary gap cells.
 // mouthGx=27 (eastern bay column), mouthGz=13 (row where gx=27 is active).
 const SPINE_EAST_RIVER = [
+  { gx:25, cz:13 }, { gx:26, cz:13 }, { gx:27, cz:13 },
   { gx:28, cz:13 }, { gx:29, cz:13 }, { gx:30, cz:14 }, { gx:31, cz:15 },
   { gx:32, cz:15 }, { gx:33, cz:14 }, { gx:34, cz:13 }, { gx:35, cz:12 },
   { gx:36, cz:12 }, { gx:37, cz:13 }, { gx:38, cz:14 }, { gx:39, cz:15 },
