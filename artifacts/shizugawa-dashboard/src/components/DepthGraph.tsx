@@ -194,6 +194,32 @@ function MiniChart({ title, unit, vars, profiles, height, patId }: MiniChartProp
   );
 }
 
+/**
+ * Generate a depth profile for water flow at a bay cell.
+ * Flow is driven by tidal/wind forcing (peaks spring/autumn), not nutrient runoff.
+ * Depth structure: estuarine — surface outflow layer, mid-depth minimum, bottom inflow layer.
+ */
+function generateFlowProfile(week: number, x: number, z: number): number[] {
+  const TOTAL_WEEKS = 52;
+  // Flow peaks in spring (snowmelt/storms) and autumn — two annual peaks
+  const t = (week / TOTAL_WEEKS) * Math.PI * 2;
+  const seasonalFlow = 0.5 + 0.35 * Math.sin(t + 0.8) + 0.15 * Math.sin(2 * t + 1.2);
+  // Spatial variation: stronger flow at bay mouth (high x), calmer in inner bay
+  const spatialMod = 0.4 + 0.6 * (x / 13);
+  // Cell-to-cell texture
+  const cellVar = 0.85 + 0.15 * Math.sin(x * 1.3 + z * 0.9 + week * 0.17);
+
+  return Array.from({ length: DEPTH_LAYERS }, (_, d) => {
+    const f = d / (DEPTH_LAYERS - 1);
+    // Estuarine two-layer circulation: strong at surface, weak at mid, moderate at bottom
+    const depthProfile =
+      0.85 * Math.exp(-Math.pow(f - 0.0, 2) / 0.08) +   // surface outflow peak
+      0.45 * Math.exp(-Math.pow(f - 1.0, 2) / 0.12) +   // bottom inflow layer
+      0.05;                                                // residual at mid-depth
+    return Math.min(1, Math.max(0, depthProfile * seasonalFlow * spatialMod * cellVar));
+  });
+}
+
 export default function DepthGraph({
   week,
   variableId,
@@ -209,7 +235,8 @@ export default function DepthGraph({
     const x = selectedPoint?.x ?? 0;
     const z = selectedPoint?.z ?? 0;
 
-    return [...NP_VARS, ...FLOW_VARS].map((v) => ({
+    // N and P come from the nutrient field; Flow is computed independently
+    const npProfiles = NP_VARS.map((v) => ({
       ...v,
       values: Array.from({ length: DEPTH_LAYERS }, (_, d) => {
         const raw = data[z]?.[x]?.[d] ?? 0;
@@ -217,15 +244,20 @@ export default function DepthGraph({
         let shaped: number;
         if (v.id === "nitrogen") {
           shaped = raw * (1 - f * 0.5);
-        } else if (v.id === "phosphorus") {
-          shaped = raw * (0.5 + 0.5 * Math.sin(f * Math.PI * 0.9 + 0.1));
         } else {
-          shaped = raw * Math.exp(-Math.pow(f - 0.2, 2) * 4);
+          shaped = raw * (0.5 + 0.5 * Math.sin(f * Math.PI * 0.9 + 0.1));
         }
         return Math.min(1, Math.max(0, shaped));
       }),
     }));
-  }, [data, selectedPoint, sliceLevel]);
+
+    const flowProfile = {
+      ...FLOW_VARS[0],
+      values: generateFlowProfile(week, x, z),
+    };
+
+    return [...npProfiles, flowProfile];
+  }, [data, week, selectedPoint, sliceLevel]);
 
   if (!profiles) {
     return (
