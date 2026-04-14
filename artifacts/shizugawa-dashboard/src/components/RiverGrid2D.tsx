@@ -9,22 +9,16 @@ import {
 
 // ── Color interpolation ───────────────────────────────────────
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#15803d", "#4ade80", "#facc15", "#f97316", "#dc2626"],
+  nitrogen:   ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
   phosphorus: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
   all:         ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
 };
 
 function interpolateColor(stops: string[], t: number): string {
-  const n = stops.length - 1;
-  const idx = Math.min(n - 1, Math.floor(t * n));
-  const frac = t * n - idx;
-  const hex = (s: string, o: number) => parseInt(s.slice(o, o + 2), 16);
-  const lr  = (a: number, b: number) => Math.round(a + (b - a) * frac);
-  const r   = lr(hex(stops[idx], 1), hex(stops[idx + 1], 1));
-  const g   = lr(hex(stops[idx], 3), hex(stops[idx + 1], 3));
-  const b   = lr(hex(stops[idx], 5), hex(stops[idx + 1], 5));
-  return `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b.toString(16).padStart(2,"0")}`;
+  const n = stops.length;
+  const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
+  return stops[idx];
 }
 
 // ── Organic mask generation ───────────────────────────────────
@@ -374,10 +368,18 @@ export default function RiverGrid2D({
         style={{ bottom: X_AXIS_H + 12, left: Y_AXIS_W + 12 }}
       >
         <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
-        <div className="h-3 w-32 border border-border/30" style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }} />
-        <div className="flex justify-between text-[9px] font-mono text-muted-foreground" style={{ width: "8rem" }}>
-          <span>{variable.min} {variable.unit}</span>
-          <span>{variable.max} {variable.unit}</span>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex rounded-sm overflow-hidden border border-border/30">
+            {stops.map((color, i) => {
+              const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
+              const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1);
+              return <div key={i} style={{ backgroundColor: color, width: 20, height: 10 }} title={`${lo}–${hi} ${variable.unit}`} />;
+            })}
+          </div>
+          <div className="flex justify-between text-[9px] font-mono text-muted-foreground" style={{ width: stops.length * 20 }}>
+            <span>{variable.min}</span>
+            <span>{variable.max} {variable.unit}</span>
+          </div>
         </div>
       </div>
 

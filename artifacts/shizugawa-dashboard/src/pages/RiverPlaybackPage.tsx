@@ -109,7 +109,7 @@ import PlaybackControls from "@/components/PlaybackControls";
 import RiverGrid2D from "@/components/RiverGrid2D";
 
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#15803d", "#4ade80", "#facc15", "#f97316", "#dc2626"],
+  nitrogen:   ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
   phosphorus: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
 };
@@ -357,13 +357,21 @@ export default function RiverPlaybackPage() {
               <div className="panel-section-title mb-3">Variable</div>
               <div className="text-sm font-medium text-foreground">{variable.label}</div>
               <div className="text-xs text-muted-foreground mb-3">{variable.unit}</div>
-              <div className="h-3.5 rounded border border-border/50" style={{
-                background: `linear-gradient(to right, ${stops.join(", ")})`
-              }} />
-              <div className="flex justify-between text-[10px] font-mono text-muted-foreground mt-1">
-                <span>{variable.min} {variable.unit}</span>
-                <span>{variable.max} {variable.unit}</span>
+              <div className="flex gap-0.5 mt-1">
+                {stops.map((color, i) => {
+                  const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
+                  const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1);
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+                      <div style={{ backgroundColor: color, width: "100%", height: 14, borderRadius: 3 }} />
+                      <div className="text-[8px] font-mono text-muted-foreground text-center leading-tight whitespace-nowrap">
+                        {lo}–{hi}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+              <div className="text-[9px] text-muted-foreground mt-1">{variable.unit}</div>
             </div>
 
             {/* 3b. Reach Mean */}

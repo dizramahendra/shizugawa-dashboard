@@ -17,24 +17,19 @@ const MODEL_RIVER: Record<number, string> = {
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#15803d", "#4ade80", "#facc15", "#f97316", "#dc2626"],
+  nitrogen:   ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
   phosphorus: ["#fce7f3", "#f9a8d4", "#ec4899", "#be185d", "#500724"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
   all:        ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
 };
 
-function interpolateColor(stops: string[], t: number): string {
-  const n = stops.length - 1;
-  const i = Math.min(n - 1, Math.floor(t * n));
-  const f = t * n - i;
-  const c0 = stops[i], c1 = stops[i + 1];
-  const hex = (s: string, o: number) => parseInt(s.slice(o, o + 2), 16);
-  const lerp = (a: number, b: number) => Math.round(a + (b - a) * f);
-  const r = lerp(hex(c0, 1), hex(c1, 1));
-  const g = lerp(hex(c0, 3), hex(c1, 3));
-  const b = lerp(hex(c0, 5), hex(c1, 5));
-  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+function quantizeColor(stops: string[], t: number): string {
+  const n = stops.length;
+  const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
+  return stops[idx];
 }
+// keep alias so existing calls work without rename
+const interpolateColor = quantizeColor;
 
 // ── River channel mask (sinusoidal meander shape per river) ──────────────────
 
@@ -492,14 +487,19 @@ export default function MapLibreMap({
         const maxVal = varOpt?.max ?? 1;
         const unit   = varOpt?.unit ?? "";
         return (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none whitespace-nowrap">
-            <span className="text-[9px] text-muted-foreground font-medium">{variableLabel}</span>
-            <span className="text-[9px] text-slate-500 font-mono">{minVal}</span>
-            <div
-              className="w-24 h-2.5 rounded-sm border border-border/20"
-              style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
-            />
-            <span className="text-[9px] text-slate-500 font-mono">{maxVal} {unit}</span>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5 bg-white/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none whitespace-nowrap">
+            <span className="text-[9px] text-muted-foreground font-medium self-start">{variableLabel}</span>
+            <div className="flex rounded-sm overflow-hidden border border-border/20">
+              {stops.map((color, i) => {
+                const lo = (minVal + (i / stops.length) * (maxVal - minVal)).toFixed(1);
+                const hi = (minVal + ((i + 1) / stops.length) * (maxVal - minVal)).toFixed(1);
+                return <div key={i} style={{ backgroundColor: color, width: 22, height: 10 }} title={`${lo}–${hi} ${unit}`} />;
+              })}
+            </div>
+            <div className="flex justify-between w-full text-[8px] font-mono text-slate-500">
+              <span>{minVal}</span>
+              <span>{maxVal} {unit}</span>
+            </div>
           </div>
         );
       })()}

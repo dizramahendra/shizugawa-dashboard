@@ -44,11 +44,11 @@ const BAY_LAT_N = 38.651;
 // ── Color scales ──────────────────────────────────────────────────────────────
 const COLOR_SCALES: Record<string, [number, number, number][]> = {
   nitrogen: [
-    [0.08, 0.50, 0.24],
-    [0.29, 0.87, 0.50],
-    [0.98, 0.80, 0.08],
-    [0.98, 0.45, 0.09],
-    [0.86, 0.15, 0.15],
+    [0.88, 0.95, 1.00],
+    [0.49, 0.83, 0.99],
+    [0.05, 0.65, 0.91],
+    [0.01, 0.41, 0.63],
+    [0.12, 0.23, 0.37],
   ],
   phosphorus: [
     [0.23, 0.44, 0.63],
@@ -77,16 +77,9 @@ const COLOR_SCALES: Record<string, [number, number, number][]> = {
 };
 
 function lerpColor(stops: [number, number, number][], t: number): [number, number, number] {
-  const clamped = Math.min(1, Math.max(0, t));
-  const idx = clamped * (stops.length - 1);
-  const i = Math.floor(idx);
-  const f = idx - i;
-  if (i >= stops.length - 1) return stops[stops.length - 1];
-  return [
-    stops[i][0] + (stops[i + 1][0] - stops[i][0]) * f,
-    stops[i][1] + (stops[i + 1][1] - stops[i][1]) * f,
-    stops[i][2] + (stops[i + 1][2] - stops[i][2]) * f,
-  ];
+  const n = stops.length;
+  const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
+  return stops[idx];
 }
 
 // ── VoxelGrid ─────────────────────────────────────────────────────────────────
