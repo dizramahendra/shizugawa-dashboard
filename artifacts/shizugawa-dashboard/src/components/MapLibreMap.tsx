@@ -144,6 +144,21 @@ function samplePathPoints(d: string, n: number): [number, number][] {
   return sampled;
 }
 
+function pathCentroid(d: string): [number, number] {
+  const pts = flattenPath(d);
+  if (pts.length === 0) return [0, 0];
+  const sx = pts.reduce((s, p) => s + p[0], 0);
+  const sy = pts.reduce((s, p) => s + p[1], 0);
+  return [sx / pts.length, sy / pts.length];
+}
+
+// Pre-compute sub-basin centroids once
+const SUB_BASIN_CENTROIDS: Record<number, [number, number]> = Object.fromEntries(
+  Object.entries(SUB_BASIN_PATHS).map(([id, d]) => [Number(id), pathCentroid(d)])
+);
+
+const OCEAN_CENTROID: [number, number] = pathCentroid(OCEAN_BASIN_PATH);
+
 // Pre-compute sampled points once at module load (geometry never changes)
 const REACH_SAMPLES: Record<number, [number, number][]> = (() => {
   const out: Record<number, [number, number][]> = {};
@@ -270,13 +285,22 @@ export default function MapLibreMap({
       >
         {/* Background layer — dimmed when a river is selected */}
         <g style={selectedRiver ? { opacity: 0.18, transition: "opacity 0.3s" } : { transition: "opacity 0.3s" }}>
-          {/* Sub-basin boundary lines */}
+          {/* Sub-basin boundary lines + number labels */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
             const id = Number(idStr);
+            const [cx, cy] = SUB_BASIN_CENTROIDS[id] ?? [0, 0];
             return (
-              <path key={id} d={d} fill="none"
-                stroke="#94a3b8" strokeWidth={0.6} strokeOpacity={0.6}
-                style={{ pointerEvents: "none" }} />
+              <g key={id} style={{ pointerEvents: "none" }}>
+                <path d={d} fill="none"
+                  stroke="#94a3b8" strokeWidth={0.6} strokeOpacity={0.6} />
+                <text x={cx} y={cy}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize={7} fontFamily="sans-serif"
+                  fill="#475569" fillOpacity={0.85}
+                  style={{ userSelect: "none" }}>
+                  {id}
+                </text>
+              </g>
             );
           })}
 
@@ -292,6 +316,21 @@ export default function MapLibreMap({
             onMouseLeave={() => setHoveredOcean(false)}
             onClick={onSelectOcean}
           />
+          {/* Ocean label */}
+          <text x={OCEAN_CENTROID[0]} y={OCEAN_CENTROID[1] - 4}
+            textAnchor="middle" dominantBaseline="middle"
+            fontSize={8} fontFamily="sans-serif"
+            fill="#1e40af" fillOpacity={0.7}
+            style={{ pointerEvents: "none", userSelect: "none" }}>
+            Shizugawa Bay
+          </text>
+          <text x={OCEAN_CENTROID[0]} y={OCEAN_CENTROID[1] + 8}
+            textAnchor="middle" dominantBaseline="middle"
+            fontSize={6.5} fontFamily="sans-serif"
+            fill="#1e40af" fillOpacity={0.55}
+            style={{ pointerEvents: "none", userSelect: "none" }}>
+            (Ocean Basin)
+          </text>
         </g>
 
         {/* Rivers: single solid color per reach */}
