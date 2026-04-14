@@ -13,13 +13,9 @@ interface DepthGraphProps {
 const DEPTH_LABELS = ["1m", "5m", "15m", "30m", "50m", "75m", "100m", "125m"];
 const DEPTH_MID_M  = [2.5, 10, 22.5, 40, 62.5, 87.5, 112.5, 137.5];
 
-const NP_VARS = [
-  { id: "nitrogen",   label: "N",   color: "#c084fc" },
-  { id: "phosphorus", label: "P",   color: "#fb923c" },
-];
-const FLOW_VARS = [
-  { id: "flow", label: "Flow", color: "#26c6da" },
-];
+const N_VAR    = { id: "nitrogen",   label: "N",    color: "#c084fc", varMin: 0.2, varMax: 3.0,  unit: "mg/L",  decimals: 1 };
+const P_VAR    = { id: "phosphorus", label: "P",    color: "#fb923c", varMin: 10,  varMax: 130, unit: "μg/L",  decimals: 0 };
+const FLOW_VAR = { id: "flow",       label: "Flow", color: "#26c6da", varMin: 0,   varMax: 80,  unit: "cm/s",  decimals: 0 };
 
 const SVG_W = 200;
 const PL = 34;
@@ -47,21 +43,22 @@ function smooth(pts: [number, number][]): string {
 
 interface MiniChartProps {
   title: string;
-  unit: string;
-  vars: { id: string; label: string; color: string }[];
-  profiles: { id: string; label: string; color: string; values: number[] }[];
+  varDef: { id: string; label: string; color: string; varMin: number; varMax: number; unit: string; decimals: number };
+  values: number[];   // normalized 0–1
   height: number;
   patId: string;
 }
 
-function MiniChart({ title, unit, vars, profiles, height, patId }: MiniChartProps) {
+function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
   const [hovIdx, setHovIdx] = useState<number | null>(null);
   const IH = height - PT - PB;
 
   const toY = (di: number) => PT + (di / (DEPTH_LAYERS - 1)) * IH;
   const toX = (v: number) => PL + v * IW;
+  const toPhys = (v: number) => varDef.varMin + v * (varDef.varMax - varDef.varMin);
+  const fmt = (v: number) => v.toFixed(varDef.decimals);
 
-  const myProfiles = profiles.filter(p => vars.some(v => v.id === p.id));
+  const pts: [number, number][] = values.map((v, di) => [toX(v), toY(di)]);
 
   return (
     <div>
@@ -88,10 +85,8 @@ function MiniChart({ title, unit, vars, profiles, height, patId }: MiniChartProp
         {/* Dotted background */}
         <rect x={PL} y={PT} width={IW} height={IH} fill={`url(#${patId})`} />
 
-        {/* Left border — depth axis */}
+        {/* Depth axis */}
         <line x1={PL} y1={PT} x2={PL} y2={PT + IH} stroke="#374151" strokeWidth={1.2} />
-
-        {/* Top border — value axis baseline */}
         <line x1={PL} y1={PT} x2={PL + IW} y2={PT} stroke="#e5e7eb" strokeWidth={0.8} />
 
         {/* Depth tick labels — left */}
@@ -100,22 +95,20 @@ function MiniChart({ title, unit, vars, profiles, height, patId }: MiniChartProp
             {lbl}
           </text>
         ))}
-
-        {/* "Depth" label */}
         <text x={PL - 4} y={PT - 8} fontSize={7} fill="#374151" fontWeight="500" textAnchor="end">
           Depth
         </text>
 
-        {/* Value axis tick labels — TOP */}
-        {[0, 0.5, 1].map((v, i) => (
-          <text key={i} x={toX(v)} y={PT - 4} fontSize={7} textAnchor="middle" fill="#6b7280">
-            {i === 2 ? "max" : i === 0 ? "0" : "0.5"}
+        {/* Physical value axis ticks — TOP (min / mid / max) */}
+        {[0, 0.5, 1].map((frac) => (
+          <text key={frac} x={toX(frac)} y={PT - 4} fontSize={7} textAnchor="middle" fill="#6b7280">
+            {fmt(toPhys(frac))}
           </text>
         ))}
 
-        {/* Unit label — top right of axis */}
+        {/* Unit label */}
         <text x={PL + IW} y={PT - 12} fontSize={6.5} textAnchor="end" fill="#9ca3af">
-          {unit}
+          {varDef.unit}
         </text>
 
         {/* Horizontal grid lines */}
@@ -126,69 +119,39 @@ function MiniChart({ title, unit, vars, profiles, height, patId }: MiniChartProp
           />
         ))}
 
-        {/* Smooth curves */}
-        {myProfiles.map((prof) => {
-          const pts: [number, number][] = prof.values.map((v, di) => [toX(v), toY(di)]);
-          return (
-            <path
-              key={prof.id}
-              d={smooth(pts)}
-              fill="none"
-              stroke={prof.color}
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={0.9}
-            />
-          );
-        })}
+        {/* Smooth curve */}
+        <path d={smooth(pts)} fill="none"
+          stroke={varDef.color} strokeWidth={1.8}
+          strokeLinecap="round" strokeLinejoin="round" opacity={0.9}
+        />
 
         {/* Hover indicator */}
         {hovIdx !== null && (
           <>
             <line
-              x1={PL} y1={toY(hovIdx)}
-              x2={PL + IW} y2={toY(hovIdx)}
-              stroke="#374151" strokeWidth={0.8} strokeDasharray="3 2"
-              opacity={0.5}
+              x1={PL} y1={toY(hovIdx)} x2={PL + IW} y2={toY(hovIdx)}
+              stroke="#374151" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.5}
             />
-            {myProfiles.map((prof) => (
-              <circle
-                key={prof.id}
-                cx={toX(prof.values[hovIdx])}
-                cy={toY(hovIdx)}
-                r={3}
-                fill={prof.color}
-                stroke="white"
-                strokeWidth={1.2}
-              />
-            ))}
-            <rect
-              x={PL + IW + 1} y={toY(hovIdx) - 6}
-              width={PR - 1} height={11}
-              rx={2} fill="#1f2937" opacity={0.85}
+            <circle
+              cx={toX(values[hovIdx])} cy={toY(hovIdx)}
+              r={3} fill={varDef.color} stroke="white" strokeWidth={1.2}
             />
-            <text
-              x={PL + IW + PR / 2} y={toY(hovIdx) + 3}
-              fontSize={6.5} textAnchor="middle" fill="white"
-            >
-              {DEPTH_MID_M[hovIdx]}
+            {/* Tooltip: depth @ left, value @ right */}
+            <text x={PL - 6} y={toY(hovIdx) + 3} fontSize={6.5} textAnchor="end" fill="#374151" fontWeight="600">
+              {DEPTH_MID_M[hovIdx]}m
+            </text>
+            <text x={PL + IW + 2} y={toY(hovIdx) + 3} fontSize={6.5} textAnchor="start" fill={varDef.color} fontWeight="600">
+              {fmt(toPhys(values[hovIdx]))}
             </text>
           </>
         )}
 
-        {/* Legend — top right inside */}
-        {myProfiles.map((prof, i) => {
-          const lx = PL + IW - 42;
-          const ly = PT + 12 + i * 11;
-          return (
-            <g key={prof.id}>
-              <line x1={lx} y1={ly - 2} x2={lx + 10} y2={ly - 2}
-                stroke={prof.color} strokeWidth={2} strokeLinecap="round" />
-              <text x={lx + 13} y={ly + 1} fontSize={6.5} fill="#374151">{prof.label}</text>
-            </g>
-          );
-        })}
+        {/* Legend swatch */}
+        <g>
+          <line x1={PL + IW - 32} y1={PT + 10} x2={PL + IW - 22} y2={PT + 10}
+            stroke={varDef.color} strokeWidth={2} strokeLinecap="round" />
+          <text x={PL + IW - 19} y={PT + 13} fontSize={6.5} fill="#374151">{varDef.label}</text>
+        </g>
       </svg>
     </div>
   );
@@ -235,28 +198,20 @@ export default function DepthGraph({
     const x = selectedPoint?.x ?? 0;
     const z = selectedPoint?.z ?? 0;
 
-    // N and P come from the nutrient field; Flow is computed independently
-    const npProfiles = NP_VARS.map((v) => ({
-      ...v,
-      values: Array.from({ length: DEPTH_LAYERS }, (_, d) => {
-        const raw = data[z]?.[x]?.[d] ?? 0;
-        const f = d / (DEPTH_LAYERS - 1);
-        let shaped: number;
-        if (v.id === "nitrogen") {
-          shaped = raw * (1 - f * 0.5);
-        } else {
-          shaped = raw * (0.5 + 0.5 * Math.sin(f * Math.PI * 0.9 + 0.1));
-        }
-        return Math.min(1, Math.max(0, shaped));
-      }),
-    }));
+    // N and P from the nutrient field; Flow is computed independently
+    const nValues = Array.from({ length: DEPTH_LAYERS }, (_, d) => {
+      const raw = data[z]?.[x]?.[d] ?? 0;
+      const f = d / (DEPTH_LAYERS - 1);
+      return Math.min(1, Math.max(0, raw * (1 - f * 0.5)));
+    });
+    const pValues = Array.from({ length: DEPTH_LAYERS }, (_, d) => {
+      const raw = data[z]?.[x]?.[d] ?? 0;
+      const f = d / (DEPTH_LAYERS - 1);
+      return Math.min(1, Math.max(0, raw * (0.5 + 0.5 * Math.sin(f * Math.PI * 0.9 + 0.1))));
+    });
+    const flowValues = generateFlowProfile(week, x, z);
 
-    const flowProfile = {
-      ...FLOW_VARS[0],
-      values: generateFlowProfile(week, x, z),
-    };
-
-    return [...npProfiles, flowProfile];
+    return { nValues, pValues, flowValues };
   }, [data, week, selectedPoint, sliceLevel]);
 
   if (!profiles) {
@@ -277,22 +232,9 @@ export default function DepthGraph({
       )}
 
       <div className="space-y-4">
-        <MiniChart
-          title="Nitrogen · Phosphorus"
-          unit="norm."
-          vars={NP_VARS}
-          profiles={profiles}
-          height={230}
-          patId="dg-dots-np"
-        />
-        <MiniChart
-          title="Water Flow"
-          unit="norm."
-          vars={FLOW_VARS}
-          profiles={profiles}
-          height={180}
-          patId="dg-dots-flow"
-        />
+        <MiniChart title="Total Nitrogen"   varDef={N_VAR}    values={profiles.nValues}    height={155} patId="dg-n"    />
+        <MiniChart title="Total Phosphorus" varDef={P_VAR}    values={profiles.pValues}    height={155} patId="dg-p"    />
+        <MiniChart title="Water Flow"       varDef={FLOW_VAR} values={profiles.flowValues} height={145} patId="dg-flow" />
       </div>
     </div>
   );
