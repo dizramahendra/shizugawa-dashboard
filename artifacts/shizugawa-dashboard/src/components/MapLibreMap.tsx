@@ -297,14 +297,11 @@ export default function MapLibreMap({
             opacity={0.9}
           />
 
-          {/* White wash to neutralise background SVG rivers */}
-          <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="white" fillOpacity={0.72} style={{ pointerEvents: "none" }} />
-
-          {/* Sub-basin fills — neutral, boundary lines only */}
+          {/* Sub-basin fills — white mask covers background SVG rivers; boundary lines only visible */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
             const id = Number(idStr);
             return (
-              <path key={id} d={d} fill="transparent"
+              <path key={id} d={d} fill="white" fillOpacity={0.82}
                 stroke="#94a3b8" strokeWidth={0.6} strokeOpacity={0.6}
                 style={{ pointerEvents: "none" }} />
             );
