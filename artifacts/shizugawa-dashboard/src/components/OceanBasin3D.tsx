@@ -114,6 +114,34 @@ function deepestVisibleLayer(seabedM: number): number {
   return last;
 }
 
+// ── Shore-distance map ────────────────────────────────────────────────────────
+// Chebyshev distance from each active cell to the nearest non-active neighbour
+// (or grid boundary).  dist=1 → directly adjacent to land → render 1 layer.
+// Computed once at module load (28×24 grid is tiny).
+const SHORE_DIST: Map<string, number> = (() => {
+  const map = new Map<string, number>();
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      if (!BAY_MASK[gz]?.[gx]) continue;
+      let found = false;
+      for (let r = 1; r <= DEPTH_LAYERS && !found; r++) {
+        for (let dz = -r; dz <= r && !found; dz++) {
+          for (let dx = -r; dx <= r && !found; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; // ring only
+            const nz = gz + dz, nx = gx + dx;
+            if (nz < 0 || nz >= GRID_D || nx < 0 || nx >= GRID_W || !BAY_MASK[nz]?.[nx]) {
+              map.set(`${gz}-${gx}`, r);
+              found = true;
+            }
+          }
+        }
+      }
+      if (!found) map.set(`${gz}-${gx}`, DEPTH_LAYERS); // deep interior
+    }
+  }
+  return map;
+})();
+
 // ── Hover tooltip ─────────────────────────────────────────────────────────────
 interface HoveredVoxel {
   px: number; py: number; pz: number;
@@ -162,8 +190,13 @@ function VoxelGrid({
       const maxLayer  = deepestVisibleLayer(seabedM);
       if (maxLayer < 0) continue;
 
+      // Shore-distance clamp: coastal cells (dist=1) show only 1 depth layer;
+      // every step away from land adds one more layer.
+      const shoreDist       = SHORE_DIST.get(`${gz}-${gx}`) ?? 1;
+      const effectiveMaxLayer = Math.min(maxLayer, shoreDist - 1);
+
       // ── Seabed box ──────────────────────────────────────────────────────────
-      const sbTop    = DEPTH_TOPS[maxLayer] + DEPTH_HEIGHTS[maxLayer];
+      const sbTop    = DEPTH_TOPS[effectiveMaxLayer] + DEPTH_HEIGHTS[effectiveMaxLayer];
       const sbHeight = 0.18;
       const sbY      = Y_SURFACE - sbTop - sbHeight / 2;
       const sbX      = offsetX + gx * STEP + CELL_W / 2;
@@ -178,7 +211,7 @@ function VoxelGrid({
 
       // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
-        if (d > maxLayer) continue;                          // below seabed
+        if (d > effectiveMaxLayer) continue;                 // below shore-clamped seabed
         if (sliceMode === "slice-v" && gx !== sliceLevel) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
