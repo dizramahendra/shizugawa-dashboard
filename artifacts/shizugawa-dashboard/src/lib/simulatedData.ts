@@ -33,31 +33,35 @@ export const TOTAL_WEEKS = 52;
 // Original 28×24 mask — expanded to 56×48 via 2×2 block doubling below.
 // gz 0 = south shore, gz 23 = north; gx 0 = west (inner bay head), gx 27 = east (bay mouth)
 const T = true, F = false;
+// BAY_MASK_SRC — derived from OCEAN_BASIN_PATH SVG polygon via ray-casting
+// point-in-polygon + scanline fill + exterior flood-fill (no internal gaps).
+// Coordinate mapping: svgX→gx (215–419 → 0–27), svgY→gz (196–419 → 23–0).
+// gz=23 extended to gx=22–25 to provide a 4-cell channel for the two north rivers.
 const BAY_MASK_SRC: boolean[][] = [
   [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  0
-  [F,F,F,F,F,T,T,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
-  [F,F,F,F,F,T,T,T,F,F,F,F,F,T,F,T,T,F,F,F,F,T,T,T,F,T,F,F], // gz  2
-  [F,F,F,F,F,T,T,T,F,F,F,F,T,T,T,T,T,F,T,T,T,T,T,T,T,T,F,F], // gz  3
-  [F,F,F,F,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  4
-  [F,F,F,F,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  5
-  [F,F,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  6
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  7
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  8
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  9
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 10
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 11
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T], // gz 12
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T], // gz 13
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,F], // gz 14
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T], // gz 15
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,F], // gz 16
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,F], // gz 17
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,F], // gz 18
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,F], // gz 19
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T], // gz 20
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,F], // gz 21
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 22
-  [F,F,T,T,T,F,F,F,T,T,T,F,F,T,F,T,T,T,F,F,F,F,F,F,F,T,F,F], // gz 23
+  [F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
+  [F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  2
+  [F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  3
+  [F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  4
+  [F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  5
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  6
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  7
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  8
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  9
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 10
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 11
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T], // gz 12
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T], // gz 13
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 14
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T], // gz 15
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 16
+  [F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 17
+  [F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 18
+  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,F], // gz 19
+  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T], // gz 20
+  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,F], // gz 21
+  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,F,F], // gz 22
+  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,F,F], // gz 23
 ];
 
 // 56×48 mask — each original cell becomes a 2×2 block of identical cells.
@@ -192,20 +196,21 @@ function densifyEW(
 // River 13 (hachiman) → SE:     consistent left drift going south
 // River  7 (okawa)    → EAST:   gentle northward drift going east
 
-// North river — traced from river 24 (oya): straight with a very mild left drift
+// North river — traced from river 24 (oya): straight with a very mild left drift.
+// Gap-fill cx=22 aligns with the north-passage water cells at gz=21–23 in the new mask.
 const SPINE_NORTH = densifyNS([
-  { gz:21, cx:16 }, { gz:22, cx:16 }, { gz:23, cx:16 }, // bay gap-fill
-  { gz:24, cx:16 },                                       // exit
-  { gz:25, cx:15 }, { gz:26, cx:15 },
-  { gz:27, cx:15 }, { gz:28, cx:14 },
-  { gz:29, cx:14 }, { gz:30, cx:15 },                    // small right undulation
-  { gz:31, cx:15 }, { gz:32, cx:14 },
-  { gz:33, cx:14 }, { gz:34, cx:14 },
-  { gz:35, cx:13 }, { gz:36, cx:13 },
-  { gz:37, cx:14 }, { gz:38, cx:14 },                    // slight right return
-  { gz:39, cx:13 }, { gz:40, cx:13 },
-  { gz:41, cx:13 }, { gz:42, cx:13 },
-  { gz:43, cx:12 }, { gz:44, cx:12 },                    // final gentle drift left
+  { gz:21, cx:22 }, { gz:22, cx:22 }, { gz:23, cx:22 }, // bay gap-fill
+  { gz:24, cx:22 },                                       // exit
+  { gz:25, cx:21 }, { gz:26, cx:21 },
+  { gz:27, cx:21 }, { gz:28, cx:20 },
+  { gz:29, cx:20 }, { gz:30, cx:21 },                    // small right undulation
+  { gz:31, cx:21 }, { gz:32, cx:20 },
+  { gz:33, cx:20 }, { gz:34, cx:20 },
+  { gz:35, cx:19 }, { gz:36, cx:19 },
+  { gz:37, cx:20 }, { gz:38, cx:20 },                    // slight right return
+  { gz:39, cx:19 }, { gz:40, cx:19 },
+  { gz:41, cx:19 }, { gz:42, cx:19 },
+  { gz:43, cx:18 }, { gz:44, cx:18 },                    // final gentle drift left
 ]);
 
 // NE river — traced from river 3 (karakuwa): exits from the right side,
@@ -258,7 +263,7 @@ const SPINE_EAST_RIVER = densifyEW([
 export const RIVER_CELLS: RiverCell[] = [
   // halfW values in 56×48 coords (original 28×24 halfW ×2).
   // `w` overrides per-entry widths where pools/rapids are marked on the spines.
-  ...buildRiver(SPINE_NORTH,          4, 0, 32, GRID_D - 1),
+  ...buildRiver(SPINE_NORTH,          4, 0, 44, GRID_D - 1),
   ...buildRiver(SPINE_NE,             2, 0, 50, GRID_D - 1),
   ...buildRiver(SPINE_SE,             4, 0, 30, 0),
   ...buildRiverEast(SPINE_EAST_RIVER, 4, 0, 55, 26),
