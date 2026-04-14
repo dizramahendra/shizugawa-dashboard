@@ -97,8 +97,8 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 // Shizugawa Bay: bay mouth around (gx≈11, gz≈6); inner head is NW.
 // Returns simulated seabed depth in real meters (3–42 m).
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const dx   = (gx - 44) / GRID_W;   // mouth ≈ gx 44 in 56-cell grid (2× upsampled)
-  const dz   = (gz - 24) / GRID_D;   // mouth ≈ gz 24 in 48-cell grid
+  const dx   = (gx - 22) / GRID_W;   // mouth ≈ gx 22 in 28-cell grid
+  const dz   = (gz - 12) / GRID_D;   // mouth ≈ gz 12 in 24-cell grid
   const dist = Math.sqrt(dx * dx + dz * dz);
   return Math.min(42, Math.max(3, 38 * Math.exp(-dist * 2.8) + 4));
 }
@@ -452,7 +452,7 @@ export default function OceanBasin3D({
 }: OceanBasin3DProps) {
   return (
     <Canvas
-      camera={{ position: [76, 44, 92], fov: 38 }}
+      camera={{ position: [38, 22, 46], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
@@ -481,8 +481,8 @@ export default function OceanBasin3D({
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={30}
-        maxDistance={190}
+        minDistance={15}
+        maxDistance={95}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>
