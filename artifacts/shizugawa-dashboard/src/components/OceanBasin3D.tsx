@@ -298,49 +298,75 @@ function VoxelGrid({
   );
 }
 
-// ── River voxels (single-layer, gz ≥ 24, north of bay) ───────────────────────
+// ── River voxels ─────────────────────────────────────────────────────────────
+// Delta cells (close to the bay mouth) are rendered like shallow ocean — multiple
+// depth layers + a seabed box — so they blend naturally with the bay edge.
+// Further upstream the river tapers to a single surface tile (like a narrow channel).
 function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
-  const RIVER_H = DEPTH_HEIGHTS[0];                  // same height as top bay layer
-  const riverY  = Y_SURFACE - RIVER_H / 2;           // top face flush with bay surface
+  // How many rows from the mouth get the full multi-layer delta treatment.
+  // dist=1→3 layers, dist=2→2 layers, dist=3→1 layer, dist≥4→1 layer (narrow channel).
+  const DELTA_ROWS = 3;
 
-  return (
-    <>
-      {RIVER_CELLS.map(({ gx, gz, mouthGx, mouthGz }) => {
-        // Sample top-layer value from the correct bay-edge row/column
-        const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;
-        // Upstream distance by river direction:
-        //   east rivers:  gx > GRID_W-1 → distance = gx - GRID_W + 1
-        //   north rivers: gz ≥ GRID_D   → distance = gz - GRID_D
-        //   south river:  gz < 0        → distance = |gz|
-        const upstreamDist =
-          gx >= GRID_W ? gx - GRID_W + 1 :
-          gz >= 0      ? Math.max(0, gz - GRID_D) :
-                         -gz;
-        const amp  = 1 + upstreamDist * 0.03;
-        const val  = Math.min(1, Math.max(0, baseVal * amp));
-        const [r, g, b] = lerpColor(stops, val);
+  const elements: React.ReactNode[] = [];
 
-        const px = offsetX + gx * STEP + CELL_W / 2;
-        const pz = offsetZ + gz * STEP + CELL_W / 2;
+  for (const { gx, gz, mouthGx, mouthGz } of RIVER_CELLS) {
+    // Upstream distance by river direction
+    const upstreamDist =
+      gx >= GRID_W ? gx - GRID_W + 1 :
+      gz >= 0      ? Math.max(0, gz - GRID_D) :
+                     -gz;
 
-        return (
-          <mesh key={`rv-${gz}-${gx}`} position={[px, riverY, pz]}>
-            <boxGeometry args={[CELL_W, RIVER_H, CELL_W]} />
-            <meshStandardMaterial
-              color={new THREE.Color(r, g, b)}
-              transparent
-              opacity={0.88}
-              roughness={0.65}
-              metalness={0.05}
-            />
-          </mesh>
-        );
-      })}
-    </>
-  );
+    // How many depth layers to render at this cell
+    // (mouth = DELTA_ROWS, decreasing to 1 as we go upstream)
+    const numLayers = Math.max(1, DELTA_ROWS - upstreamDist + 1);
+
+    // Colour: sample bay-edge top layer, amplify slightly upstream
+    const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;
+    const amp     = 1 + upstreamDist * 0.03;
+    const val     = Math.min(1, Math.max(0, baseVal * amp));
+    const [r, g, b] = lerpColor(stops, val);
+
+    const px = offsetX + gx * STEP + CELL_W / 2;
+    const pz = offsetZ + gz * STEP + CELL_W / 2;
+
+    // Water voxels — same positioning / material style as OceanGrid
+    for (let d = 0; d < numLayers; d++) {
+      const depthOpacity = 1 - d * 0.08;
+      const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
+      elements.push(
+        <mesh key={`rv-${gz}-${gx}-${d}`} position={[px, py, pz]}>
+          <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
+          <meshStandardMaterial
+            color={new THREE.Color(r, g, b)}
+            transparent
+            opacity={depthOpacity * 0.88}
+            roughness={0.7}
+            metalness={0.05}
+          />
+        </mesh>
+      );
+    }
+
+    // Seabed cap under the deepest layer — only where there are multiple layers
+    // (single-tile upstream cells don't need it; it would look like a floating plank)
+    if (numLayers > 1) {
+      const deepest = numLayers - 1;
+      const sbTop   = DEPTH_TOPS[deepest] + DEPTH_HEIGHTS[deepest];
+      const sbH     = 0.18;
+      const sbY     = Y_SURFACE - sbTop - sbH / 2;
+      elements.push(
+        <mesh key={`rv-sb-${gz}-${gx}`} position={[px, sbY, pz]}>
+          <boxGeometry args={[CELL_W * 1.15, sbH, CELL_W * 1.15]} />
+          <meshStandardMaterial color="#9c7a52" roughness={0.95} metalness={0.0} />
+        </mesh>
+      );
+    }
+  }
+
+  return <>{elements}</>;
 }
 
 // ── GIS wireframe bounding box ────────────────────────────────────────────────
