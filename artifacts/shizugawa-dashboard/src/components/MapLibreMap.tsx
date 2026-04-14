@@ -255,9 +255,20 @@ export default function MapLibreMap({
   const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, computeOceanMean(week))));
   const variableLabel = VARIABLE_OPTIONS.find(v => v.id === variableId)?.label ?? variableId;
 
-  // Uniform river styling — data-driven color removed for clarity
-  const RIVER_BASE_COLOR = "#7ea8c4";
-  const RIVER_SELECT_COLOR = "#2d7fd3";
+  // Data-driven color per reach
+  const reachColors = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const idStr of Object.keys(RIVER_PATHS)) {
+      const id = Number(idStr);
+      const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
+      const grid = generateRiverData(week, modelRiver);
+      const col = Math.min(RIVER_COLS - 1, Math.round(0.5 * (RIVER_COLS - 1)));
+      let sum = 0;
+      for (let row = 0; row < RIVER_ROWS; row++) sum += grid[row]?.[col] ?? 0;
+      out[id] = interpolateColor(stops, Math.max(0, Math.min(1, sum / RIVER_ROWS)));
+    }
+    return out;
+  }, [week, stops]);
 
   // Grid data for the selected river (used in grid view)
   const gridData = useMemo(() => {
@@ -320,10 +331,11 @@ export default function MapLibreMap({
           const isHovered = hoveredRiver === id;
           const isOther = !!selectedRiver && !isSelected;
           const isMainStem = MAIN_STEMS.has(id);
-          const sw = isMainStem ? 2.5 : 1.6;
-          const activeSw = isMainStem ? 3.5 : 2.5;
+          const sw = isMainStem
+            ? (isSelected || isHovered ? 6 : 4)
+            : (isSelected || isHovered ? 4 : 2.5);
           const samples = REACH_SAMPLES[id];
-          const color = isSelected ? RIVER_SELECT_COLOR : isHovered ? RIVER_SELECT_COLOR : RIVER_BASE_COLOR;
+          const color = reachColors[id] ?? "#60a5fa";
           const otherStyle = isOther
             ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" }
             : { transition: "opacity 0.3s, filter 0.3s" };
@@ -335,11 +347,11 @@ export default function MapLibreMap({
                 <polyline
                   points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
                   fill="none"
-                  stroke={RIVER_SELECT_COLOR}
-                  strokeWidth={activeSw + 8}
+                  stroke={color}
+                  strokeWidth={sw + 10}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={0.2}
+                  opacity={0.22}
                   style={{ pointerEvents: "none" }}
                 />
               )}
@@ -349,7 +361,7 @@ export default function MapLibreMap({
                 points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
                 fill="none"
                 stroke={color}
-                strokeWidth={isSelected || isHovered ? activeSw : sw}
+                strokeWidth={sw}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 style={{ pointerEvents: "none" }}
