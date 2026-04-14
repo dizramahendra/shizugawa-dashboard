@@ -301,7 +301,7 @@ export default function MapLibreMap({
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
             const id = Number(idStr);
             return (
-              <path key={id} d={d} fill="white" fillOpacity={0.82}
+              <path key={id} d={d} fill="none"
                 stroke="#94a3b8" strokeWidth={0.6} strokeOpacity={0.6}
                 style={{ pointerEvents: "none" }} />
             );
