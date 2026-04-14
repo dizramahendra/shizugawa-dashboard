@@ -13,21 +13,6 @@ const MODEL_RIVER: Record<number, string> = {
   25: "kamaishi",
 };
 
-const REACH_POSITION: Record<number, number> = (() => {
-  const pos: Record<number, number> = {};
-  for (const id of Object.keys(MODEL_RIVER)) { pos[Number(id)] = 0.5; }
-  return pos;
-})();
-
-function computeReachValue(week: number, reachId: number): number {
-  const modelRiver = MODEL_RIVER[reachId] ?? "shizugawa";
-  const positionFrac = REACH_POSITION[reachId] ?? 0.5;
-  const grid = generateRiverData(week, modelRiver);
-  const col = Math.min(RIVER_COLS - 1, Math.round(positionFrac * (RIVER_COLS - 1)));
-  let sum = 0;
-  for (let r = 0; r < RIVER_ROWS; r++) sum += grid[r][col];
-  return sum / RIVER_ROWS;
-}
 
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
@@ -270,21 +255,9 @@ export default function MapLibreMap({
   const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, computeOceanMean(week))));
   const variableLabel = VARIABLE_OPTIONS.find(v => v.id === variableId)?.label ?? variableId;
 
-  // Single solid color per reach — averaged across all rows at that reach's column position
-  const reachColors = useMemo(() => {
-    const out: Record<number, string> = {};
-    for (const idStr of Object.keys(RIVER_PATHS)) {
-      const id = Number(idStr);
-      const modelRiver = MODEL_RIVER[id] ?? "shizugawa";
-      const grid = generateRiverData(week, modelRiver);
-      const positionFrac = REACH_POSITION[id] ?? 0.5;
-      const col = Math.min(RIVER_COLS - 1, Math.round(positionFrac * (RIVER_COLS - 1)));
-      let sum = 0;
-      for (let row = 0; row < RIVER_ROWS; row++) sum += grid[row]?.[col] ?? 0;
-      out[id] = interpolateColor(stops, Math.max(0, Math.min(1, sum / RIVER_ROWS)));
-    }
-    return out;
-  }, [week, stops]);
+  // Uniform river styling — data-driven color removed for clarity
+  const RIVER_BASE_COLOR = "#7ea8c4";
+  const RIVER_SELECT_COLOR = "#2d7fd3";
 
   // Grid data for the selected river (used in grid view)
   const gridData = useMemo(() => {
@@ -292,15 +265,6 @@ export default function MapLibreMap({
     return generateRiverData(week, selectedRiver);
   }, [selectedRiver, week]);
 
-  // Sub-basin fill color (single value per basin)
-  const subBasinColors = useMemo(() => {
-    const out: Record<number, string> = {};
-    for (const idStr of Object.keys(SUB_BASIN_PATHS)) {
-      const id = Number(idStr);
-      out[id] = interpolateColor(stops, Math.max(0, Math.min(1, computeReachValue(week, id))));
-    }
-    return out;
-  }, [week, stops]);
 
   return (
     <div className="relative w-full h-full bg-[#f0f4f8] overflow-hidden">
@@ -322,13 +286,15 @@ export default function MapLibreMap({
             opacity={0.9}
           />
 
-          {/* Sub-basin fills */}
+          {/* White wash to neutralise background SVG rivers */}
+          <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="white" fillOpacity={0.72} style={{ pointerEvents: "none" }} />
+
+          {/* Sub-basin fills — neutral, boundary lines only */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
             const id = Number(idStr);
             return (
-              <path key={id} d={d} fill={subBasinColors[id] ?? "#7dd3fc"}
-                fillOpacity={0.28}
-                stroke="#6b7280" strokeWidth={0.5} strokeOpacity={0.5}
+              <path key={id} d={d} fill="transparent"
+                stroke="#94a3b8" strokeWidth={0.6} strokeOpacity={0.6}
                 style={{ pointerEvents: "none" }} />
             );
           })}
@@ -354,11 +320,10 @@ export default function MapLibreMap({
           const isHovered = hoveredRiver === id;
           const isOther = !!selectedRiver && !isSelected;
           const isMainStem = MAIN_STEMS.has(id);
-          const sw = isMainStem
-            ? (isSelected || isHovered ? 6 : 4)
-            : (isSelected || isHovered ? 4 : 2.5);
+          const sw = isMainStem ? 2.5 : 1.6;
+          const activeSw = isMainStem ? 3.5 : 2.5;
           const samples = REACH_SAMPLES[id];
-          const color = reachColors[id] ?? "#60a5fa";
+          const color = isSelected ? RIVER_SELECT_COLOR : isHovered ? RIVER_SELECT_COLOR : RIVER_BASE_COLOR;
           const otherStyle = isOther
             ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" }
             : { transition: "opacity 0.3s, filter 0.3s" };
@@ -370,11 +335,11 @@ export default function MapLibreMap({
                 <polyline
                   points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
                   fill="none"
-                  stroke={color}
-                  strokeWidth={sw + 10}
+                  stroke={RIVER_SELECT_COLOR}
+                  strokeWidth={activeSw + 8}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={0.22}
+                  opacity={0.2}
                   style={{ pointerEvents: "none" }}
                 />
               )}
@@ -384,7 +349,7 @@ export default function MapLibreMap({
                 points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
                 fill="none"
                 stroke={color}
-                strokeWidth={sw}
+                strokeWidth={isSelected || isHovered ? activeSw : sw}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 style={{ pointerEvents: "none" }}
