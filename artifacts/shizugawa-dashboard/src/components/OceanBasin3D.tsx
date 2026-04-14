@@ -17,7 +17,7 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const STEP   = 2.0;    // scene units per grid cell  (2 = 2× ocean footprint)
+const STEP   = 1.0;    // scene units per grid cell
 const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
@@ -97,8 +97,8 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 // Shizugawa Bay: bay mouth around (gx≈11, gz≈6); inner head is NW.
 // Returns simulated seabed depth in real meters (3–42 m).
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const dx   = (gx - 22) / GRID_W;   // mouth ≈ gx 22 in 28-cell grid
-  const dz   = (gz - 12) / GRID_D;   // mouth ≈ gz 12 in 24-cell grid
+  const dx   = (gx - 44) / GRID_W;   // mouth ≈ gx 44 in 56-cell grid (2× upsampled)
+  const dz   = (gz - 24) / GRID_D;   // mouth ≈ gz 24 in 48-cell grid
   const dist = Math.sqrt(dx * dx + dz * dz);
   return Math.min(42, Math.max(3, 38 * Math.exp(-dist * 2.8) + 4));
 }

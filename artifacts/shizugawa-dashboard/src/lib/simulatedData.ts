@@ -23,15 +23,15 @@ export interface SelectedPoint {
   unit: string;
 }
 
-export const GRID_W = 28;
-export const GRID_D = 24;
+export const GRID_W = 56;
+export const GRID_D = 48;
 export const DEPTH_LAYERS = 8;
 export const TOTAL_WEEKS = 52;
 
-// Rasterized from the actual OCEAN_BASIN_PATH SVG polygon (main connected component)
+// Rasterized from the actual OCEAN_BASIN_PATH SVG polygon (28×24 base grid).
 // gz 0 = south shore, gz 23 = north; gx 0 = west (inner bay head), gx 27 = east (bay mouth)
 const T = true, F = false;
-const BAY_MASK: boolean[][] = [
+const BAY_MASK_BASE: boolean[][] = [
   [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  0
   [F,F,F,F,F,T,T,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
   [F,F,F,F,F,T,T,T,F,F,F,F,F,T,F,T,T,F,F,F,F,T,T,T,F,T,F,F], // gz  2
@@ -58,6 +58,19 @@ const BAY_MASK: boolean[][] = [
   [F,F,T,T,T,F,F,F,T,T,T,F,F,T,F,T,T,T,F,F,F,F,F,F,F,T,F,F], // gz 23
 ];
 
+// 2× block-upsample: each original cell expands into a 2×2 block.
+// Result is a 56×48 grid with 4× more voxels and finer detail.
+function upsample2x(src: boolean[][]): boolean[][] {
+  const out: boolean[][] = [];
+  for (const row of src) {
+    const r0: boolean[] = [], r1: boolean[] = [];
+    for (const cell of row) { r0.push(cell, cell); r1.push(cell, cell); }
+    out.push(r0, r1);
+  }
+  return out;
+}
+
+const BAY_MASK = upsample2x(BAY_MASK_BASE);
 export { BAY_MASK };
 
 // ── River voxel cells (gz >= 24, north of bay) ──────────────────────────────
@@ -93,43 +106,54 @@ function buildRiver(
   return cells;
 }
 
-// ── River spines (gz=24→44, 21 rows each) ──────────────────────────────────
-// Each river has a different width and curve character.
+// ── River spines (gz=48→88, 41 rows each) — 2× coordinate space ─────────────
+// gz now starts at 48 (just north of the 2× upsampled bay boundary at gz=47).
+// All gx/cx values are doubled to match the 56-wide grid.
+// mouthGx values are doubled from the original 28-wide bay mouth centres.
 
 const SPINE_WEST = [
-  // Shizugawa — narrow (halfW=1, 3-wide), tight zigzag hugging far-WEST edge (gx 0-5)
-  { gz:24, cx:3 },
-  { gz:25, cx:2 }, { gz:26, cx:1 }, { gz:27, cx:1 }, { gz:28, cx:2 },
-  { gz:29, cx:3 }, { gz:30, cx:4 }, { gz:31, cx:4 }, { gz:32, cx:3 },
-  { gz:33, cx:2 }, { gz:34, cx:1 }, { gz:35, cx:1 }, { gz:36, cx:2 },
-  { gz:37, cx:3 }, { gz:38, cx:4 }, { gz:39, cx:4 }, { gz:40, cx:3 },
-  { gz:41, cx:2 }, { gz:42, cx:1 }, { gz:43, cx:1 }, { gz:44, cx:2 },
+  // Shizugawa — halfW=2 (5-wide), tight zigzag hugging far-WEST edge (gx 0-10)
+  {gz:48,cx:6},{gz:49,cx:5},{gz:50,cx:4},{gz:51,cx:3},{gz:52,cx:2},
+  {gz:53,cx:2},{gz:54,cx:2},{gz:55,cx:3},{gz:56,cx:4},{gz:57,cx:5},
+  {gz:58,cx:6},{gz:59,cx:7},{gz:60,cx:8},{gz:61,cx:8},{gz:62,cx:8},
+  {gz:63,cx:7},{gz:64,cx:6},{gz:65,cx:5},{gz:66,cx:4},{gz:67,cx:3},
+  {gz:68,cx:2},{gz:69,cx:2},{gz:70,cx:2},{gz:71,cx:3},{gz:72,cx:4},
+  {gz:73,cx:5},{gz:74,cx:6},{gz:75,cx:7},{gz:76,cx:8},{gz:77,cx:8},
+  {gz:78,cx:8},{gz:79,cx:7},{gz:80,cx:6},{gz:81,cx:5},{gz:82,cx:4},
+  {gz:83,cx:3},{gz:84,cx:2},{gz:85,cx:2},{gz:86,cx:2},{gz:87,cx:3},
+  {gz:88,cx:4},
 ];
 
 const SPINE_CENTER = [
-  // Hachiman — very wide (halfW=3, 7-wide), broad lazy sweeps in gx 7-18
-  { gz:24, cx:9 },
-  { gz:25, cx:10 }, { gz:26, cx:11 }, { gz:27, cx:12 }, { gz:28, cx:13 },
-  { gz:29, cx:14 }, { gz:30, cx:15 }, { gz:31, cx:15 }, { gz:32, cx:14 },
-  { gz:33, cx:13 }, { gz:34, cx:12 }, { gz:35, cx:11 }, { gz:36, cx:10 },
-  { gz:37, cx:11 }, { gz:38, cx:12 }, { gz:39, cx:13 }, { gz:40, cx:14 },
-  { gz:41, cx:13 }, { gz:42, cx:12 }, { gz:43, cx:11 }, { gz:44, cx:10 },
+  // Hachiman — halfW=4 (9-wide), broad lazy sweeps in gx 14-36
+  {gz:48,cx:18},{gz:49,cx:19},{gz:50,cx:20},{gz:51,cx:21},{gz:52,cx:22},
+  {gz:53,cx:23},{gz:54,cx:24},{gz:55,cx:25},{gz:56,cx:26},{gz:57,cx:27},
+  {gz:58,cx:28},{gz:59,cx:29},{gz:60,cx:30},{gz:61,cx:30},{gz:62,cx:30},
+  {gz:63,cx:29},{gz:64,cx:28},{gz:65,cx:27},{gz:66,cx:26},{gz:67,cx:25},
+  {gz:68,cx:24},{gz:69,cx:23},{gz:70,cx:22},{gz:71,cx:21},{gz:72,cx:20},
+  {gz:73,cx:21},{gz:74,cx:22},{gz:75,cx:23},{gz:76,cx:24},{gz:77,cx:25},
+  {gz:78,cx:26},{gz:79,cx:27},{gz:80,cx:28},{gz:81,cx:27},{gz:82,cx:26},
+  {gz:83,cx:25},{gz:84,cx:24},{gz:85,cx:23},{gz:86,cx:22},{gz:87,cx:21},
+  {gz:88,cx:20},
 ];
 
 const SPINE_EAST = [
-  // Kitakami — medium (halfW=2, 5-wide), rapid sweep to FAR NORTHEAST (gx 14-26)
-  { gz:24, cx:16 },
-  { gz:25, cx:18 }, { gz:26, cx:19 }, { gz:27, cx:21 }, { gz:28, cx:22 },
-  { gz:29, cx:23 }, { gz:30, cx:23 }, { gz:31, cx:24 }, { gz:32, cx:24 },
-  { gz:33, cx:23 }, { gz:34, cx:22 }, { gz:35, cx:23 }, { gz:36, cx:24 },
-  { gz:37, cx:24 }, { gz:38, cx:23 }, { gz:39, cx:22 }, { gz:40, cx:23 },
-  { gz:41, cx:24 }, { gz:42, cx:24 }, { gz:43, cx:23 }, { gz:44, cx:22 },
+  // Kitakami — halfW=3 (7-wide), rapid sweep to FAR NORTHEAST (gx 29-52)
+  {gz:48,cx:32},{gz:49,cx:34},{gz:50,cx:36},{gz:51,cx:37},{gz:52,cx:38},
+  {gz:53,cx:40},{gz:54,cx:42},{gz:55,cx:43},{gz:56,cx:44},{gz:57,cx:45},
+  {gz:58,cx:46},{gz:59,cx:46},{gz:60,cx:46},{gz:61,cx:47},{gz:62,cx:48},
+  {gz:63,cx:48},{gz:64,cx:48},{gz:65,cx:47},{gz:66,cx:46},{gz:67,cx:45},
+  {gz:68,cx:44},{gz:69,cx:45},{gz:70,cx:46},{gz:71,cx:47},{gz:72,cx:48},
+  {gz:73,cx:48},{gz:74,cx:48},{gz:75,cx:47},{gz:76,cx:46},{gz:77,cx:45},
+  {gz:78,cx:44},{gz:79,cx:45},{gz:80,cx:46},{gz:81,cx:47},{gz:82,cx:48},
+  {gz:83,cx:48},{gz:84,cx:48},{gz:85,cx:47},{gz:86,cx:46},{gz:87,cx:45},
+  {gz:88,cx:44},
 ];
 
 export const RIVER_CELLS: RiverCell[] = [
-  ...buildRiver(SPINE_WEST,   1,  3),   // narrow  — tight west-edge zigzag
-  ...buildRiver(SPINE_CENTER, 3,  9),   // widest  — broad north-center sweeps
-  ...buildRiver(SPINE_EAST,   2, 16),   // medium  — far northeast arc
+  ...buildRiver(SPINE_WEST,   2,  6),   // narrow zigzag — west edge
+  ...buildRiver(SPINE_CENTER, 4, 18),   // widest sweeps — north center
+  ...buildRiver(SPINE_EAST,   3, 32),   // medium arc   — far northeast
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {
