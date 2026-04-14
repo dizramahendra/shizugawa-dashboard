@@ -37,24 +37,24 @@ const BAY_MASK: boolean[][] = [
   [F,F,F,F,F,T,T,T,F,F,F,F,F,T,F,T,T,F,F,F,F,T,T,T,F,T,F,F], // gz  2
   [F,F,F,F,F,T,T,T,F,F,F,F,T,T,T,T,T,F,T,T,T,T,T,T,T,T,F,F], // gz  3
   [F,F,F,F,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  4
-  [F,F,F,F,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  5
-  [F,F,T,T,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  6
+  [F,F,F,F,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  5
+  [F,F,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  6
   [F,F,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  7
   [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  8
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  9
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,T,T,F,F], // gz 10  (3-wide gap: unchanged)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,F], // gz 11  (2-wide gap 14-15)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F,T,T,T,T,T,T,T,T,T,T,T,T], // gz 12  (2-wide gap 14-15)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,T,T], // gz 13  (3-wide gap 15-17)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T,F], // gz 14  (3-wide gap 16-18)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,T], // gz 15  (3-wide gap 17-19)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,T,F], // gz 16  (3-wide gap 17-19)
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,T,F], // gz 17  (3-wide gap 18-20)
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T,F], // gz 18  (3-wide gap 19-21)
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,F], // gz 19  (3-wide gap 20-22)
-  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,T,T], // gz 20  (3-wide gap 20-22)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,F,T,T,T,F], // gz 21  (3-wide gap 21-23)
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F,T,T,F,F], // gz 22  (2-wide gap 22-23)
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  9
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 10
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 11
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T,T], // gz 12
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,T,T], // gz 13
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T,F], // gz 14
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,T], // gz 15
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,T,F], // gz 16
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,T,F], // gz 17
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T,F], // gz 18
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,F], // gz 19
+  [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,T,T], // gz 20
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,T,T,T,T,F], // gz 21
+  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 22
   [F,F,T,T,T,F,F,F,T,T,T,F,F,T,F,T,T,T,F,F,F,F,F,F,F,T,F,F], // gz 23
 ];
 
