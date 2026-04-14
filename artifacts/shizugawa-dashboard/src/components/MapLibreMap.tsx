@@ -295,6 +295,7 @@ export default function MapLibreMap({
             width={SVG_W} height={SVG_H}
             preserveAspectRatio="xMidYMid meet"
             opacity={0.9}
+            style={{ filter: "saturate(0)" }}
           />
 
           {/* Sub-basin fills — white mask covers background SVG rivers; boundary lines only visible */}
