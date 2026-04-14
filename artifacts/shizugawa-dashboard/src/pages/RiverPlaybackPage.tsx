@@ -109,7 +109,7 @@ import PlaybackControls from "@/components/PlaybackControls";
 import RiverGrid2D from "@/components/RiverGrid2D";
 
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
+  nitrogen:   ["#3d6fa0", "#90c4de", "#f5f0d8", "#e8a030", "#c8401c"],
   phosphorus: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
 };
