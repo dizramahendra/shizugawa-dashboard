@@ -67,67 +67,71 @@ export { BAY_MASK };
 
 export interface RiverCell {
   gx: number;
-  gz: number;      // row index ≥ 24 (north of BAY_MASK boundary)
-  mouthGx: number; // bay-mouth column for value / colour sampling
+  gz: number;      // row index; ≥ GRID_D = north rivers, < 0 = south rivers
+  mouthGx: number; // bay-boundary column for value / colour sampling
+  mouthGz: number; // bay-boundary row  for value / colour sampling
 }
 
 // buildRiver: sweeps a (2*halfW+1)-wide cross-section along a centerline.
-// spine = [{gz, cx}] from mouth (gz=24) to upstream. Deduplication via Set.
+// spine = [{gz, cx}] from mouth outward. Deduplication via Set.
 function buildRiver(
   spine: Array<{ gz: number; cx: number }>,
   halfW: number,
   mouthGx: number,
+  mouthGz: number,
 ): RiverCell[] {
   const cells: RiverCell[] = [];
   const seen = new Set<string>();
   for (const { gz, cx } of spine) {
     for (let dx = -halfW; dx <= halfW; dx++) {
       const gx = cx + dx;
-      if (gx < 0 || gx >= 28) continue;
+      if (gx < 0 || gx >= GRID_W) continue;
       const key = `${gz},${gx}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      cells.push({ gx, gz, mouthGx });
+      cells.push({ gx, gz, mouthGx, mouthGz });
     }
   }
   return cells;
 }
 
-// ── River spines (gz=24→44, 21 rows each) ──────────────────────────────────
-const SPINE_WEST = [
-  // Shizugawa — narrow (halfW=1, 3-wide), tight zigzag hugging far-WEST edge (gx 0-5)
-  { gz:24, cx:3 },
-  { gz:25, cx:2 }, { gz:26, cx:1 }, { gz:27, cx:1 }, { gz:28, cx:2 },
-  { gz:29, cx:3 }, { gz:30, cx:4 }, { gz:31, cx:4 }, { gz:32, cx:3 },
-  { gz:33, cx:2 }, { gz:34, cx:1 }, { gz:35, cx:1 }, { gz:36, cx:2 },
-  { gz:37, cx:3 }, { gz:38, cx:4 }, { gz:39, cx:4 }, { gz:40, cx:3 },
-  { gz:41, cx:2 }, { gz:42, cx:1 }, { gz:43, cx:1 }, { gz:44, cx:2 },
+// ── River spines — east/shallow side of bay ──────────────────────────────────
+// Bay mouth mask row gz=23: active at gx=2-4, 8-10, 13, 15-17, 25
+// Bay mouth mask row gz=0 : active at gx=15 only
+
+// North river — exits gz=23 near gx=16 (mid-east cluster), body goes north
+const SPINE_NORTH = [
+  { gz:24, cx:16 }, { gz:25, cx:16 }, { gz:26, cx:15 }, { gz:27, cx:14 },
+  { gz:28, cx:15 }, { gz:29, cx:16 }, { gz:30, cx:17 }, { gz:31, cx:18 },
+  { gz:32, cx:17 }, { gz:33, cx:16 }, { gz:34, cx:15 }, { gz:35, cx:14 },
+  { gz:36, cx:15 }, { gz:37, cx:16 }, { gz:38, cx:17 }, { gz:39, cx:18 },
+  { gz:40, cx:17 }, { gz:41, cx:16 }, { gz:42, cx:15 }, { gz:43, cx:16 },
+  { gz:44, cx:17 },
 ];
 
-const SPINE_CENTER = [
-  // Hachiman — very wide (halfW=3, 7-wide), broad lazy sweeps in gx 7-18
-  { gz:24, cx:9 },
-  { gz:25, cx:10 }, { gz:26, cx:11 }, { gz:27, cx:12 }, { gz:28, cx:13 },
-  { gz:29, cx:14 }, { gz:30, cx:15 }, { gz:31, cx:15 }, { gz:32, cx:14 },
-  { gz:33, cx:13 }, { gz:34, cx:12 }, { gz:35, cx:11 }, { gz:36, cx:10 },
-  { gz:37, cx:11 }, { gz:38, cx:12 }, { gz:39, cx:13 }, { gz:40, cx:14 },
-  { gz:41, cx:13 }, { gz:42, cx:12 }, { gz:43, cx:11 }, { gz:44, cx:10 },
+// Northeast river — exits gz=23 at gx=25 (isolated NE cell), body goes northeast
+const SPINE_NE = [
+  { gz:24, cx:25 }, { gz:25, cx:26 }, { gz:26, cx:26 }, { gz:27, cx:25 },
+  { gz:28, cx:25 }, { gz:29, cx:26 }, { gz:30, cx:26 }, { gz:31, cx:27 },
+  { gz:32, cx:27 }, { gz:33, cx:26 }, { gz:34, cx:25 }, { gz:35, cx:26 },
+  { gz:36, cx:27 }, { gz:37, cx:27 }, { gz:38, cx:26 }, { gz:39, cx:25 },
+  { gz:40, cx:26 }, { gz:41, cx:27 }, { gz:42, cx:27 }, { gz:43, cx:26 },
+  { gz:44, cx:25 },
 ];
 
-const SPINE_EAST = [
-  // Kitakami — medium (halfW=2, 5-wide), rapid sweep to FAR NORTHEAST (gx 14-26)
-  { gz:24, cx:16 },
-  { gz:25, cx:18 }, { gz:26, cx:19 }, { gz:27, cx:21 }, { gz:28, cx:22 },
-  { gz:29, cx:23 }, { gz:30, cx:23 }, { gz:31, cx:24 }, { gz:32, cx:24 },
-  { gz:33, cx:23 }, { gz:34, cx:22 }, { gz:35, cx:23 }, { gz:36, cx:24 },
-  { gz:37, cx:24 }, { gz:38, cx:23 }, { gz:39, cx:22 }, { gz:40, cx:23 },
-  { gz:41, cx:24 }, { gz:42, cx:24 }, { gz:43, cx:23 }, { gz:44, cx:22 },
+// Southeast river — exits gz=0 near gx=16, body goes south (negative gz)
+const SPINE_SE = [
+  { gz:-1,  cx:16 }, { gz:-2,  cx:17 }, { gz:-3,  cx:18 }, { gz:-4,  cx:19 },
+  { gz:-5,  cx:20 }, { gz:-6,  cx:19 }, { gz:-7,  cx:18 }, { gz:-8,  cx:17 },
+  { gz:-9,  cx:18 }, { gz:-10, cx:19 }, { gz:-11, cx:20 }, { gz:-12, cx:19 },
+  { gz:-13, cx:18 }, { gz:-14, cx:17 }, { gz:-15, cx:18 }, { gz:-16, cx:19 },
+  { gz:-17, cx:20 }, { gz:-18, cx:19 }, { gz:-19, cx:18 }, { gz:-20, cx:17 },
 ];
 
 export const RIVER_CELLS: RiverCell[] = [
-  ...buildRiver(SPINE_WEST,   1,  3),   // narrow  — tight west-edge zigzag
-  ...buildRiver(SPINE_CENTER, 3,  9),   // widest  — broad north-center sweeps
-  ...buildRiver(SPINE_EAST,   2, 16),   // medium  — far northeast arc
+  ...buildRiver(SPINE_NORTH, 2, 16, GRID_D - 1),  // 5-wide, samples north bay edge (gz=23)
+  ...buildRiver(SPINE_NE,    1, 25, GRID_D - 1),  // 3-wide, samples NE corner (gz=23,gx=25)
+  ...buildRiver(SPINE_SE,    2, 16, 0),            // 5-wide, samples south bay edge (gz=0)
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {

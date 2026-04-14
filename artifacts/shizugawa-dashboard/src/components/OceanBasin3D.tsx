@@ -94,13 +94,14 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 }
 
 // ── Bathymetry ────────────────────────────────────────────────────────────────
-// Shizugawa Bay: bay mouth around (gx≈11, gz≈6); inner head is NW.
-// Returns simulated seabed depth in real meters (3–42 m).
+// Deepest on the WEST (gx=0, ~42 m); shallowest on the EAST (gx=27, ~5 m).
+// A gentle N-S taper makes it slightly shallower at the northern/southern
+// extremes, matching natural bay seabed topography.
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const dx   = (gx - 22) / GRID_W;   // mouth ≈ gx 22 in 28-cell grid
-  const dz   = (gz - 12) / GRID_D;   // mouth ≈ gz 12 in 24-cell grid
-  const dist = Math.sqrt(dx * dx + dz * dz);
-  return Math.min(42, Math.max(3, 38 * Math.exp(-dist * 2.8) + 4));
+  const westFrac = 1 - gx / (GRID_W - 1);          // 1.0 = west/deep, 0.0 = east/shallow
+  const nsFrac   = gz / (GRID_D - 1);               // 0 = south, 1 = north
+  const nsBias   = 1 - 0.2 * Math.abs(nsFrac - 0.5) * 2; // 1.0 mid-bay, 0.9 at extremes
+  return Math.min(42, Math.max(3, (5 + 37 * Math.pow(westFrac, 0.75)) * nsBias));
 }
 
 // Returns the index of the deepest depth layer whose TOP is above the seabed.
@@ -307,12 +308,12 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
 
   return (
     <>
-      {RIVER_CELLS.map(({ gx, gz, mouthGx }) => {
-        // Sample top-layer value from bay mouth row (gz=23 ≡ GRID_D-1)
-        const baseVal = data[GRID_D - 1]?.[mouthGx]?.[0] ?? 0.5;
-        // Amplify: deeper upstream = higher nutrient concentration
-        // Rivers now extend to gz≈42 so keep factor small (gz=42 → ×1.54)
-        const amp  = 1 + (gz - GRID_D) * 0.03;
+      {RIVER_CELLS.map(({ gx, gz, mouthGx, mouthGz }) => {
+        // Sample top-layer value from the correct bay-edge row
+        const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;
+        // Upstream distance: north rivers gz≥GRID_D, south river gz<0
+        const upstreamDist = gz >= 0 ? Math.max(0, gz - GRID_D) : -gz;
+        const amp  = 1 + upstreamDist * 0.03;
         const val  = Math.min(1, Math.max(0, baseVal * amp));
         const [r, g, b] = lerpColor(stops, val);
 
