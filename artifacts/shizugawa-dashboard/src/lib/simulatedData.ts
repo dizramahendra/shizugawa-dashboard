@@ -178,10 +178,11 @@ const SPINE_EAST_RIVER = [
 
 export const RIVER_CELLS: RiverCell[] = [
   // args: spine, halfWDelta (mouth), halfWUpstream (source), mouthGx, mouthGz
-  ...buildRiver(SPINE_NORTH,      4, 1, 16, GRID_D - 1),  // north — wide delta → narrow
-  ...buildRiver(SPINE_NE,         3, 1, 25, GRID_D - 1),  // northeast — wide delta → narrow
-  ...buildRiver(SPINE_SE,         4, 1, 15, 0),            // southeast — wide delta → narrow
-  ...buildRiverEast(SPINE_EAST_RIVER, 4, 1, 27, 13),      // east — wide delta → narrow
+  // Scaled to realistic proportions: ~500m delta, ~250m channel vs ~7km bay
+  ...buildRiver(SPINE_NORTH,          2, 0, 16, GRID_D - 1),  // north — 5-cell delta → 1-cell channel
+  ...buildRiver(SPINE_NE,             1, 0, 25, GRID_D - 1),  // northeast — 3-cell delta → 1-cell channel
+  ...buildRiver(SPINE_SE,             2, 0, 15, 0),            // southeast — 5-cell delta → 1-cell channel
+  ...buildRiverEast(SPINE_EAST_RIVER, 2, 0, 27, 13),          // east — 5-cell delta → 1-cell channel
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {
