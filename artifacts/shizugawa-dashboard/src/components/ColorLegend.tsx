@@ -16,7 +16,7 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
     high: "0.130 mg/L",
   },
   flow: {
-    stops: ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
+    stops: ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
     low: "0 cm/s",
     high: "80 cm/s",
   },
