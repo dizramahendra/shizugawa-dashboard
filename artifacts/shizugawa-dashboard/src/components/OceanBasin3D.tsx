@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
@@ -16,38 +16,67 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const CELL_W = 0.95;
-const STEP = 1.0;
+const CELL_W = 0.55;   // smaller voxels (pixel look)
+const STEP   = 1.4;    // larger spacing → larger bay footprint
+
+const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
+const offsetZ = -(GRID_D * STEP) / 2;
+
 const Y_SURFACE = 1.2; // y-coord of the top surface face
 
-const offsetX = -(GRID_W * STEP) / 2; // -7.0
-const offsetZ = -(GRID_D * STEP) / 2; // -6.0
-
-// Bounding box dimensions (with padding)
-const BOX_PAD_X = 0.5;
-const BOX_PAD_Z = 0.5;
+// Bounding box
+const BOX_PAD_X     = 0.6;
+const BOX_PAD_Z     = 0.6;
 const BOX_PAD_Y_TOP = 0.2;
 const BOX_PAD_Y_BOT = 0.2;
-const BOX_W = GRID_W * STEP + BOX_PAD_X * 2; // 15
-const BOX_D = GRID_D * STEP + BOX_PAD_Z * 2; // 13
+const BOX_W   = GRID_W * STEP + BOX_PAD_X * 2;
+const BOX_D   = GRID_D * STEP + BOX_PAD_Z * 2;
 const BOX_TOP = Y_SURFACE + BOX_PAD_Y_TOP;
 const BOX_BOT = Y_SURFACE - DEPTH_TOTAL_H - BOX_PAD_Y_BOT;
-const BOX_H = BOX_TOP - BOX_BOT;
-const BOX_CY = (BOX_TOP + BOX_BOT) / 2;
+const BOX_H   = BOX_TOP - BOX_BOT;
+const BOX_CY  = (BOX_TOP + BOX_BOT) / 2;
 
-// Real coordinate bounds (matching PlaybackPage gridToCoords)
+// GIS bounds
 const BAY_LON_W = 141.383;
 const BAY_LON_E = 141.468;
 const BAY_LAT_S = 38.582;
 const BAY_LAT_N = 38.651;
 
-// ── Color scales (hex — shared with map & river views) ────────────────────────
+// Derived box-edge positions
+const BOX_HALF_W    = BOX_W / 2;
+const BOX_HALF_D    = BOX_D / 2;
+const BOX_SOUTH_Z   = -BOX_HALF_D;
+const BOX_NORTH_Z   =  BOX_HALF_D;
+const BOX_WEST_X    = -BOX_HALF_W;
+const BOX_EAST_X    =  BOX_HALF_W;
+const DEPTH_LABEL_X = BOX_WEST_X - 0.9;
+
+// ── Color scales (hex) ────────────────────────────────────────────────────────
 const COLOR_SCALES: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   phosphorus: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
   flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
   all:        ["#45007e","#2060a0","#168c8c","#35b870","#aadb30","#fce820"],
 };
+
+// Physical value ranges for tooltip display (normalized 0-1 → physical unit)
+const PHYS: Record<string, { min: number; max: number; unit: string; dec: number }> = {
+  nitrogen:   { min: 0.2,  max: 3.0,  unit: "mg/L", dec: 2 },
+  phosphorus: { min: 10,   max: 130,  unit: "μg/L", dec: 1 },
+  flow:       { min: 0,    max: 80,   unit: "cm/s",  dec: 1 },
+};
+
+function toPhysical(val: number, scale: string): string {
+  const p = PHYS[scale] ?? PHYS.nitrogen;
+  const phys = p.min + val * (p.max - p.min);
+  return `${phys.toFixed(p.dec)} ${p.unit}`;
+}
+
+// Depth label for a given layer index: "0–2 m", "2–5 m", etc.
+const DEPTH_REAL_BOT = [2, 5, 10, 18, 30, 47, 69, 90]; // approx bottom of each layer
+function depthLabel(d: number): string {
+  return `${DEPTH_REAL_M[d]}–${DEPTH_REAL_BOT[d]} m`;
+}
 
 function hexToRgb(hex: string): [number, number, number] {
   return [
@@ -58,9 +87,37 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 function lerpColor(stops: string[], t: number): [number, number, number] {
-  const n = stops.length;
+  const n   = stops.length;
   const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
   return hexToRgb(stops[idx]);
+}
+
+// ── Bathymetry ────────────────────────────────────────────────────────────────
+// Shizugawa Bay: bay mouth around (gx≈11, gz≈6); inner head is NW.
+// Returns simulated seabed depth in real meters (3–42 m).
+function getBathymetryDepthM(gx: number, gz: number): number {
+  const dx   = (gx - 11) / GRID_W;
+  const dz   = (gz -  6) / GRID_D;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  return Math.min(42, Math.max(3, 38 * Math.exp(-dist * 2.8) + 4));
+}
+
+// Returns the index of the deepest depth layer whose TOP is above the seabed.
+// Returns -1 if even layer 0 is below the seabed (shouldn't happen for valid cells).
+function deepestVisibleLayer(seabedM: number): number {
+  let last = -1;
+  for (let d = 0; d < DEPTH_LAYERS; d++) {
+    if (DEPTH_REAL_M[d] < seabedM) last = d;
+    else break;
+  }
+  return last;
+}
+
+// ── Hover tooltip ─────────────────────────────────────────────────────────────
+interface HoveredVoxel {
+  px: number; py: number; pz: number;
+  val: number;
+  depth: number;
 }
 
 // ── VoxelGrid ─────────────────────────────────────────────────────────────────
@@ -83,8 +140,10 @@ function VoxelGrid({
   onCellClick,
   onCellHover,
 }: VoxelGridProps) {
-  const data = useMemo(() => generateWeekData(week), [week]);
+  const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
+
+  const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
 
   const visibleDepths = useMemo(() => {
     if (sliceMode === "slice-h") return [sliceLevel];
@@ -92,12 +151,33 @@ function VoxelGrid({
   }, [sliceMode, sliceLevel]);
 
   const meshes: React.ReactElement[] = [];
+  const seabedBoxes: React.ReactElement[] = [];
 
   for (let gz = 0; gz < GRID_D; gz++) {
     for (let gx = 0; gx < GRID_W; gx++) {
       if (!BAY_MASK[gz]?.[gx]) continue;
 
+      const seabedM   = getBathymetryDepthM(gx, gz);
+      const maxLayer  = deepestVisibleLayer(seabedM);
+      if (maxLayer < 0) continue;
+
+      // ── Seabed box ──────────────────────────────────────────────────────────
+      const sbTop    = DEPTH_TOPS[maxLayer] + DEPTH_HEIGHTS[maxLayer];
+      const sbHeight = 0.18;
+      const sbY      = Y_SURFACE - sbTop - sbHeight / 2;
+      const sbX      = offsetX + gx * STEP + CELL_W / 2;
+      const sbZ      = offsetZ + gz * STEP + CELL_W / 2;
+
+      seabedBoxes.push(
+        <mesh key={`sb-${gz}-${gx}`} position={[sbX, sbY, sbZ]}>
+          <boxGeometry args={[CELL_W * 1.15, sbHeight, CELL_W * 1.15]} />
+          <meshStandardMaterial color="#9c7a52" roughness={0.95} metalness={0.0} />
+        </mesh>
+      );
+
+      // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
+        if (d > maxLayer) continue;                          // below seabed
         if (sliceMode === "slice-v" && gx !== sliceLevel) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
@@ -112,30 +192,23 @@ function VoxelGrid({
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
         const pz = offsetZ + gz * STEP + CELL_W / 2;
 
-        const depthOpacity = 1 - d * 0.09;
-
-        const isInteractive = d === 0;
+        const depthOpacity = 1 - d * 0.08;
 
         meshes.push(
           <mesh
             key={`${gz}-${gx}-${d}`}
             position={[px, py, pz]}
             onClick={
-              isInteractive
-                ? (e) => {
-                    e.stopPropagation();
-                    onCellClick(gx, gz);
-                  }
+              d === 0
+                ? (e) => { e.stopPropagation(); onCellClick(gx, gz); }
                 : undefined
             }
-            onPointerOver={
-              isInteractive
-                ? (e) => {
-                    e.stopPropagation();
-                    onCellHover?.(gx, gz);
-                  }
-                : undefined
-            }
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              setHovered({ px, py, pz, val, depth: d });
+              if (d === 0) onCellHover?.(gx, gz);
+            }}
+            onPointerOut={() => setHovered(null)}
           >
             <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
             <meshStandardMaterial
@@ -155,7 +228,39 @@ function VoxelGrid({
     }
   }
 
-  return <>{meshes}</>;
+  return (
+    <>
+      {meshes}
+      {seabedBoxes}
+
+      {/* Hover tooltip */}
+      {hovered && (
+        <Html
+          position={[hovered.px, hovered.py + 0.15, hovered.pz]}
+          center
+          distanceFactor={12}
+          zIndexRange={[100, 100]}
+          style={{ pointerEvents: "none" }}
+        >
+          <div style={{
+            background: "rgba(255,255,255,0.93)",
+            border: "1px solid #ccc",
+            borderRadius: 4,
+            padding: "3px 7px",
+            fontFamily: "monospace",
+            fontSize: 10,
+            color: "#222",
+            whiteSpace: "nowrap",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+            lineHeight: 1.55,
+          }}>
+            <div style={{ fontWeight: 600 }}>{toPhysical(hovered.val, colorScale)}</div>
+            <div style={{ color: "#666" }}>{depthLabel(hovered.depth)}</div>
+          </div>
+        </Html>
+      )}
+    </>
+  );
 }
 
 // ── GIS wireframe bounding box ────────────────────────────────────────────────
@@ -188,65 +293,38 @@ const COMPASS_STYLE: React.CSSProperties = {
   userSelect: "none",
 };
 
-// Derived box-edge positions (all from BOX_* constants, no magic numbers)
-const BOX_HALF_W = BOX_W / 2; // east/west x boundary
-const BOX_HALF_D = BOX_D / 2; // north/south z boundary
-const BOX_SOUTH_Z = -BOX_HALF_D; // south face z (low lat)
-const BOX_NORTH_Z = BOX_HALF_D; // north face z (high lat)
-const BOX_WEST_X = -BOX_HALF_W; // west face x (low lon)
-const BOX_EAST_X = BOX_HALF_W; // east face x (high lon)
-const DEPTH_LABEL_X = BOX_WEST_X - 0.7; // just outside west face for depth ticks
-
 function AxisLabels() {
   const lonTicks: React.ReactElement[] = [];
   const latTicks: React.ReactElement[] = [];
   const depthTicks: React.ReactElement[] = [];
 
-  // Longitude ticks — south bottom edge (every 3 columns: gx=0,3,6,9,12)
+  // Longitude ticks — south bottom edge
   for (const gx of [0, 3, 6, 9, 12]) {
-    const lon = BAY_LON_W + (gx / 13) * (BAY_LON_E - BAY_LON_W);
+    const lon   = BAY_LON_W + (gx / 13) * (BAY_LON_E - BAY_LON_W);
     const scenX = offsetX + gx * STEP + CELL_W / 2;
     lonTicks.push(
-      <Html
-        key={`lon-${gx}`}
-        position={[scenX, BOX_BOT - 0.6, BOX_SOUTH_Z]}
-        center
-        distanceFactor={10}
-        zIndexRange={[0, 0]}
-      >
+      <Html key={`lon-${gx}`} position={[scenX, BOX_BOT - 0.7, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={LABEL_STYLE}>{lon.toFixed(3)}°E</div>
       </Html>
     );
   }
 
-  // Latitude ticks — west bottom edge (every 2 rows: gz=0,2,4,6,8,10)
+  // Latitude ticks — west bottom edge
   for (const gz of [0, 2, 4, 6, 8, 10]) {
-    const lat = BAY_LAT_S + (gz / 11) * (BAY_LAT_N - BAY_LAT_S);
+    const lat   = BAY_LAT_S + (gz / 11) * (BAY_LAT_N - BAY_LAT_S);
     const scenZ = offsetZ + gz * STEP + CELL_W / 2;
     latTicks.push(
-      <Html
-        key={`lat-${gz}`}
-        position={[BOX_WEST_X, BOX_BOT - 0.6, scenZ]}
-        center
-        distanceFactor={10}
-        zIndexRange={[0, 0]}
-      >
+      <Html key={`lat-${gz}`} position={[BOX_WEST_X, BOX_BOT - 0.7, scenZ]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={LABEL_STYLE}>{lat.toFixed(3)}°N</div>
       </Html>
     );
   }
 
-  // Depth ticks — SW vertical edge (just outside the west-south corner)
+  // Depth ticks — SW vertical edge
   for (let d = 0; d < DEPTH_LAYERS; d++) {
     const y = Y_SURFACE - DEPTH_TOPS[d];
     depthTicks.push(
-      <Html
-        key={`dep-${d}`}
-        position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]}
-        center
-        distanceFactor={10}
-        zIndexRange={[0, 0]}
-      >
+      <Html key={`dep-${d}`} position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={LABEL_STYLE}>{DEPTH_REAL_M[d]}m</div>
       </Html>
     );
@@ -254,24 +332,18 @@ function AxisLabels() {
 
   return (
     <>
-      {/*
-       * Compass labels at the midpoint of each top-face edge.
-       * N/S = centre of north/south edges; E/W = centre of east/west edges.
-       * All coordinates derived from BOX_* constants.
-       */}
-      <Html position={[0, BOX_TOP + 0.5, BOX_NORTH_Z]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>N</div>
       </Html>
-      <Html position={[0, BOX_TOP + 0.5, BOX_SOUTH_Z]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[0, BOX_TOP + 0.6, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>S</div>
       </Html>
-      <Html position={[BOX_EAST_X, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[BOX_EAST_X, BOX_TOP + 0.6, 0]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>E</div>
       </Html>
-      <Html position={[BOX_WEST_X, BOX_TOP + 0.5, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
+      <Html position={[BOX_WEST_X, BOX_TOP + 0.6, 0]} center distanceFactor={12} zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>W</div>
       </Html>
-
       {lonTicks}
       {latTicks}
       {depthTicks}
@@ -284,8 +356,8 @@ function GridFloor() {
   const floorY = Y_SURFACE - DEPTH_TOTAL_H;
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, floorY, 0]}>
-      <planeGeometry args={[GRID_W * 1.0, GRID_D * 1.0, GRID_W, GRID_D]} />
-      <meshStandardMaterial color="#b8c8d8" wireframe opacity={0.3} transparent />
+      <planeGeometry args={[GRID_W * STEP, GRID_D * STEP, GRID_W, GRID_D]} />
+      <meshStandardMaterial color="#b8c8d8" wireframe opacity={0.25} transparent />
     </mesh>
   );
 }
@@ -301,13 +373,8 @@ function SliceIndicator({ mode, level }: SliceIndicatorProps) {
     const y = Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2;
     return (
       <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[GRID_W * 1.0, GRID_D * 1.0]} />
-        <meshStandardMaterial
-          color="#4a90d9"
-          opacity={0.08}
-          transparent
-          side={THREE.DoubleSide}
-        />
+        <planeGeometry args={[GRID_W * STEP, GRID_D * STEP]} />
+        <meshStandardMaterial color="#4a90d9" opacity={0.08} transparent side={THREE.DoubleSide} />
       </mesh>
     );
   }
@@ -316,12 +383,7 @@ function SliceIndicator({ mode, level }: SliceIndicatorProps) {
     return (
       <mesh position={[x, BOX_CY, 0]}>
         <planeGeometry args={[0.05, BOX_H, DEPTH_LAYERS, GRID_D]} />
-        <meshStandardMaterial
-          color="#4a90d9"
-          opacity={0.12}
-          transparent
-          side={THREE.DoubleSide}
-        />
+        <meshStandardMaterial color="#4a90d9" opacity={0.12} transparent side={THREE.DoubleSide} />
       </mesh>
     );
   }
@@ -350,7 +412,7 @@ export default function OceanBasin3D({
 }: OceanBasin3DProps) {
   return (
     <Canvas
-      camera={{ position: [16, 12, 18], fov: 38 }}
+      camera={{ position: [22, 15, 26], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
@@ -377,8 +439,8 @@ export default function OceanBasin3D({
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={8}
-        maxDistance={40}
+        minDistance={10}
+        maxDistance={60}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>
