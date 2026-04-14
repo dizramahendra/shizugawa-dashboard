@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
-import { generateRiverData, generateWeekData, BAY_MASK, GRID_W, GRID_D, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
+import { generateRiverData, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
 
 const SVG_W = 465;
 const SVG_H = 586;
@@ -65,18 +65,6 @@ const CHANNEL_MASKS: Record<string, boolean[][]> = {
 // km per column (18 km total for 36 columns)
 const KM_PER_COL = 18 / RIVER_COLS;
 
-function computeOceanMean(week: number): number {
-  const data = generateWeekData(week);
-  let sum = 0, count = 0;
-  for (let d = 0; d < GRID_D; d++) {
-    for (let z = 0; z < GRID_W; z++) {
-      for (let x = 0; x < GRID_W; x++) {
-        if (BAY_MASK[z]?.[x]) { sum += data[d]?.[z]?.[x] ?? 0; count++; }
-      }
-    }
-  }
-  return count > 0 ? sum / count : 0;
-}
 
 // ── Path flattener & arc-length sampler ─────────────────────────────────────
 
@@ -247,7 +235,6 @@ export default function MapLibreMap({
   }, [onSelectRiver]);
 
   const stops = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
-  const oceanColor = interpolateColor(stops, Math.max(0, Math.min(1, computeOceanMean(week))));
   const variableLabel = VARIABLE_OPTIONS.find(v => v.id === variableId)?.label ?? variableId;
 
   // Data-driven color per reach
@@ -281,19 +268,9 @@ export default function MapLibreMap({
         preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", transition: "viewBox 0.6s ease" }}
       >
-        {/* Background layer — grayscale + dimmed when a river is selected */}
-        <g style={selectedRiver ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" } : { transition: "opacity 0.3s, filter 0.3s" }}>
-          {/* Geographic background */}
-          <image
-            href="/Sub-basin area.svg"
-            x={0} y={0}
-            width={SVG_W} height={SVG_H}
-            preserveAspectRatio="xMidYMid meet"
-            opacity={0.9}
-            style={{ filter: "saturate(0)" }}
-          />
-
-          {/* Sub-basin fills — white mask covers background SVG rivers; boundary lines only visible */}
+        {/* Background layer — dimmed when a river is selected */}
+        <g style={selectedRiver ? { opacity: 0.18, transition: "opacity 0.3s" } : { transition: "opacity 0.3s" }}>
+          {/* Sub-basin boundary lines */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
             const id = Number(idStr);
             return (
@@ -303,13 +280,13 @@ export default function MapLibreMap({
             );
           })}
 
-          {/* Ocean polygon — exact Shizugawa Bay (Ocean Basin) shape from SVG */}
+          {/* Ocean polygon — static neutral colour; data is shown in the Ocean 3D tab */}
           <path
             d={OCEAN_BASIN_PATH}
-            fill={`${oceanColor}55`}
-            stroke={oceanColor}
+            fill="#93c5d955"
+            stroke="#60a5c8"
             strokeWidth={hoveredOcean ? 2.5 : 1.5}
-            strokeOpacity={0.8}
+            strokeOpacity={0.9}
             style={{ pointerEvents: selectedRiver ? "none" : "all", cursor: "pointer" }}
             onMouseEnter={() => setHoveredOcean(true)}
             onMouseLeave={() => setHoveredOcean(false)}
