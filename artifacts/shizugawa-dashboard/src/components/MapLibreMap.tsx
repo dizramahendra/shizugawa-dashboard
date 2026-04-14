@@ -17,7 +17,7 @@ const MODEL_RIVER: Record<number, string> = {
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#e0f2fe", "#7dd3fc", "#0ea5e9", "#0369a1", "#1e3a5f"],
+  nitrogen:   ["#15803d", "#4ade80", "#facc15", "#f97316", "#dc2626"],
   phosphorus: ["#fce7f3", "#f9a8d4", "#ec4899", "#be185d", "#500724"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
   all:        ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],

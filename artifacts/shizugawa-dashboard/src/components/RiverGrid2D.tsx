@@ -9,7 +9,7 @@ import {
 
 // ── Color interpolation ───────────────────────────────────────
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
+  nitrogen:   ["#15803d", "#4ade80", "#facc15", "#f97316", "#dc2626"],
   phosphorus: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
   all:         ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
