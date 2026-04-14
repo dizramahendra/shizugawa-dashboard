@@ -16,8 +16,8 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const CELL_W = 0.55;   // smaller voxels (pixel look)
-const STEP   = 1.4;    // larger spacing → larger bay footprint
+const STEP   = 1.0;    // scene units per grid cell
+const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
 const offsetZ = -(GRID_D * STEP) / 2;
@@ -25,8 +25,8 @@ const offsetZ = -(GRID_D * STEP) / 2;
 const Y_SURFACE = 1.2; // y-coord of the top surface face
 
 // Bounding box
-const BOX_PAD_X     = 0.6;
-const BOX_PAD_Z     = 0.6;
+const BOX_PAD_X     = 0.8;
+const BOX_PAD_Z     = 0.8;
 const BOX_PAD_Y_TOP = 0.2;
 const BOX_PAD_Y_BOT = 0.2;
 const BOX_W   = GRID_W * STEP + BOX_PAD_X * 2;
@@ -96,8 +96,8 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 // Shizugawa Bay: bay mouth around (gx≈11, gz≈6); inner head is NW.
 // Returns simulated seabed depth in real meters (3–42 m).
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const dx   = (gx - 11) / GRID_W;
-  const dz   = (gz -  6) / GRID_D;
+  const dx   = (gx - 22) / GRID_W;   // mouth ≈ gx 22 in 28-cell grid
+  const dz   = (gz - 12) / GRID_D;   // mouth ≈ gz 12 in 24-cell grid
   const dist = Math.sqrt(dx * dx + dz * dz);
   return Math.min(42, Math.max(3, 38 * Math.exp(-dist * 2.8) + 4));
 }
@@ -299,8 +299,8 @@ function AxisLabels() {
   const depthTicks: React.ReactElement[] = [];
 
   // Longitude ticks — south bottom edge
-  for (const gx of [0, 3, 6, 9, 12]) {
-    const lon   = BAY_LON_W + (gx / 13) * (BAY_LON_E - BAY_LON_W);
+  for (const gx of [0, 7, 14, 21, 27]) {
+    const lon   = BAY_LON_W + (gx / (GRID_W - 1)) * (BAY_LON_E - BAY_LON_W);
     const scenX = offsetX + gx * STEP + CELL_W / 2;
     lonTicks.push(
       <Html key={`lon-${gx}`} position={[scenX, BOX_BOT - 0.7, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
@@ -310,8 +310,8 @@ function AxisLabels() {
   }
 
   // Latitude ticks — west bottom edge
-  for (const gz of [0, 2, 4, 6, 8, 10]) {
-    const lat   = BAY_LAT_S + (gz / 11) * (BAY_LAT_N - BAY_LAT_S);
+  for (const gz of [0, 5, 10, 15, 20, 23]) {
+    const lat   = BAY_LAT_S + (gz / (GRID_D - 1)) * (BAY_LAT_N - BAY_LAT_S);
     const scenZ = offsetZ + gz * STEP + CELL_W / 2;
     latTicks.push(
       <Html key={`lat-${gz}`} position={[BOX_WEST_X, BOX_BOT - 0.7, scenZ]} center distanceFactor={12} zIndexRange={[0,0]}>
@@ -412,7 +412,7 @@ export default function OceanBasin3D({
 }: OceanBasin3DProps) {
   return (
     <Canvas
-      camera={{ position: [22, 15, 26], fov: 38 }}
+      camera={{ position: [38, 22, 46], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
@@ -439,8 +439,8 @@ export default function OceanBasin3D({
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={10}
-        maxDistance={60}
+        minDistance={15}
+        maxDistance={95}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>
