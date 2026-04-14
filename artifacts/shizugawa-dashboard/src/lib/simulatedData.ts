@@ -93,43 +93,43 @@ function buildRiver(
   return cells;
 }
 
-// Centerlines: each row is { gz, cx } where cx is the river's centre column.
-// halfW=2 → 5 cells wide. S-curves keep each river in its own gx "lane".
+// ── River spines (gz=24→44, 21 rows each) ──────────────────────────────────
+// Each river has a different width and curve character.
 
 const SPINE_WEST = [
-  // Shizugawa — mouth at gx≈3, flows from NW. S-curve in gx=3-7 band.
+  // Shizugawa — narrow (halfW=1, 3-wide), tight zigzag hugging far-WEST edge (gx 0-5)
   { gz:24, cx:3 },
-  { gz:25, cx:4 }, { gz:26, cx:5 }, { gz:27, cx:6 }, { gz:28, cx:6 },
-  { gz:29, cx:7 }, { gz:30, cx:7 }, { gz:31, cx:6 }, { gz:32, cx:5 },
-  { gz:33, cx:4 }, { gz:34, cx:3 }, { gz:35, cx:3 }, { gz:36, cx:4 },
-  { gz:37, cx:5 }, { gz:38, cx:6 }, { gz:39, cx:6 }, { gz:40, cx:7 },
-  { gz:41, cx:6 }, { gz:42, cx:5 },
+  { gz:25, cx:2 }, { gz:26, cx:1 }, { gz:27, cx:1 }, { gz:28, cx:2 },
+  { gz:29, cx:3 }, { gz:30, cx:4 }, { gz:31, cx:4 }, { gz:32, cx:3 },
+  { gz:33, cx:2 }, { gz:34, cx:1 }, { gz:35, cx:1 }, { gz:36, cx:2 },
+  { gz:37, cx:3 }, { gz:38, cx:4 }, { gz:39, cx:4 }, { gz:40, cx:3 },
+  { gz:41, cx:2 }, { gz:42, cx:1 }, { gz:43, cx:1 }, { gz:44, cx:2 },
 ];
 
 const SPINE_CENTER = [
-  // Hachiman — mouth at gx≈9, flows from N. S-curve in gx=9-13 band.
+  // Hachiman — very wide (halfW=3, 7-wide), broad lazy sweeps in gx 7-18
   { gz:24, cx:9 },
-  { gz:25, cx:10 }, { gz:26, cx:11 }, { gz:27, cx:12 }, { gz:28, cx:12 },
-  { gz:29, cx:13 }, { gz:30, cx:13 }, { gz:31, cx:12 }, { gz:32, cx:11 },
-  { gz:33, cx:10 }, { gz:34, cx:9 },  { gz:35, cx:9 },  { gz:36, cx:10 },
-  { gz:37, cx:11 }, { gz:38, cx:12 }, { gz:39, cx:13 }, { gz:40, cx:13 },
-  { gz:41, cx:12 }, { gz:42, cx:11 },
+  { gz:25, cx:10 }, { gz:26, cx:11 }, { gz:27, cx:12 }, { gz:28, cx:13 },
+  { gz:29, cx:14 }, { gz:30, cx:15 }, { gz:31, cx:15 }, { gz:32, cx:14 },
+  { gz:33, cx:13 }, { gz:34, cx:12 }, { gz:35, cx:11 }, { gz:36, cx:10 },
+  { gz:37, cx:11 }, { gz:38, cx:12 }, { gz:39, cx:13 }, { gz:40, cx:14 },
+  { gz:41, cx:13 }, { gz:42, cx:12 }, { gz:43, cx:11 }, { gz:44, cx:10 },
 ];
 
 const SPINE_EAST = [
-  // Kitakami — mouth at gx≈16, flows from NE (orange river on map). Arc in gx=16-23 band.
+  // Kitakami — medium (halfW=2, 5-wide), rapid sweep to FAR NORTHEAST (gx 14-26)
   { gz:24, cx:16 },
-  { gz:25, cx:17 }, { gz:26, cx:18 }, { gz:27, cx:19 }, { gz:28, cx:20 },
-  { gz:29, cx:21 }, { gz:30, cx:22 }, { gz:31, cx:22 }, { gz:32, cx:21 },
-  { gz:33, cx:20 }, { gz:34, cx:19 }, { gz:35, cx:20 }, { gz:36, cx:21 },
-  { gz:37, cx:22 }, { gz:38, cx:22 }, { gz:39, cx:21 }, { gz:40, cx:20 },
-  { gz:41, cx:21 }, { gz:42, cx:20 },
+  { gz:25, cx:18 }, { gz:26, cx:19 }, { gz:27, cx:21 }, { gz:28, cx:22 },
+  { gz:29, cx:23 }, { gz:30, cx:23 }, { gz:31, cx:24 }, { gz:32, cx:24 },
+  { gz:33, cx:23 }, { gz:34, cx:22 }, { gz:35, cx:23 }, { gz:36, cx:24 },
+  { gz:37, cx:24 }, { gz:38, cx:23 }, { gz:39, cx:22 }, { gz:40, cx:23 },
+  { gz:41, cx:24 }, { gz:42, cx:24 }, { gz:43, cx:23 }, { gz:44, cx:22 },
 ];
 
 export const RIVER_CELLS: RiverCell[] = [
-  ...buildRiver(SPINE_WEST,   2,  3),
-  ...buildRiver(SPINE_CENTER, 2,  9),
-  ...buildRiver(SPINE_EAST,   2, 16),
+  ...buildRiver(SPINE_WEST,   1,  3),   // narrow  — tight west-edge zigzag
+  ...buildRiver(SPINE_CENTER, 3,  9),   // widest  — broad north-center sweeps
+  ...buildRiver(SPINE_EAST,   2, 16),   // medium  — far northeast arc
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {
