@@ -260,35 +260,60 @@ export function getColumnMean(data: number[][][], x: number, z: number): number 
   return sumW > 0 ? sumWV / sumW : 0;
 }
 
+/**
+ * Per-river parameters: [phaseOffset, baseline, amplitude]
+ *  - phaseOffset: shifts the seasonal peak independently for each river (0–2π)
+ *  - baseline:    long-run mean concentration level (0–1), varying by catchment character
+ *  - amplitude:   how much it swings above/below the baseline each year
+ * Phases are spread ~evenly across 2π so at any single week, different rivers
+ * sit at very different points in their cycle → full blue→red range visible at once.
+ */
+const RIVER_PARAMS: Record<string, [number, number, number]> = {
+  shizugawa: [0.00, 0.55, 0.38],
+  oura:      [0.60, 0.20, 0.18],
+  karakuwa:  [1.20, 0.75, 0.22],
+  togura:    [1.80, 0.38, 0.36],
+  urashiro:  [2.40, 0.82, 0.17],
+  iriya:     [3.00, 0.28, 0.26],
+  okawa:     [3.60, 0.65, 0.32],
+  niida:     [4.20, 0.15, 0.14],
+  karakuwa2: [4.80, 0.70, 0.28],
+  tomaya:    [5.40, 0.42, 0.40],
+  shishiori: [0.30, 0.88, 0.12],
+  onagawa:   [0.90, 0.32, 0.30],
+  hachiman:  [1.50, 0.60, 0.35],
+  motoyoshi: [2.10, 0.78, 0.20],
+  mitobe:    [2.70, 0.22, 0.22],
+  sakura:    [3.30, 0.50, 0.45],
+  oritate:   [3.90, 0.85, 0.14],
+  kitakami:  [4.50, 0.35, 0.33],
+  moriya:    [5.10, 0.68, 0.30],
+  oya:       [5.70, 0.12, 0.12],
+  kamaishi:  [0.45, 0.92, 0.08],
+};
+
 /** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
 export function generateRiverData(week: number, riverId: string, year: number = 2023): number[][] {
   const yearShift = (year - 2023) * 0.31;
   const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
-  const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
-  const RIVER_OFFSETS: Record<string, number> = {
-    shizugawa: 0,    oura: 0.3,    karakuwa: 0.6,  togura: 0.9,
-    urashiro: 1.1,   iriya: 1.4,   okawa: 1.7,     niida: 0.9,
-    karakuwa2: 0.75, tomaya: 1.05, shishiori: 1.35, onagawa: 1.65,
-    hachiman: 0.6,   motoyoshi: 1.2, mitobe: 1.5,  sakura: 2.4,
-    oritate: 1.8,    kitakami: 1.2,  moriya: 2.1,  oya: 2.0,
-    kamaishi: 2.3,
-  };
-  const riverOffset = RIVER_OFFSETS[riverId] ?? 0;
+
+  const [phaseOffset, baseline, amplitude] = RIVER_PARAMS[riverId] ?? [0, 0.5, 0.3];
+  // Each river has its own seasonal peak; result spans its own baseline ± amplitude
+  const seasonalBase = Math.sin(t + phaseOffset) * amplitude + baseline;
 
   const data: number[][] = [];
   for (let row = 0; row < RIVER_ROWS; row++) {
     data[row] = [];
     for (let col = 0; col < RIVER_COLS; col++) {
-      // Upstream (col=0) tends to be higher; values decrease toward the bay
-      const upstreamInfluence = Math.max(0, 1 - col / RIVER_COLS) * 0.5;
-      const centerBoost = 1 - Math.abs(row - RIVER_ROWS / 2 + 0.5) / (RIVER_ROWS / 2) * 0.3;
+      const upstreamInfluence = Math.max(0, 1 - col / RIVER_COLS) * 0.4;
+      const centerBoost = 1 - Math.abs(row - RIVER_ROWS / 2 + 0.5) / (RIVER_ROWS / 2) * 0.25;
       const v = (
-        Math.sin(col * 0.4 + t * 0.9 + riverOffset) * 0.2 +
-        Math.cos(row * 0.8 + t * 0.7) * 0.15 +
-        Math.sin((col + row) * 0.3 + t * 1.2) * 0.1
+        Math.sin(col * 0.4 + t * 0.9 + phaseOffset) * 0.12 +
+        Math.cos(row * 0.8 + t * 0.7) * 0.09 +
+        Math.sin((col + row) * 0.3 + t * 1.2) * 0.07
       );
       const val = Math.min(1, Math.max(0,
-        seasonalBase * 0.5 + v * 0.6 + upstreamInfluence * 0.3 + centerBoost * 0.1
+        seasonalBase * 0.7 + v * 0.3 + upstreamInfluence * 0.2 + centerBoost * 0.04
       ));
       data[row][col] = val;
     }
