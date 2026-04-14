@@ -4,6 +4,7 @@ import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
 import {
   BAY_MASK,
+  RIVER_CELLS,
   GRID_W,
   GRID_D,
   DEPTH_LAYERS,
@@ -263,6 +264,44 @@ function VoxelGrid({
   );
 }
 
+// ── River voxels (single-layer, gz ≥ 24, north of bay) ───────────────────────
+function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
+  const data  = useMemo(() => generateWeekData(week), [week]);
+  const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
+
+  const RIVER_H = DEPTH_HEIGHTS[0];                  // same height as top bay layer
+  const riverY  = Y_SURFACE - RIVER_H / 2;           // top face flush with bay surface
+
+  return (
+    <>
+      {RIVER_CELLS.map(({ gx, gz, mouthGx }) => {
+        // Sample top-layer value from bay mouth row (gz=23 ≡ GRID_D-1)
+        const baseVal = data[GRID_D - 1]?.[mouthGx]?.[0] ?? 0.5;
+        // Amplify: deeper upstream = higher nutrient concentration
+        const amp  = 1 + (gz - GRID_D) * 0.1;
+        const val  = Math.min(1, Math.max(0, baseVal * amp));
+        const [r, g, b] = lerpColor(stops, val);
+
+        const px = offsetX + gx * STEP + CELL_W / 2;
+        const pz = offsetZ + gz * STEP + CELL_W / 2;
+
+        return (
+          <mesh key={`rv-${gz}-${gx}`} position={[px, riverY, pz]}>
+            <boxGeometry args={[CELL_W, RIVER_H, CELL_W]} />
+            <meshStandardMaterial
+              color={new THREE.Color(r, g, b)}
+              transparent
+              opacity={0.88}
+              roughness={0.65}
+              metalness={0.05}
+            />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
 // ── GIS wireframe bounding box ────────────────────────────────────────────────
 function BoundingBox() {
   return (
@@ -429,6 +468,8 @@ export default function OceanBasin3D({
         onCellClick={onCellClick}
         onCellHover={onCellHover}
       />
+
+      <RiverGrid week={week} colorScale={colorScale} />
 
       <BoundingBox />
       <AxisLabels />

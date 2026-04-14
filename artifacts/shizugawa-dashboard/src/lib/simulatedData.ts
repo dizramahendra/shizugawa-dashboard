@@ -60,6 +60,46 @@ const BAY_MASK: boolean[][] = [
 
 export { BAY_MASK };
 
+// ── River voxel cells (gz >= 24, north of bay) ──────────────────────────────
+// Each cell maps to one voxel in the 3D scene rendered as a single shallow layer.
+// Rivers widen near gz=24 (delta mouth) and narrow upstream (higher gz).
+// mouthGx = center gx used to sample bay-mouth data for the colour value.
+
+export interface RiverCell {
+  gx: number;
+  gz: number;      // row index ≥ 24 (north of BAY_MASK boundary)
+  mouthGx: number; // bay-mouth column for value / colour sampling
+}
+
+export const RIVER_CELLS: RiverCell[] = [
+  // ── West River (Shizugawa) — mouth at gz=23, gx=[2,3,4] ─────────────────
+  { gx:2, gz:24, mouthGx:3 }, { gx:3, gz:24, mouthGx:3 }, { gx:4, gz:24, mouthGx:3 }, // delta fan
+  { gx:3, gz:25, mouthGx:3 }, { gx:4, gz:25, mouthGx:3 },
+  { gx:3, gz:26, mouthGx:3 },
+  { gx:3, gz:27, mouthGx:3 },
+  { gx:2, gz:28, mouthGx:3 }, { gx:3, gz:28, mouthGx:3 }, // meander west
+  { gx:2, gz:29, mouthGx:3 },
+  { gx:2, gz:30, mouthGx:3 },
+
+  // ── Center River (Hachiman) — mouth at gz=23, gx=[8,9,10] ───────────────
+  { gx:8, gz:24, mouthGx:9 }, { gx:9, gz:24, mouthGx:9 }, { gx:10, gz:24, mouthGx:9 }, // delta fan
+  { gx:9, gz:25, mouthGx:9 }, { gx:10, gz:25, mouthGx:9 },
+  { gx:10, gz:26, mouthGx:9 },
+  { gx:10, gz:27, mouthGx:9 },
+  { gx:10, gz:28, mouthGx:9 }, { gx:11, gz:28, mouthGx:9 }, // meander east
+  { gx:11, gz:29, mouthGx:9 },
+  { gx:11, gz:30, mouthGx:9 },
+
+  // ── East River (Kitakami) — mouth at gz=23, gx=[15,16,17] ───────────────
+  { gx:15, gz:24, mouthGx:16 }, { gx:16, gz:24, mouthGx:16 }, { gx:17, gz:24, mouthGx:16 }, // delta fan
+  { gx:16, gz:25, mouthGx:16 }, { gx:17, gz:25, mouthGx:16 },
+  { gx:16, gz:26, mouthGx:16 },
+  { gx:16, gz:27, mouthGx:16 },
+  { gx:16, gz:28, mouthGx:16 }, { gx:17, gz:28, mouthGx:16 }, // meander east
+  { gx:17, gz:29, mouthGx:16 },
+  { gx:17, gz:30, mouthGx:16 },
+];
+
 function noise(x: number, z: number, t: number, scale: number): number {
   return (
     Math.sin(x * 0.7 + t * 0.8) * 0.25 +
