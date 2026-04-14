@@ -109,7 +109,7 @@ import PlaybackControls from "@/components/PlaybackControls";
 import RiverGrid2D from "@/components/RiverGrid2D";
 
 const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#3d6fa0", "#90c4de", "#f5f0d8", "#e8a030", "#c8401c"],
+  nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   phosphorus: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
   flow:       ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
 };
@@ -357,21 +357,27 @@ export default function RiverPlaybackPage() {
               <div className="panel-section-title mb-3">Variable</div>
               <div className="text-sm font-medium text-foreground">{variable.label}</div>
               <div className="text-xs text-muted-foreground mb-3">{variable.unit}</div>
-              <div className="flex gap-0.5 mt-1">
-                {stops.map((color, i) => {
-                  const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
-                  const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1);
-                  return (
-                    <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
-                      <div style={{ backgroundColor: color, width: "100%", height: 14, borderRadius: 3 }} />
-                      <div className="text-[8px] font-mono text-muted-foreground text-center leading-tight whitespace-nowrap">
-                        {lo}–{hi}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="mt-1">
+                <div className="flex rounded overflow-hidden border border-border/30">
+                  {stops.map((color, i) => (
+                    <div key={i} style={{ backgroundColor: color, flex: 1, height: 14 }}
+                      title={`${(variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1)}–${(variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1)} ${variable.unit}`}
+                    />
+                  ))}
+                </div>
+                <div className="relative h-4 mt-0.5">
+                  {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+                    const val = (variable.min + frac * (variable.max - variable.min)).toFixed(1);
+                    return (
+                      <span key={frac} className="absolute text-[8px] font-mono text-muted-foreground -translate-x-1/2"
+                        style={{ left: `${frac * 100}%` }}>
+                        {val}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="text-[8px] text-muted-foreground">{variable.unit}</div>
               </div>
-              <div className="text-[9px] text-muted-foreground mt-1">{variable.unit}</div>
             </div>
 
             {/* 3b. Reach Mean */}
