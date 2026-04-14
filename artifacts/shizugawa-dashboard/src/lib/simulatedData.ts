@@ -72,32 +72,73 @@ export interface RiverCell {
 }
 
 export const RIVER_CELLS: RiverCell[] = [
-  // ── West River (Shizugawa) — mouth at gz=23, gx=[2,3,4] ─────────────────
+  // ── West River (Shizugawa) ───────────────────────────────────────────────
+  // Map: enters bay NW side. Flows from far northwest, curving southeast to mouth.
+  // Upstream source ~gx=8, curves left (west) approaching bay.
   { gx:2, gz:24, mouthGx:3 }, { gx:3, gz:24, mouthGx:3 }, { gx:4, gz:24, mouthGx:3 }, // delta fan
   { gx:3, gz:25, mouthGx:3 }, { gx:4, gz:25, mouthGx:3 },
-  { gx:3, gz:26, mouthGx:3 },
-  { gx:3, gz:27, mouthGx:3 },
-  { gx:2, gz:28, mouthGx:3 }, { gx:3, gz:28, mouthGx:3 }, // meander west
-  { gx:2, gz:29, mouthGx:3 },
-  { gx:2, gz:30, mouthGx:3 },
+  { gx:4, gz:26, mouthGx:3 }, { gx:5, gz:26, mouthGx:3 }, // bend east
+  { gx:5, gz:27, mouthGx:3 },
+  { gx:5, gz:28, mouthGx:3 }, { gx:6, gz:28, mouthGx:3 },
+  { gx:6, gz:29, mouthGx:3 },
+  { gx:6, gz:30, mouthGx:3 }, { gx:7, gz:30, mouthGx:3 }, // meander right
+  { gx:7, gz:31, mouthGx:3 },
+  { gx:6, gz:32, mouthGx:3 }, { gx:7, gz:32, mouthGx:3 }, // wiggle
+  { gx:6, gz:33, mouthGx:3 },
+  { gx:6, gz:34, mouthGx:3 }, { gx:7, gz:34, mouthGx:3 },
+  { gx:7, gz:35, mouthGx:3 },
+  { gx:7, gz:36, mouthGx:3 }, { gx:8, gz:36, mouthGx:3 }, // bend northeast
+  { gx:8, gz:37, mouthGx:3 },
+  { gx:8, gz:38, mouthGx:3 }, { gx:9, gz:38, mouthGx:3 },
+  { gx:9, gz:39, mouthGx:3 },
+  { gx:8, gz:40, mouthGx:3 }, { gx:9, gz:40, mouthGx:3 },
+  { gx:8, gz:41, mouthGx:3 },
+  { gx:7, gz:42, mouthGx:3 }, { gx:8, gz:42, mouthGx:3 }, // upstream source
 
-  // ── Center River (Hachiman) — mouth at gz=23, gx=[8,9,10] ───────────────
+  // ── Center River (Hachiman) ──────────────────────────────────────────────
+  // Map: enters bay from north, S-curves in gx=9–14 band.
   { gx:8, gz:24, mouthGx:9 }, { gx:9, gz:24, mouthGx:9 }, { gx:10, gz:24, mouthGx:9 }, // delta fan
   { gx:9, gz:25, mouthGx:9 }, { gx:10, gz:25, mouthGx:9 },
   { gx:10, gz:26, mouthGx:9 },
-  { gx:10, gz:27, mouthGx:9 },
-  { gx:10, gz:28, mouthGx:9 }, { gx:11, gz:28, mouthGx:9 }, // meander east
-  { gx:11, gz:29, mouthGx:9 },
-  { gx:11, gz:30, mouthGx:9 },
+  { gx:10, gz:27, mouthGx:9 }, { gx:11, gz:27, mouthGx:9 }, // bend east
+  { gx:11, gz:28, mouthGx:9 },
+  { gx:11, gz:29, mouthGx:9 }, { gx:12, gz:29, mouthGx:9 },
+  { gx:12, gz:30, mouthGx:9 },
+  { gx:11, gz:31, mouthGx:9 }, { gx:12, gz:31, mouthGx:9 }, // meander back west
+  { gx:11, gz:32, mouthGx:9 },
+  { gx:10, gz:33, mouthGx:9 }, { gx:11, gz:33, mouthGx:9 }, // S-turn
+  { gx:10, gz:34, mouthGx:9 },
+  { gx:10, gz:35, mouthGx:9 }, { gx:11, gz:35, mouthGx:9 },
+  { gx:11, gz:36, mouthGx:9 },
+  { gx:11, gz:37, mouthGx:9 }, { gx:12, gz:37, mouthGx:9 }, // curve right
+  { gx:12, gz:38, mouthGx:9 },
+  { gx:12, gz:39, mouthGx:9 }, { gx:13, gz:39, mouthGx:9 },
+  { gx:13, gz:40, mouthGx:9 },
+  { gx:12, gz:41, mouthGx:9 }, { gx:13, gz:41, mouthGx:9 },
+  { gx:12, gz:42, mouthGx:9 }, // upstream source
 
-  // ── East River (Kitakami) — mouth at gz=23, gx=[15,16,17] ───────────────
+  // ── East River (Kitakami / orange on map) ────────────────────────────────
+  // Map: starts far northeast (upper-right), sweeps southwest to bay mouth.
+  // Upstream source ~gx=22-23 at gz=42, curves toward gx=15-17 at mouth.
   { gx:15, gz:24, mouthGx:16 }, { gx:16, gz:24, mouthGx:16 }, { gx:17, gz:24, mouthGx:16 }, // delta fan
   { gx:16, gz:25, mouthGx:16 }, { gx:17, gz:25, mouthGx:16 },
-  { gx:16, gz:26, mouthGx:16 },
-  { gx:16, gz:27, mouthGx:16 },
-  { gx:16, gz:28, mouthGx:16 }, { gx:17, gz:28, mouthGx:16 }, // meander east
-  { gx:17, gz:29, mouthGx:16 },
-  { gx:17, gz:30, mouthGx:16 },
+  { gx:17, gz:26, mouthGx:16 }, { gx:18, gz:26, mouthGx:16 }, // bend east
+  { gx:18, gz:27, mouthGx:16 },
+  { gx:18, gz:28, mouthGx:16 }, { gx:19, gz:28, mouthGx:16 },
+  { gx:19, gz:29, mouthGx:16 },
+  { gx:19, gz:30, mouthGx:16 }, { gx:20, gz:30, mouthGx:16 }, // heading northeast
+  { gx:20, gz:31, mouthGx:16 },
+  { gx:20, gz:32, mouthGx:16 }, { gx:21, gz:32, mouthGx:16 },
+  { gx:21, gz:33, mouthGx:16 },
+  { gx:20, gz:34, mouthGx:16 }, { gx:21, gz:34, mouthGx:16 }, // meander loop
+  { gx:20, gz:35, mouthGx:16 },
+  { gx:20, gz:36, mouthGx:16 }, { gx:21, gz:36, mouthGx:16 },
+  { gx:21, gz:37, mouthGx:16 },
+  { gx:21, gz:38, mouthGx:16 }, { gx:22, gz:38, mouthGx:16 }, // bend further east
+  { gx:22, gz:39, mouthGx:16 },
+  { gx:22, gz:40, mouthGx:16 }, { gx:23, gz:40, mouthGx:16 },
+  { gx:23, gz:41, mouthGx:16 },
+  { gx:22, gz:42, mouthGx:16 }, { gx:23, gz:42, mouthGx:16 }, // upstream source
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {

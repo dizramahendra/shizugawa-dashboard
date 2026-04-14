@@ -278,7 +278,8 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
         // Sample top-layer value from bay mouth row (gz=23 ≡ GRID_D-1)
         const baseVal = data[GRID_D - 1]?.[mouthGx]?.[0] ?? 0.5;
         // Amplify: deeper upstream = higher nutrient concentration
-        const amp  = 1 + (gz - GRID_D) * 0.1;
+        // Rivers now extend to gz≈42 so keep factor small (gz=42 → ×1.54)
+        const amp  = 1 + (gz - GRID_D) * 0.03;
         const val  = Math.min(1, Math.max(0, baseVal * amp));
         const [r, g, b] = lerpColor(stops, val);
 
