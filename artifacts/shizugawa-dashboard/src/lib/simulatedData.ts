@@ -72,9 +72,8 @@ export interface RiverCell {
   mouthGz: number; // bay-boundary row  for value / colour sampling
 }
 
-// buildRiver: sweeps a cross-section along a centerline, tapering from a wide
-// delta at the mouth (spine index 0) to a narrow channel upstream (last index).
-// halfWDelta = half-width at the bay mouth; halfWUpstream = half-width at source.
+// buildRiver: north/south rivers — sweeps along gz, spreads in gx.
+// Tapers from halfWDelta (mouth, index 0) to halfWUpstream (source, last index).
 function buildRiver(
   spine: Array<{ gz: number; cx: number }>,
   halfWDelta: number,
@@ -86,12 +85,36 @@ function buildRiver(
   const seen = new Set<string>();
   const n = spine.length;
   spine.forEach(({ gz, cx }, i) => {
-    // Linear taper: wide at mouth (i=0), narrow upstream (i=n-1)
-    const t    = n > 1 ? i / (n - 1) : 0;
+    const t     = n > 1 ? i / (n - 1) : 0;
     const halfW = Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
     for (let dx = -halfW; dx <= halfW; dx++) {
       const gx = cx + dx;
       if (gx < 0 || gx >= GRID_W) continue;
+      const key = `${gz},${gx}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cells.push({ gx, gz, mouthGx, mouthGz });
+    }
+  });
+  return cells;
+}
+
+// buildRiverEast: east river — sweeps along gx (gx >= GRID_W), spreads in gz.
+function buildRiverEast(
+  spine: Array<{ gx: number; cz: number }>,
+  halfWDelta: number,
+  halfWUpstream: number,
+  mouthGx: number,
+  mouthGz: number,
+): RiverCell[] {
+  const cells: RiverCell[] = [];
+  const seen = new Set<string>();
+  const n = spine.length;
+  spine.forEach(({ gx, cz }, i) => {
+    const t     = n > 1 ? i / (n - 1) : 0;
+    const halfW = Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
+    for (let dz = -halfW; dz <= halfW; dz++) {
+      const gz = cz + dz;
       const key = `${gz},${gx}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -134,11 +157,23 @@ const SPINE_SE = [
   { gz:-17, cx:20 }, { gz:-18, cx:19 }, { gz:-19, cx:18 }, { gz:-20, cx:17 },
 ];
 
+// East river — exits eastern bay wall near gz=13 (gx=27 active there),
+// body flows eastward (gx=28→47), spreads in gz, gently curving north-south.
+// mouthGx=27 (eastern bay column), mouthGz=13 (row where gx=27 is active).
+const SPINE_EAST_RIVER = [
+  { gx:28, cz:13 }, { gx:29, cz:13 }, { gx:30, cz:14 }, { gx:31, cz:15 },
+  { gx:32, cz:15 }, { gx:33, cz:14 }, { gx:34, cz:13 }, { gx:35, cz:12 },
+  { gx:36, cz:12 }, { gx:37, cz:13 }, { gx:38, cz:14 }, { gx:39, cz:15 },
+  { gx:40, cz:16 }, { gx:41, cz:16 }, { gx:42, cz:15 }, { gx:43, cz:14 },
+  { gx:44, cz:13 }, { gx:45, cz:12 }, { gx:46, cz:11 }, { gx:47, cz:11 },
+];
+
 export const RIVER_CELLS: RiverCell[] = [
   // args: spine, halfWDelta (mouth), halfWUpstream (source), mouthGx, mouthGz
-  ...buildRiver(SPINE_NORTH, 4, 1, 16, GRID_D - 1),  // wide delta→narrow channel, north
-  ...buildRiver(SPINE_NE,    3, 1, 25, GRID_D - 1),  // wide delta→narrow channel, NE
-  ...buildRiver(SPINE_SE,    4, 1, 15, 0),            // wide delta→narrow channel, SE (mouthGx=15 ✓)
+  ...buildRiver(SPINE_NORTH,      4, 1, 16, GRID_D - 1),  // north — wide delta → narrow
+  ...buildRiver(SPINE_NE,         3, 1, 25, GRID_D - 1),  // northeast — wide delta → narrow
+  ...buildRiver(SPINE_SE,         4, 1, 15, 0),            // southeast — wide delta → narrow
+  ...buildRiverEast(SPINE_EAST_RIVER, 4, 1, 27, 13),      // east — wide delta → narrow
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {

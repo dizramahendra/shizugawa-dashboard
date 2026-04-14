@@ -309,10 +309,16 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
   return (
     <>
       {RIVER_CELLS.map(({ gx, gz, mouthGx, mouthGz }) => {
-        // Sample top-layer value from the correct bay-edge row
+        // Sample top-layer value from the correct bay-edge row/column
         const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;
-        // Upstream distance: north rivers gz≥GRID_D, south river gz<0
-        const upstreamDist = gz >= 0 ? Math.max(0, gz - GRID_D) : -gz;
+        // Upstream distance by river direction:
+        //   east rivers:  gx > GRID_W-1 → distance = gx - GRID_W + 1
+        //   north rivers: gz ≥ GRID_D   → distance = gz - GRID_D
+        //   south river:  gz < 0        → distance = |gz|
+        const upstreamDist =
+          gx >= GRID_W ? gx - GRID_W + 1 :
+          gz >= 0      ? Math.max(0, gz - GRID_D) :
+                         -gz;
         const amp  = 1 + upstreamDist * 0.03;
         const val  = Math.min(1, Math.max(0, baseVal * amp));
         const [r, g, b] = lerpColor(stops, val);
