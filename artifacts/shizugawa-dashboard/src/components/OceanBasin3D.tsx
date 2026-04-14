@@ -288,7 +288,7 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
 
         return (
           <mesh key={`rv-${gz}-${gx}`} position={[px, riverY, pz]}>
-            <boxGeometry args={[CELL_W * 2, RIVER_H, CELL_W * 2]} />
+            <boxGeometry args={[CELL_W, RIVER_H, CELL_W]} />
             <meshStandardMaterial
               color={new THREE.Color(r, g, b)}
               transparent
