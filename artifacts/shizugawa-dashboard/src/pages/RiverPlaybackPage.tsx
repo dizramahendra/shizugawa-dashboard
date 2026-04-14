@@ -108,11 +108,6 @@ import TopNav from "@/components/TopNav";
 import PlaybackControls from "@/components/PlaybackControls";
 import RiverGrid2D from "@/components/RiverGrid2D";
 
-const COLOR_STOPS: Record<string, string[]> = {
-  nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
-  phosphorus: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
-  flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
-};
 
 export default function RiverPlaybackPage() {
   const navigate = useNavigate();
@@ -151,7 +146,6 @@ export default function RiverPlaybackPage() {
 
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
   const { label: weekLabel } = getWeekLabel(week, year);
-  const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
 
   const riverWeekData = useMemo(() => generateRiverData(week, riverId, year), [week, riverId, year]);
 
@@ -349,34 +343,6 @@ export default function RiverPlaybackPage() {
               </div>
               <div className="mt-2 w-full h-1 bg-muted rounded-full overflow-hidden">
                 <div className="h-full bg-blue-400 rounded-full transition-all duration-150" style={{ width: `${(week / (TOTAL_WEEKS - 1)) * 100}%` }} />
-              </div>
-            </div>
-
-            {/* 3. Variable + Legend */}
-            <div className="px-4 py-4">
-              <div className="panel-section-title mb-3">Variable</div>
-              <div className="text-sm font-medium text-foreground">{variable.label}</div>
-              <div className="text-xs text-muted-foreground mb-3">{variable.unit}</div>
-              <div className="mt-1">
-                <div className="flex rounded overflow-hidden border border-border/30">
-                  {stops.map((color, i) => (
-                    <div key={i} style={{ backgroundColor: color, flex: 1, height: 14 }}
-                      title={`${(variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1)}–${(variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1)} ${variable.unit}`}
-                    />
-                  ))}
-                </div>
-                <div className="relative h-4 mt-0.5">
-                  {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
-                    const val = (variable.min + frac * (variable.max - variable.min)).toFixed(1);
-                    return (
-                      <span key={frac} className="absolute text-[8px] font-mono text-muted-foreground -translate-x-1/2"
-                        style={{ left: `${frac * 100}%` }}>
-                        {val}
-                      </span>
-                    );
-                  })}
-                </div>
-                <div className="text-[8px] text-muted-foreground">{variable.unit}</div>
               </div>
             </div>
 
