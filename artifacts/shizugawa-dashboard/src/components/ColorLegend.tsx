@@ -11,9 +11,9 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
     high: "3.0 mg/L",
   },
   phosphorus: {
-    stops: ["#3b6fa0", "#6ca0c8", "#b8dce8", "#f0e68c", "#e8a030", "#c8401c"],
-    low: "10 μg/L",
-    high: "130 μg/L",
+    stops: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
+    low: "0.010 mg/L",
+    high: "0.130 mg/L",
   },
   flow: {
     stops: ["#e1f5fe", "#81d4fa", "#26c6da", "#66bb6a", "#ffa726", "#ef6c00"],
