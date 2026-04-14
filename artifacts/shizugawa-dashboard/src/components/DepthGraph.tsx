@@ -41,24 +41,33 @@ function smooth(pts: [number, number][]): string {
   return d;
 }
 
+type VarDef = { id: string; label: string; color: string; varMin: number; varMax: number; unit: string; decimals: number };
+
 interface MiniChartProps {
   title: string;
-  varDef: { id: string; label: string; color: string; varMin: number; varMax: number; unit: string; decimals: number };
+  varDef: VarDef;
   values: number[];   // normalized 0–1
+  varDef2?: VarDef;
+  values2?: number[];
   height: number;
   patId: string;
 }
 
-function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
+function MiniChart({ title, varDef, values, varDef2, values2, height, patId }: MiniChartProps) {
   const [hovIdx, setHovIdx] = useState<number | null>(null);
-  const IH = height - PT - PB;
+  const dual = !!(varDef2 && values2);
+  const ptTop = dual ? 34 : PT;
+  const IH = height - ptTop - PB;
 
-  const toY = (di: number) => PT + (di / (DEPTH_LAYERS - 1)) * IH;
+  const toY = (di: number) => ptTop + (di / (DEPTH_LAYERS - 1)) * IH;
   const toX = (v: number) => PL + v * IW;
-  const toPhys = (v: number) => varDef.varMin + v * (varDef.varMax - varDef.varMin);
-  const fmt = (v: number) => v.toFixed(varDef.decimals);
+  const toPhys1 = (v: number) => varDef.varMin + v * (varDef.varMax - varDef.varMin);
+  const toPhys2 = (v: number) => varDef2 ? varDef2.varMin + v * (varDef2.varMax - varDef2.varMin) : 0;
+  const fmt1 = (v: number) => v.toFixed(varDef.decimals);
+  const fmt2 = (v: number) => varDef2 ? v.toFixed(varDef2.decimals) : "";
 
-  const pts: [number, number][] = values.map((v, di) => [toX(v), toY(di)]);
+  const pts1: [number, number][] = values.map((v, di) => [toX(v), toY(di)]);
+  const pts2: [number, number][] = values2 ? values2.map((v, di) => [toX(v), toY(di)]) : [];
 
   return (
     <div>
@@ -70,7 +79,7 @@ function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
         onMouseMove={(e) => {
           const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
           const svgY = ((e.clientY - rect.top) / rect.height) * height;
-          const fracY = (svgY - PT) / IH;
+          const fracY = (svgY - ptTop) / IH;
           const idx = Math.round(fracY * (DEPTH_LAYERS - 1));
           setHovIdx(idx >= 0 && idx < DEPTH_LAYERS ? idx : null);
         }}
@@ -83,11 +92,11 @@ function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
         </defs>
 
         {/* Dotted background */}
-        <rect x={PL} y={PT} width={IW} height={IH} fill={`url(#${patId})`} />
+        <rect x={PL} y={ptTop} width={IW} height={IH} fill={`url(#${patId})`} />
 
         {/* Depth axis */}
-        <line x1={PL} y1={PT} x2={PL} y2={PT + IH} stroke="#374151" strokeWidth={1.2} />
-        <line x1={PL} y1={PT} x2={PL + IW} y2={PT} stroke="#e5e7eb" strokeWidth={0.8} />
+        <line x1={PL} y1={ptTop} x2={PL} y2={ptTop + IH} stroke="#374151" strokeWidth={1.2} />
+        <line x1={PL} y1={ptTop} x2={PL + IW} y2={ptTop} stroke="#e5e7eb" strokeWidth={0.8} />
 
         {/* Depth tick labels — left */}
         {DEPTH_LABELS.map((lbl, i) => (
@@ -95,21 +104,31 @@ function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
             {lbl}
           </text>
         ))}
-        <text x={PL - 4} y={PT - 8} fontSize={7} fill="#374151" fontWeight="500" textAnchor="end">
+        <text x={PL - 4} y={ptTop - (dual ? 20 : 8)} fontSize={7} fill="#374151" fontWeight="500" textAnchor="end">
           Depth
         </text>
 
-        {/* Physical value axis ticks — TOP (min / mid / max) */}
+        {/* Var1 axis ticks — bottom tick row */}
         {[0, 0.5, 1].map((frac) => (
-          <text key={frac} x={toX(frac)} y={PT - 4} fontSize={7} textAnchor="middle" fill="#6b7280">
-            {fmt(toPhys(frac))}
+          <text key={frac} x={toX(frac)} y={ptTop - 4} fontSize={7} textAnchor="middle" fill={varDef.color}>
+            {fmt1(toPhys1(frac))}
           </text>
         ))}
-
-        {/* Unit label */}
-        <text x={PL + IW} y={PT - 12} fontSize={6.5} textAnchor="end" fill="#9ca3af">
-          {varDef.unit}
+        <text x={PL + IW} y={ptTop - 13} fontSize={6.5} textAnchor="end" fill={varDef.color} opacity={0.8}>
+          N {varDef.unit}
         </text>
+
+        {/* Var2 axis ticks — top tick row (only if dual) */}
+        {dual && varDef2 && [0, 0.5, 1].map((frac) => (
+          <text key={frac} x={toX(frac)} y={ptTop - 14} fontSize={7} textAnchor="middle" fill={varDef2.color}>
+            {fmt2(toPhys2(frac))}
+          </text>
+        ))}
+        {dual && varDef2 && (
+          <text x={PL + IW} y={ptTop - 23} fontSize={6.5} textAnchor="end" fill={varDef2.color} opacity={0.8}>
+            P {varDef2.unit}
+          </text>
+        )}
 
         {/* Horizontal grid lines */}
         {DEPTH_LABELS.map((_, i) => (
@@ -119,11 +138,17 @@ function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
           />
         ))}
 
-        {/* Smooth curve */}
-        <path d={smooth(pts)} fill="none"
+        {/* Smooth curves */}
+        <path d={smooth(pts1)} fill="none"
           stroke={varDef.color} strokeWidth={1.8}
           strokeLinecap="round" strokeLinejoin="round" opacity={0.9}
         />
+        {dual && pts2.length > 0 && (
+          <path d={smooth(pts2)} fill="none"
+            stroke={varDef2!.color} strokeWidth={1.8}
+            strokeLinecap="round" strokeLinejoin="round" opacity={0.9}
+          />
+        )}
 
         {/* Hover indicator */}
         {hovIdx !== null && (
@@ -132,26 +157,37 @@ function MiniChart({ title, varDef, values, height, patId }: MiniChartProps) {
               x1={PL} y1={toY(hovIdx)} x2={PL + IW} y2={toY(hovIdx)}
               stroke="#374151" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.5}
             />
-            <circle
-              cx={toX(values[hovIdx])} cy={toY(hovIdx)}
-              r={3} fill={varDef.color} stroke="white" strokeWidth={1.2}
-            />
-            {/* Tooltip: depth @ left, value @ right */}
+            <circle cx={toX(values[hovIdx])} cy={toY(hovIdx)} r={3} fill={varDef.color} stroke="white" strokeWidth={1.2} />
+            {dual && values2 && (
+              <circle cx={toX(values2[hovIdx])} cy={toY(hovIdx)} r={3} fill={varDef2!.color} stroke="white" strokeWidth={1.2} />
+            )}
             <text x={PL - 6} y={toY(hovIdx) + 3} fontSize={6.5} textAnchor="end" fill="#374151" fontWeight="600">
               {DEPTH_MID_M[hovIdx]}m
             </text>
-            <text x={PL + IW + 2} y={toY(hovIdx) + 3} fontSize={6.5} textAnchor="start" fill={varDef.color} fontWeight="600">
-              {fmt(toPhys(values[hovIdx]))}
+            <text x={PL + IW + 2} y={toY(hovIdx) + (dual ? -3 : 3)} fontSize={6.5} textAnchor="start" fill={varDef.color} fontWeight="600">
+              {fmt1(toPhys1(values[hovIdx]))}
             </text>
+            {dual && values2 && (
+              <text x={PL + IW + 2} y={toY(hovIdx) + 7} fontSize={6.5} textAnchor="start" fill={varDef2!.color} fontWeight="600">
+                {fmt2(toPhys2(values2[hovIdx]))}
+              </text>
+            )}
           </>
         )}
 
-        {/* Legend swatch */}
+        {/* Legend swatches */}
         <g>
-          <line x1={PL + IW - 32} y1={PT + 10} x2={PL + IW - 22} y2={PT + 10}
+          <line x1={PL + IW - 32} y1={ptTop + 10} x2={PL + IW - 22} y2={ptTop + 10}
             stroke={varDef.color} strokeWidth={2} strokeLinecap="round" />
-          <text x={PL + IW - 19} y={PT + 13} fontSize={6.5} fill="#374151">{varDef.label}</text>
+          <text x={PL + IW - 19} y={ptTop + 13} fontSize={6.5} fill="#374151">{varDef.label}</text>
         </g>
+        {dual && varDef2 && (
+          <g>
+            <line x1={PL + IW - 32} y1={ptTop + 21} x2={PL + IW - 22} y2={ptTop + 21}
+              stroke={varDef2.color} strokeWidth={2} strokeLinecap="round" />
+            <text x={PL + IW - 19} y={ptTop + 24} fontSize={6.5} fill="#374151">{varDef2.label}</text>
+          </g>
+        )}
       </svg>
     </div>
   );
@@ -232,9 +268,13 @@ export default function DepthGraph({
       )}
 
       <div className="space-y-4">
-        <MiniChart title="Total Nitrogen"   varDef={N_VAR}    values={profiles.nValues}    height={155} patId="dg-n"    />
-        <MiniChart title="Total Phosphorus" varDef={P_VAR}    values={profiles.pValues}    height={155} patId="dg-p"    />
-        <MiniChart title="Water Flow"       varDef={FLOW_VAR} values={profiles.flowValues} height={145} patId="dg-flow" />
+        <MiniChart
+          title="Nitrogen · Phosphorus"
+          varDef={N_VAR}    values={profiles.nValues}
+          varDef2={P_VAR}   values2={profiles.pValues}
+          height={175} patId="dg-np"
+        />
+        <MiniChart title="Water Flow" varDef={FLOW_VAR} values={profiles.flowValues} height={145} patId="dg-flow" />
       </div>
     </div>
   );
