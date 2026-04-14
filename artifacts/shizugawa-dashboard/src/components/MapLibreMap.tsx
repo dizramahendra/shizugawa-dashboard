@@ -487,19 +487,26 @@ export default function MapLibreMap({
         const maxVal = varOpt?.max ?? 1;
         const unit   = varOpt?.unit ?? "";
         return (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5 bg-white/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none whitespace-nowrap">
-            <span className="text-[9px] text-muted-foreground font-medium self-start">{variableLabel}</span>
+          <div className="absolute bottom-3 left-3 flex flex-col gap-0.5 bg-white/90 backdrop-blur-sm border border-border rounded-md px-2.5 py-1.5 shadow-sm pointer-events-none">
+            <span className="text-[9px] text-muted-foreground font-medium">{variableLabel}</span>
             <div className="flex rounded-sm overflow-hidden border border-border/20">
               {stops.map((color, i) => {
                 const lo = (minVal + (i / stops.length) * (maxVal - minVal)).toFixed(1);
                 const hi = (minVal + ((i + 1) / stops.length) * (maxVal - minVal)).toFixed(1);
-                return <div key={i} style={{ backgroundColor: color, width: 22, height: 10 }} title={`${lo}–${hi} ${unit}`} />;
+                return <div key={i} style={{ backgroundColor: color, width: 26, height: 12 }} title={`${lo}–${hi} ${unit}`} />;
               })}
             </div>
-            <div className="flex justify-between w-full text-[8px] font-mono text-slate-500">
-              <span>{minVal}</span>
-              <span>{maxVal} {unit}</span>
+            <div className="flex">
+              {stops.map((_, i) => {
+                const lo = (minVal + (i / stops.length) * (maxVal - minVal)).toFixed(1);
+                return (
+                  <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 26 }}>
+                    {lo}
+                  </div>
+                );
+              })}
             </div>
+            <div className="text-[7px] font-mono text-slate-400 text-right">{unit}</div>
           </div>
         );
       })()}

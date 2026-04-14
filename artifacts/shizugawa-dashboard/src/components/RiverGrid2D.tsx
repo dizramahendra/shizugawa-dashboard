@@ -373,12 +373,21 @@ export default function RiverGrid2D({
             {stops.map((color, i) => {
               const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
               const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1);
-              return <div key={i} style={{ backgroundColor: color, width: 20, height: 10 }} title={`${lo}–${hi} ${variable.unit}`} />;
+              return <div key={i} style={{ backgroundColor: color, width: 22, height: 11 }} title={`${lo}–${hi} ${variable.unit}`} />;
             })}
           </div>
-          <div className="flex justify-between text-[9px] font-mono text-muted-foreground" style={{ width: stops.length * 20 }}>
-            <span>{variable.min}</span>
-            <span>{variable.max} {variable.unit}</span>
+          <div className="flex">
+            {stops.map((_, i) => {
+              const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
+              return (
+                <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 22 }}>
+                  {lo}
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-[7px] font-mono text-slate-400 text-right" style={{ width: stops.length * 22 }}>
+            {variable.unit}
           </div>
         </div>
       </div>
