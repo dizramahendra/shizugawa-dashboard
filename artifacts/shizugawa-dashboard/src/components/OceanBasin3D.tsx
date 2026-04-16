@@ -178,7 +178,9 @@ function VoxelGrid({
   const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
 
   const visibleDepths = useMemo(() => {
-    if (sliceMode === "slice-h") return [sliceLevel];
+    if (sliceMode === "slice-h")
+      // Show sliceLevel and everything deeper (below the cut)
+      return Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i);
     return Array.from({ length: DEPTH_LAYERS }, (_, i) => i);
   }, [sliceMode, sliceLevel]);
 
@@ -304,6 +306,11 @@ function SeabedMesh({
   const geometry = useMemo(() => {
     const Y_BOT = BOX_BOT;
 
+    // In slice-h mode, everything above this Y is hidden (top of the selected layer)
+    const sliceClipY = sliceMode === "slice-h"
+      ? Y_SURFACE - DEPTH_TOPS[sliceLevel]
+      : Infinity;  // no clip
+
     // Is cell (gx, gz) part of the rendered solid?
     function shouldRender(gx: number, gz: number): boolean {
       if (!BAY_MASK[gz]?.[gx]) return false;
@@ -322,7 +329,8 @@ function SeabedMesh({
       return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
     }
 
-    // Smooth terrain-corner Y: average seabedSceneY of up to 4 adjacent active cells
+    // Smooth terrain-corner Y: average seabedSceneY of up to 4 adjacent active cells,
+    // then clip at the horizontal slice plane so the solid doesn't poke above the cut.
     function cornerY(gx: number, gz: number): number {
       let sumY = 0, cnt = 0;
       for (let dz = -1; dz <= 0; dz++) {
@@ -334,7 +342,8 @@ function SeabedMesh({
           }
         }
       }
-      return cnt > 0 ? sumY / cnt : Y_SURFACE - DEPTH_TOTAL_H;
+      const rawY = cnt > 0 ? sumY / cnt : Y_SURFACE - DEPTH_TOTAL_H;
+      return Math.min(rawY, sliceClipY);  // clip top at the slice plane
     }
 
     const positions: number[] = [];
@@ -454,6 +463,11 @@ function RiverSeabedMesh({
     const DELTA_ROWS = 3;
     const Y_BOT = BOX_BOT;
 
+    // In slice-h mode, clip seabed tops above this Y (top boundary of the selected layer)
+    const sliceClipY = sliceMode === "slice-h"
+      ? Y_SURFACE - DEPTH_TOPS[sliceLevel]
+      : Infinity;
+
     // Fast lookup for river cell membership
     const riverSet = new Set<string>(RIVER_CELLS.map(c => `${c.gz},${c.gx}`));
 
@@ -492,8 +506,9 @@ function RiverSeabedMesh({
     for (const { gx, gz } of RIVER_CELLS) {
       if (!shouldRender(gx, gz)) continue;
 
-      // All river water is layer 0 only
-      const topY    = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0];
+      // All river water is layer 0 only; clip the seabed top at the slice plane
+      const rawTopY = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0];
+      const topY    = Math.min(rawTopY, sliceClipY);
       // Delta cells (within DELTA_ROWS of the mouth) join the ocean solid at BOX_BOT;
       // upstream cells get a shallow channel bed one layer deep
       const dist    = upstreamDistFor(gx, gz);
