@@ -579,17 +579,32 @@ function RiverSeabedMesh({
 // Delta cells (close to the bay mouth) are rendered like shallow ocean — multiple
 // depth layers + a seabed box — so they blend naturally with the bay edge.
 // Further upstream the river tapers to a single surface tile (like a narrow channel).
-function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
+function RiverGrid({
+  week,
+  colorScale,
+  sliceMode,
+  sliceLevel,
+  sliceAxis,
+}: {
+  week: number;
+  colorScale: string;
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceAxis: "x" | "z";
+}) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
-  // How many rows from the mouth get the full multi-layer delta treatment.
-  // dist=1→3 layers, dist=2→2 layers, dist=3→1 layer, dist≥4→1 layer (narrow channel).
   const DELTA_ROWS = 3;
 
   const elements: React.ReactNode[] = [];
 
   for (const { gx, gz, mouthGx, mouthGz } of RIVER_CELLS) {
+    // Slice filtering — mirrors RiverSeabedMesh logic
+    if (sliceMode === "slice-v") {
+      if (sliceAxis === "x" && gx !== sliceLevel) continue;
+      if (sliceAxis === "z" && gz !== sliceLevel) continue;
+    }
     // Upstream distance by river direction
     const upstreamDist =
       gx >= GRID_W ? gx - GRID_W + 1 :
@@ -821,7 +836,13 @@ export default function OceanBasin3D({
         sliceAxis={sliceAxis}
       />
 
-      <RiverGrid week={week} colorScale={colorScale} />
+      <RiverGrid
+        week={week}
+        colorScale={colorScale}
+        sliceMode={dashboardState}
+        sliceLevel={sliceLevel}
+        sliceAxis={sliceAxis}
+      />
 
       <RiverSeabedMesh
         sliceMode={dashboardState}
