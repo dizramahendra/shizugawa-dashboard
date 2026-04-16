@@ -192,14 +192,9 @@ function VoxelGrid({
       const maxLayer  = deepestVisibleLayer(seabedM);
       if (maxLayer < 0) continue;
 
-      // Shore-distance clamp: coastal cells (dist=1) show only 1 depth layer;
-      // every step away from land adds one more layer.
-      const shoreDist       = SHORE_DIST.get(`${gz}-${gx}`) ?? 1;
-      const effectiveMaxLayer = Math.min(maxLayer, shoreDist - 1);
-
       // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
-        if (d > effectiveMaxLayer) continue;                 // below shore-clamped seabed
+        if (d > maxLayer) continue;                          // below bathymetric seabed
         if (sliceMode === "slice-v" && sliceAxis === "x" && gx !== sliceLevel) continue;
         if (sliceMode === "slice-v" && sliceAxis === "z" && gz !== sliceLevel) continue;
 
@@ -318,16 +313,13 @@ function SeabedMesh({
       return true;
     }
 
-    // Scene-Y at the seabed for cell (gx, gz).
-    // Uses the shore-distance-clamped layer — identical to what VoxelGrid renders —
-    // so the seabed solid top always kisses the bottom face of the deepest water voxel.
+    // Scene-Y at the seabed for cell (gx, gz) — matches VoxelGrid's maxLayer exactly
+    // so the seabed solid top always kisses the bottom of the deepest water voxel.
     function seabedSceneY(gx: number, gz: number): number {
-      const seabedM          = getBathymetryDepthM(gx, gz);
-      const maxLayer         = deepestVisibleLayer(seabedM);
-      const shoreDist        = SHORE_DIST.get(`${gz}-${gx}`) ?? 1;
-      const effectiveMax     = Math.min(maxLayer, shoreDist - 1);
-      if (effectiveMax < 0) return Y_SURFACE;   // fully masked cell — top of water
-      return Y_SURFACE - DEPTH_TOPS[effectiveMax] - DEPTH_HEIGHTS[effectiveMax];
+      const seabedM  = getBathymetryDepthM(gx, gz);
+      const maxLayer = deepestVisibleLayer(seabedM);
+      if (maxLayer < 0) return Y_SURFACE;
+      return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
     }
 
     // Smooth terrain-corner Y: average seabedSceneY of up to 4 adjacent active cells
