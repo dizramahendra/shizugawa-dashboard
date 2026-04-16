@@ -219,15 +219,11 @@ function VoxelGrid({
           <mesh
             key={`${gz}-${gx}-${d}`}
             position={[px, py, pz]}
-            onClick={
-              d === 0
-                ? (e) => { e.stopPropagation(); onCellClick(gx, gz); }
-                : undefined
-            }
+            onClick={(e) => { e.stopPropagation(); onCellClick(gx, gz); }}
             onPointerOver={(e) => {
               e.stopPropagation();
               setHovered({ px, py, pz, val, depth: d });
-              if (d === 0) onCellHover?.(gx, gz);
+              onCellHover?.(gx, gz);
             }}
             onPointerOut={() => setHovered(null)}
           >

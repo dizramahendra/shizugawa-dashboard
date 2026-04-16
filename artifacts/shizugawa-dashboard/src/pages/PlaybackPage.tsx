@@ -17,13 +17,18 @@ const COLOR_STOPS: Record<string, string[]> = {
   flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
 };
 
-type ToolState = "none" | "point-select" | "slice-h" | "slice-v" | "depth-graph";
+type SliceTool   = "none" | "slice-h" | "slice-v";
+type InspectTool = "none" | "point-select" | "depth-graph";
+type ToolState   = SliceTool | InspectTool;
 
-const tools: { id: ToolState; label: string; icon: typeof Crosshair; desc: string }[] = [
-  { id: "point-select", label: "Point Inspection", icon: Crosshair, desc: "Click a voxel to inspect its value" },
-  { id: "slice-h", label: "Horizontal Slice", icon: Layers, desc: "Cross-section at fixed depth" },
-  { id: "slice-v", label: "Vertical Slice", icon: GitBranchPlus, desc: "Draw a transect · drag the mini-map line" },
-  { id: "depth-graph", label: "Depth Profile", icon: BarChart2, desc: "Concentration vs. depth" },
+const sliceTools: { id: SliceTool; label: string; icon: typeof Crosshair; desc: string }[] = [
+  { id: "slice-h", label: "Horizontal Slice", icon: Layers,       desc: "Cross-section at fixed depth" },
+  { id: "slice-v", label: "Vertical Slice",   icon: GitBranchPlus, desc: "Draw a transect · drag the mini-map line" },
+];
+
+const inspectTools: { id: InspectTool; label: string; icon: typeof Crosshair; desc: string }[] = [
+  { id: "point-select", label: "Point Inspection", icon: Crosshair, desc: "Click any voxel to inspect its column" },
+  { id: "depth-graph",  label: "Depth Profile",    icon: BarChart2, desc: "Concentration vs. depth chart" },
 ];
 
 // ── Mini-map constants (top-down bay view for vertical slice) ─────────────────
@@ -71,7 +76,8 @@ export default function PlaybackPage() {
   const [selectedVariable, setSelectedVariable] = useState("nitrogen");
   const [sliceLevel, setSliceLevel] = useState(3);
   const [sliceAxis, setSliceAxis] = useState<"x" | "z">("x");
-  const [activeTool, setActiveTool] = useState<ToolState>("none");
+  const [sliceTool,   setSliceTool]   = useState<SliceTool>("none");
+  const [inspectTool, setInspectTool] = useState<InspectTool>("none");
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
   const [showExchange, setShowExchange] = useState(true);
@@ -82,7 +88,7 @@ export default function PlaybackPage() {
   const pause = useCallback(() => setIsPlaying(false), []);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
-  const sliceMax = activeTool === "slice-h" ? 7
+  const sliceMax = sliceTool === "slice-h" ? 7
     : sliceAxis === "x" ? GRID_W - 1
     : GRID_D - 1;
 
@@ -144,11 +150,16 @@ export default function PlaybackPage() {
 
   const handleCellClick = (x: number, z: number) => {
     setSelectedPoint({ x, z });
-    if (activeTool === "none") setActiveTool("point-select");
+    // Auto-activate point inspection when the user clicks with no inspect tool selected
+    if (inspectTool === "none") setInspectTool("point-select");
   };
 
   const handleSeek = (w: number) => { setWeek(w); pause(); };
 
+  // Slice tool takes priority for 3D rendering; inspect tool is a fallback for state labelling
+  const activeTool: ToolState = sliceTool !== "none" ? sliceTool
+    : inspectTool !== "none" ? inspectTool
+    : "none";
   const dashboardState = toDashboardState(activeTool, isPlaying);
 
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
@@ -467,27 +478,54 @@ export default function PlaybackPage() {
             </div>
 
             {/* Analysis tools */}
-            <div className="px-4 py-4">
-              <div className="panel-section-title mb-2">Analysis Tools</div>
-              <div className="space-y-1">
-                {tools.map((tool) => {
-                  const Icon = tool.icon;
-                  const isActive = activeTool === tool.id;
-                  return (
-                    <button
-                      key={tool.id}
-                      className={`tool-btn ${isActive ? "tool-btn-active" : ""}`}
-                      onClick={() => setActiveTool(isActive ? "none" : tool.id)}
-                    >
-                      <Icon size={14} className="flex-shrink-0" />
-                      <div className="text-left">
-                        <div className="text-xs font-medium">{tool.label}</div>
-                        <div className="text-[10px] text-muted-foreground leading-none mt-0.5">{tool.desc}</div>
-                      </div>
-                      {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
-                    </button>
-                  );
-                })}
+            <div className="px-4 py-4 space-y-3">
+              {/* Slice tools (independent of inspect tools) */}
+              <div>
+                <div className="panel-section-title mb-1.5">Slice View</div>
+                <div className="space-y-1">
+                  {sliceTools.map((tool) => {
+                    const Icon = tool.icon;
+                    const isActive = sliceTool === tool.id;
+                    return (
+                      <button
+                        key={tool.id}
+                        className={`tool-btn ${isActive ? "tool-btn-active" : ""}`}
+                        onClick={() => setSliceTool(isActive ? "none" : tool.id)}
+                      >
+                        <Icon size={14} className="flex-shrink-0" />
+                        <div className="text-left">
+                          <div className="text-xs font-medium">{tool.label}</div>
+                          <div className="text-[10px] text-muted-foreground leading-none mt-0.5">{tool.desc}</div>
+                        </div>
+                        {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Inspect tools (combinable with any slice) */}
+              <div>
+                <div className="panel-section-title mb-1.5">Inspection</div>
+                <div className="space-y-1">
+                  {inspectTools.map((tool) => {
+                    const Icon = tool.icon;
+                    const isActive = inspectTool === tool.id;
+                    return (
+                      <button
+                        key={tool.id}
+                        className={`tool-btn ${isActive ? "tool-btn-active" : ""}`}
+                        onClick={() => setInspectTool(isActive ? "none" : tool.id)}
+                      >
+                        <Icon size={14} className="flex-shrink-0" />
+                        <div className="text-left">
+                          <div className="text-xs font-medium">{tool.label}</div>
+                          <div className="text-[10px] text-muted-foreground leading-none mt-0.5">{tool.desc}</div>
+                        </div>
+                        {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -535,15 +573,15 @@ export default function PlaybackPage() {
             */}
 
             {/* Slice controls */}
-            {(activeTool === "slice-h" || activeTool === "slice-v") && (
+            {sliceTool !== "none" && (
               <div className="px-4 py-4 space-y-3">
                 <div className="panel-section-title flex items-center gap-1.5">
                   <ArrowUpDown size={11} />
-                  {activeTool === "slice-h" ? "Horizontal Slice" : "Vertical Slice"}
+                  {sliceTool === "slice-h" ? "Horizontal Slice" : "Vertical Slice"}
                 </div>
 
                 {/* ── Vertical slice: step-by-step ── */}
-                {activeTool === "slice-v" && (
+                {sliceTool === "slice-v" && (
                   <>
                     {/* Step 1: cut direction */}
                     <div>
@@ -584,7 +622,7 @@ export default function PlaybackPage() {
                 {/* Step 3 (both modes): slider */}
                 <div>
                   <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                    {activeTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
+                    {sliceTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
                   </div>
                   <input
                     type="range"
@@ -595,7 +633,7 @@ export default function PlaybackPage() {
                     className="w-full accent-primary cursor-pointer"
                   />
                   <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
-                    {activeTool === "slice-h"
+                    {sliceTool === "slice-h"
                       ? `Layer ${sliceLevel + 1} of 8 · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
                       : sliceAxis === "x"
                         ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
@@ -605,8 +643,8 @@ export default function PlaybackPage() {
               </div>
             )}
 
-            {/* Selected column */}
-            {selectedPoint && (activeTool === "point-select" || activeTool === "depth-graph") && (() => {
+            {/* Selected column — visible whenever an inspect tool is active */}
+            {selectedPoint && inspectTool !== "none" && (() => {
               const coords = gridToCoords(selectedPoint.x, selectedPoint.z, 0);
               return (
                 <div className="px-4 py-4">
@@ -649,8 +687,8 @@ export default function PlaybackPage() {
               );
             })()}
 
-            {/* Depth graph */}
-            {activeTool === "depth-graph" && (
+            {/* Depth graph — visible whenever depth-graph inspect tool is active */}
+            {inspectTool === "depth-graph" && (
               <div className="px-4 py-4">
                 <DepthGraph
                   week={week}
