@@ -474,15 +474,13 @@ function RiverSeabedMesh({
       return true;
     }
 
-    // Mirror the numLayers logic from RiverGrid
-    function numLayersFor(gx: number, gz: number): number {
+    // All river water is single-layer; seabed uses upstream distance to detect delta zone
+    function upstreamDistFor(gx: number, gz: number): number {
       const inBayBounds = gz >= 0 && gz < GRID_D && gx >= 0 && gx < GRID_W;
-      if (inBayBounds) return 1;
-      const upstreamDist =
-        gx >= GRID_W ? gx - GRID_W + 1 :
-        gz >= 0      ? Math.max(0, gz - GRID_D) :
-                       -gz;
-      return Math.max(1, DELTA_ROWS - upstreamDist + 1);
+      if (inBayBounds) return 0;
+      return gx >= GRID_W ? gx - GRID_W + 1 :
+             gz >= 0      ? Math.max(0, gz - GRID_D) :
+                            -gz;
     }
 
     const positions: number[] = [];
@@ -502,10 +500,12 @@ function RiverSeabedMesh({
     for (const { gx, gz } of RIVER_CELLS) {
       if (!shouldRender(gx, gz)) continue;
 
-      const nl      = numLayersFor(gx, gz);
-      const topY    = Y_SURFACE - DEPTH_TOPS[nl - 1] - DEPTH_HEIGHTS[nl - 1];
-      // Delta cells join the ocean solid; upstream cells get a shallow channel bed
-      const bottomY = nl > 1 ? Y_BOT : topY - DEPTH_HEIGHTS[0];
+      // All river water is layer 0 only
+      const topY    = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0];
+      // Delta cells (within DELTA_ROWS of the mouth) join the ocean solid at BOX_BOT;
+      // upstream cells get a shallow channel bed one layer deep
+      const dist    = upstreamDistFor(gx, gz);
+      const bottomY = dist <= DELTA_ROWS ? Y_BOT : topY - DEPTH_HEIGHTS[0];
 
       const x0 = offsetX + gx       * STEP;
       const x1 = offsetX + (gx + 1) * STEP;
@@ -600,11 +600,8 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
     // single surface tile so they don't conflict with ocean depth stacks.
     const inBayBounds = gz >= 0 && gz < GRID_D && gx >= 0 && gx < GRID_W;
 
-    // How many depth layers to render at this cell
-    // (mouth = DELTA_ROWS, decreasing to 1 as we go upstream)
-    const numLayers = inBayBounds
-      ? 1
-      : Math.max(1, DELTA_ROWS - upstreamDist + 1);
+    // All river cells render exactly one water layer — rivers are surface features
+    const numLayers = 1;
 
     // Colour: sample bay-edge top layer, amplify slightly upstream
     const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;
