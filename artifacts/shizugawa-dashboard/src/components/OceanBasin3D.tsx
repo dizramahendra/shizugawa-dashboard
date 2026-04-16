@@ -768,19 +768,22 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
   }
   if (mode === "slice-v" && sliceAxis === "x") {
     const x = offsetX + level * STEP + STEP / 2;
+    // Outline only — invisible fill so voxel colours show through unobstructed
     return (
-      <mesh position={[x, BOX_CY, 0]}>
-        <planeGeometry args={[0.05, BOX_H, DEPTH_LAYERS, GRID_D]} />
-        <meshStandardMaterial color="#f59e0b" opacity={0.14} transparent side={THREE.DoubleSide} />
+      <mesh position={[x, BOX_CY, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[GRID_D * STEP, BOX_H]} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+        <Edges color="#f59e0b" threshold={1} />
       </mesh>
     );
   }
   if (mode === "slice-v" && sliceAxis === "z") {
     const z = offsetZ + level * STEP + STEP / 2;
     return (
-      <mesh position={[0, BOX_CY, z]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[GRID_D * STEP, BOX_H, DEPTH_LAYERS, GRID_W]} />
-        <meshStandardMaterial color="#f59e0b" opacity={0.14} transparent side={THREE.DoubleSide} />
+      <mesh position={[0, BOX_CY, z]}>
+        <planeGeometry args={[GRID_W * STEP, BOX_H]} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+        <Edges color="#f59e0b" threshold={1} />
       </mesh>
     );
   }
