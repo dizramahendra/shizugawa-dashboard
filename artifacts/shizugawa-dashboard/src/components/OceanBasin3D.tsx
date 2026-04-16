@@ -441,6 +441,140 @@ function SeabedMesh({
   );
 }
 
+// ── River seabed solid ────────────────────────────────────────────────────────
+// Volumetric soil/rock beneath every river cell:
+//   • Delta cells (numLayers > 1, at or near the bay mouth): solid goes all the
+//     way to BOX_BOT, joining seamlessly with the ocean seabed at the transition.
+//   • Upstream single-layer cells: solid is one depth-layer thick, giving the
+//     narrow channel a visible floor without plunging to the ocean floor.
+// Side walls are drawn only on boundary edges (no adjacent river cell, or the
+// neighbour is excluded by the active slice).
+function RiverSeabedMesh({
+  sliceMode,
+  sliceLevel,
+  sliceAxis,
+}: {
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceAxis: "x" | "z";
+}) {
+  const geometry = useMemo(() => {
+    const DELTA_ROWS = 3;
+    const Y_BOT = BOX_BOT;
+
+    // Fast lookup for river cell membership
+    const riverSet = new Set<string>(RIVER_CELLS.map(c => `${c.gz},${c.gx}`));
+
+    // Is (gx, gz) rendered in the current slice state?
+    function shouldRender(gx: number, gz: number): boolean {
+      if (!riverSet.has(`${gz},${gx}`)) return false;
+      if (sliceMode === "slice-v") {
+        return sliceAxis === "x" ? gx === sliceLevel : gz === sliceLevel;
+      }
+      return true;
+    }
+
+    // Mirror the numLayers logic from RiverGrid
+    function numLayersFor(gx: number, gz: number): number {
+      const inBayBounds = gz >= 0 && gz < GRID_D && gx >= 0 && gx < GRID_W;
+      if (inBayBounds) return 1;
+      const upstreamDist =
+        gx >= GRID_W ? gx - GRID_W + 1 :
+        gz >= 0      ? Math.max(0, gz - GRID_D) :
+                       -gz;
+      return Math.max(1, DELTA_ROWS - upstreamDist + 1);
+    }
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indices:   number[] = [];
+
+    function dT(y: number): number {
+      return Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
+    }
+    function addVert(px: number, py: number, pz: number): number {
+      const t = dT(py);
+      positions.push(px, py, pz);
+      colors.push(0.66 - t * 0.32, 0.52 - t * 0.26, 0.34 - t * 0.16);
+      return (positions.length / 3) - 1;
+    }
+
+    for (const { gx, gz } of RIVER_CELLS) {
+      if (!shouldRender(gx, gz)) continue;
+
+      const nl      = numLayersFor(gx, gz);
+      const topY    = Y_SURFACE - DEPTH_TOPS[nl - 1] - DEPTH_HEIGHTS[nl - 1];
+      // Delta cells join the ocean solid; upstream cells get a shallow channel bed
+      const bottomY = nl > 1 ? Y_BOT : topY - DEPTH_HEIGHTS[0];
+
+      const x0 = offsetX + gx       * STEP;
+      const x1 = offsetX + (gx + 1) * STEP;
+      const z0 = offsetZ + gz       * STEP;
+      const z1 = offsetZ + (gz + 1) * STEP;
+
+      // Top face (faces upward)
+      const t00 = addVert(x0, topY, z0);
+      const t10 = addVert(x1, topY, z0);
+      const t01 = addVert(x0, topY, z1);
+      const t11 = addVert(x1, topY, z1);
+      indices.push(t00, t11, t10,  t00, t01, t11);
+
+      // Bottom face (faces downward)
+      const b00 = addVert(x0, bottomY, z0);
+      const b10 = addVert(x1, bottomY, z0);
+      const b01 = addVert(x0, bottomY, z1);
+      const b11 = addVert(x1, bottomY, z1);
+      indices.push(b00, b10, b11,  b00, b11, b01);
+
+      // West wall
+      if (!shouldRender(gx - 1, gz)) {
+        const a = addVert(x0, topY,    z0); const b = addVert(x0, bottomY, z0);
+        const c = addVert(x0, bottomY, z1); const d = addVert(x0, topY,    z1);
+        indices.push(a, b, c,  a, c, d);
+      }
+      // East wall
+      if (!shouldRender(gx + 1, gz)) {
+        const a = addVert(x1, topY,    z0); const b = addVert(x1, bottomY, z0);
+        const c = addVert(x1, bottomY, z1); const d = addVert(x1, topY,    z1);
+        indices.push(a, c, b,  a, d, c);
+      }
+      // North wall (-Z)
+      if (!shouldRender(gx, gz - 1)) {
+        const a = addVert(x0, topY,    z0); const b = addVert(x0, bottomY, z0);
+        const c = addVert(x1, bottomY, z0); const d = addVert(x1, topY,    z0);
+        indices.push(a, c, b,  a, d, c);
+      }
+      // South wall (+Z)
+      if (!shouldRender(gx, gz + 1)) {
+        const a = addVert(x0, topY,    z1); const b = addVert(x0, bottomY, z1);
+        const c = addVert(x1, bottomY, z1); const d = addVert(x1, topY,    z1);
+        indices.push(a, b, c,  a, c, d);
+      }
+    }
+
+    if (indices.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [sliceMode, sliceLevel, sliceAxis]);
+
+  if (!geometry) return null;
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial
+        vertexColors
+        roughness={0.88}
+        metalness={0.04}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
 // ── River voxels ─────────────────────────────────────────────────────────────
 // Delta cells (close to the bay mouth) are rendered like shallow ocean — multiple
 // depth layers + a seabed box — so they blend naturally with the bay edge.
@@ -499,20 +633,6 @@ function RiverGrid({ week, colorScale }: { week: number; colorScale: string }) {
       );
     }
 
-    // Seabed cap under the deepest layer — only where there are multiple layers
-    // (single-tile upstream cells don't need it; it would look like a floating plank)
-    if (numLayers > 1) {
-      const deepest = numLayers - 1;
-      const sbTop   = DEPTH_TOPS[deepest] + DEPTH_HEIGHTS[deepest];
-      const sbH     = 0.18;
-      const sbY     = Y_SURFACE - sbTop - sbH / 2;
-      elements.push(
-        <mesh key={`rv-sb-${gz}-${gx}`} position={[px, sbY, pz]}>
-          <boxGeometry args={[CELL_W * 1.15, sbH, CELL_W * 1.15]} />
-          <meshStandardMaterial color="#9c7a52" roughness={0.95} metalness={0.0} />
-        </mesh>
-      );
-    }
   }
 
   return <>{elements}</>;
@@ -705,6 +825,12 @@ export default function OceanBasin3D({
       />
 
       <RiverGrid week={week} colorScale={colorScale} />
+
+      <RiverSeabedMesh
+        sliceMode={dashboardState}
+        sliceLevel={sliceLevel}
+        sliceAxis={sliceAxis}
+      />
 
       <BoundingBox />
       <AxisLabels />
