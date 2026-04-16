@@ -285,11 +285,18 @@ function VoxelGrid({
   );
 }
 
-// ── Unified seabed terrain mesh ───────────────────────────────────────────────
-// One continuous BufferGeometry surface whose vertex heights follow the actual
-// bathymetric contour of Shizugawa Bay. Vertex colours shade from warm sandy tan
-// (shallow east) to dark muddy brown (deep west), giving a clear topography read.
-// Respects slice mode: only the cells within the active slice plane are rendered.
+// ── Volumetric seabed solid ───────────────────────────────────────────────────
+// A closed solid that fills from the bathymetric seabed contour down to the
+// absolute bottom of the bounding cube (BOX_BOT), making the overall 3-D model
+// read as a complete block — water voxels sit in the bowl carved into the top.
+//
+// Geometry per active cell:
+//   • Top face   — 4 corners at true seabed depth (averaged for smooth contour)
+//   • Bottom face — flat quad at BOX_BOT
+//   • Side walls  — vertical quads on every edge where the neighbour is NOT an
+//                   active (renderable) cell, i.e. the shoreline / slice cut face
+//
+// Vertex colour: sandy tan (shallow/top) → dark muddy brown (deep/bottom)
 function SeabedMesh({
   sliceMode,
   sliceLevel,
@@ -300,16 +307,18 @@ function SeabedMesh({
   sliceAxis: "x" | "z";
 }) {
   const geometry = useMemo(() => {
-    // Which cells contribute to this render
-    const shouldRender = (gx: number, gz: number): boolean => {
+    const Y_BOT = BOX_BOT;
+
+    // Is cell (gx, gz) part of the rendered solid?
+    function shouldRender(gx: number, gz: number): boolean {
       if (!BAY_MASK[gz]?.[gx]) return false;
       if (sliceMode === "slice-v") {
         return sliceAxis === "x" ? gx === sliceLevel : gz === sliceLevel;
       }
-      return true; // full bay or horizontal slice (seabed always visible below)
-    };
+      return true;
+    }
 
-    // True seabed scene-Y for a cell — uses full bathymetry, not shore-clamped
+    // Scene-Y at the seabed for cell (gx, gz) — bottom of the deepest water voxel
     function seabedSceneY(gx: number, gz: number): number {
       const seabedM  = getBathymetryDepthM(gx, gz);
       const maxLayer = deepestVisibleLayer(seabedM);
@@ -317,65 +326,100 @@ function SeabedMesh({
       return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
     }
 
-    const positions: number[] = [];
-    const colors:    number[] = [];
-    const indexMap   = new Map<string, number>();
-    const triIndices: number[] = [];
-
-    // Each vertex sits at a grid corner (gx, gz); its Y is the weighted average
-    // of the seabed depth of up to four adjacent active cells, producing a smooth
-    // terrain surface rather than stepped per-cell boxes.
-    function addVert(gx: number, gz: number): number {
-      const key = `${gz}-${gx}`;
-      if (indexMap.has(key)) return indexMap.get(key)!;
-      const idx = positions.length / 3;
-
-      const px = offsetX + gx * STEP;
-      const pz = offsetZ + gz * STEP;
-
+    // Smooth terrain-corner Y: average seabedSceneY of up to 4 adjacent active cells
+    function cornerY(gx: number, gz: number): number {
       let sumY = 0, cnt = 0;
       for (let dz = -1; dz <= 0; dz++) {
         for (let dx = -1; dx <= 0; dx++) {
-          const ngx = gx + dx, ngz = gz + dz;
-          if (ngx >= 0 && ngx < GRID_W && ngz >= 0 && ngz < GRID_D && BAY_MASK[ngz]?.[ngx]) {
-            sumY += seabedSceneY(ngx, ngz);
+          const nx = gx + dx, nz = gz + dz;
+          if (nx >= 0 && nx < GRID_W && nz >= 0 && nz < GRID_D && BAY_MASK[nz]?.[nx]) {
+            sumY += seabedSceneY(nx, nz);
             cnt++;
           }
         }
       }
-      const py = cnt > 0 ? sumY / cnt : Y_SURFACE - DEPTH_TOTAL_H;
+      return cnt > 0 ? sumY / cnt : Y_SURFACE - DEPTH_TOTAL_H;
+    }
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indices:   number[] = [];
+
+    // Vertex colour: depthT=0 → sandy tan top, depthT=1 → dark muddy brown base
+    function dT(y: number): number {
+      return Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
+    }
+    function addVert(px: number, py: number, pz: number): number {
+      const t = dT(py);
       positions.push(px, py, pz);
-
-      // Depth-based vertex colour: warm sandy tan (shallow) → dark muddy brown (deep)
-      const depthT = Math.max(0, Math.min(1, (Y_SURFACE - py) / DEPTH_TOTAL_H));
-      colors.push(
-        0.66 - depthT * 0.32,  // R
-        0.52 - depthT * 0.26,  // G
-        0.34 - depthT * 0.16,  // B
-      );
-
-      indexMap.set(key, idx);
-      return idx;
+      colors.push(0.66 - t * 0.32, 0.52 - t * 0.26, 0.34 - t * 0.16);
+      return (positions.length / 3) - 1;
     }
 
     for (let gz = 0; gz < GRID_D; gz++) {
       for (let gx = 0; gx < GRID_W; gx++) {
         if (!shouldRender(gx, gz)) continue;
-        const v00 = addVert(gx,     gz);
-        const v10 = addVert(gx + 1, gz);
-        const v01 = addVert(gx,     gz + 1);
-        const v11 = addVert(gx + 1, gz + 1);
-        triIndices.push(v00, v10, v11);
-        triIndices.push(v00, v11, v01);
+
+        const x0 = offsetX + gx       * STEP;
+        const x1 = offsetX + (gx + 1) * STEP;
+        const z0 = offsetZ + gz       * STEP;
+        const z1 = offsetZ + (gz + 1) * STEP;
+
+        // Terrain Y at each top corner (smooth)
+        const y00 = cornerY(gx,     gz);
+        const y10 = cornerY(gx + 1, gz);
+        const y01 = cornerY(gx,     gz + 1);
+        const y11 = cornerY(gx + 1, gz + 1);
+
+        // ── Top face (terrain surface, faces upward) ──────────────────────────
+        const t00 = addVert(x0, y00, z0);
+        const t10 = addVert(x1, y10, z0);
+        const t01 = addVert(x0, y01, z1);
+        const t11 = addVert(x1, y11, z1);
+        indices.push(t00, t11, t10,  t00, t01, t11);
+
+        // ── Bottom face (flat at Y_BOT, faces downward) ───────────────────────
+        const b00 = addVert(x0, Y_BOT, z0);
+        const b10 = addVert(x1, Y_BOT, z0);
+        const b01 = addVert(x0, Y_BOT, z1);
+        const b11 = addVert(x1, Y_BOT, z1);
+        indices.push(b00, b10, b11,  b00, b11, b01);
+
+        // ── Side walls — only on boundaries (neighbour not renderable) ────────
+
+        // West face (-X): x=x0, z0→z1
+        if (!shouldRender(gx - 1, gz)) {
+          const a = addVert(x0, y00, z0); const b = addVert(x0, Y_BOT, z0);
+          const c = addVert(x0, Y_BOT, z1); const d = addVert(x0, y01, z1);
+          indices.push(a, b, c,  a, c, d);
+        }
+        // East face (+X): x=x1, z0→z1
+        if (!shouldRender(gx + 1, gz)) {
+          const a = addVert(x1, y10, z0); const b = addVert(x1, Y_BOT, z0);
+          const c = addVert(x1, Y_BOT, z1); const d = addVert(x1, y11, z1);
+          indices.push(a, c, b,  a, d, c);
+        }
+        // North face (-Z): z=z0, x0→x1
+        if (!shouldRender(gx, gz - 1)) {
+          const a = addVert(x0, y00, z0); const b = addVert(x0, Y_BOT, z0);
+          const c = addVert(x1, Y_BOT, z0); const d = addVert(x1, y10, z0);
+          indices.push(a, c, b,  a, d, c);
+        }
+        // South face (+Z): z=z1, x0→x1
+        if (!shouldRender(gx, gz + 1)) {
+          const a = addVert(x0, y01, z1); const b = addVert(x0, Y_BOT, z1);
+          const c = addVert(x1, Y_BOT, z1); const d = addVert(x1, y11, z1);
+          indices.push(a, b, c,  a, c, d);
+        }
       }
     }
 
-    if (triIndices.length === 0) return null;
+    if (indices.length === 0) return null;
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
     geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
-    geo.setIndex(triIndices);
+    geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
   }, [sliceMode, sliceLevel, sliceAxis]);
@@ -385,7 +429,7 @@ function SeabedMesh({
     <mesh geometry={geometry}>
       <meshStandardMaterial
         vertexColors
-        roughness={0.93}
+        roughness={0.88}
         metalness={0.04}
         side={THREE.DoubleSide}
       />
