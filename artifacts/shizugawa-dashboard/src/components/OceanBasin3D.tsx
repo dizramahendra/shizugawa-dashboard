@@ -212,7 +212,7 @@ function VoxelGrid({
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
         const pz = offsetZ + gz * STEP + CELL_W / 2;
 
-        const depthOpacity = 1 - d * 0.08;
+        const depthOpacity = 0.85 - d * 0.02;
 
         meshes.push(
           <mesh
@@ -238,7 +238,7 @@ function VoxelGrid({
                   : new THREE.Color(r, g, b)
               }
               transparent
-              opacity={isColumnSelected ? 1 : depthOpacity * 0.88}
+              opacity={isColumnSelected ? 1 : depthOpacity}
               roughness={0.7}
               metalness={0.05}
             />
@@ -633,7 +633,7 @@ function RiverGrid({
 
     // Water voxels — same positioning / material style as OceanGrid
     for (let d = 0; d < numLayers; d++) {
-      const depthOpacity = 1 - d * 0.08;
+      const depthOpacity = 0.85 - d * 0.02;
       const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
       elements.push(
         <mesh key={`rv-${gz}-${gx}-${d}`} position={[px, py, pz]}>
@@ -641,7 +641,7 @@ function RiverGrid({
           <meshStandardMaterial
             color={new THREE.Color(r, g, b)}
             transparent
-            opacity={depthOpacity * 0.88}
+            opacity={depthOpacity}
             roughness={0.7}
             metalness={0.05}
           />
