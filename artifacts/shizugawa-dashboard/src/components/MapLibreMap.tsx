@@ -380,9 +380,9 @@ export default function MapLibreMap({
 
           const samples = REACH_SAMPLES[id];
 
-          // Color: corridor rivers get role-based identity colors, others use data color
+          // Color: always use data-value color so playback animation is visible
           const baseColor = reachColors[id] ?? "#60a5fa";
-          const color = inCorridor ? corridorInfo.color : baseColor;
+          const color = baseColor;
 
           const otherStyle = isOther
             ? { filter: "grayscale(100%)", opacity: 0.15, transition: "opacity 0.3s, filter 0.3s" }
