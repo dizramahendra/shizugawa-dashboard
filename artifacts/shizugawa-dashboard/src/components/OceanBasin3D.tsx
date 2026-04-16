@@ -318,12 +318,16 @@ function SeabedMesh({
       return true;
     }
 
-    // Scene-Y at the seabed for cell (gx, gz) — bottom of the deepest water voxel
+    // Scene-Y at the seabed for cell (gx, gz).
+    // Uses the shore-distance-clamped layer — identical to what VoxelGrid renders —
+    // so the seabed solid top always kisses the bottom face of the deepest water voxel.
     function seabedSceneY(gx: number, gz: number): number {
-      const seabedM  = getBathymetryDepthM(gx, gz);
-      const maxLayer = deepestVisibleLayer(seabedM);
-      if (maxLayer < 0) return Y_SURFACE - DEPTH_TOTAL_H;
-      return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
+      const seabedM          = getBathymetryDepthM(gx, gz);
+      const maxLayer         = deepestVisibleLayer(seabedM);
+      const shoreDist        = SHORE_DIST.get(`${gz}-${gx}`) ?? 1;
+      const effectiveMax     = Math.min(maxLayer, shoreDist - 1);
+      if (effectiveMax < 0) return Y_SURFACE;   // fully masked cell — top of water
+      return Y_SURFACE - DEPTH_TOPS[effectiveMax] - DEPTH_HEIGHTS[effectiveMax];
     }
 
     // Smooth terrain-corner Y: average seabedSceneY of up to 4 adjacent active cells
