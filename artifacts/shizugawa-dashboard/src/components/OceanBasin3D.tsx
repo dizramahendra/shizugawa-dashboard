@@ -183,7 +183,6 @@ function VoxelGrid({
   }, [sliceMode, sliceLevel]);
 
   const meshes: React.ReactElement[] = [];
-  const seabedBoxes: React.ReactElement[] = [];
 
   for (let gz = 0; gz < GRID_D; gz++) {
     for (let gx = 0; gx < GRID_W; gx++) {
@@ -197,20 +196,6 @@ function VoxelGrid({
       // every step away from land adds one more layer.
       const shoreDist       = SHORE_DIST.get(`${gz}-${gx}`) ?? 1;
       const effectiveMaxLayer = Math.min(maxLayer, shoreDist - 1);
-
-      // ── Seabed box ──────────────────────────────────────────────────────────
-      const sbTop    = DEPTH_TOPS[effectiveMaxLayer] + DEPTH_HEIGHTS[effectiveMaxLayer];
-      const sbHeight = 0.18;
-      const sbY      = Y_SURFACE - sbTop - sbHeight / 2;
-      const sbX      = offsetX + gx * STEP + CELL_W / 2;
-      const sbZ      = offsetZ + gz * STEP + CELL_W / 2;
-
-      seabedBoxes.push(
-        <mesh key={`sb-${gz}-${gx}`} position={[sbX, sbY, sbZ]}>
-          <boxGeometry args={[CELL_W * 1.15, sbHeight, CELL_W * 1.15]} />
-          <meshStandardMaterial color="#9c7a52" roughness={0.95} metalness={0.0} />
-        </mesh>
-      );
 
       // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
@@ -269,7 +254,6 @@ function VoxelGrid({
   return (
     <>
       {meshes}
-      {seabedBoxes}
 
       {/* Hover tooltip */}
       {hovered && (
@@ -298,6 +282,114 @@ function VoxelGrid({
         </Html>
       )}
     </>
+  );
+}
+
+// ── Unified seabed terrain mesh ───────────────────────────────────────────────
+// One continuous BufferGeometry surface whose vertex heights follow the actual
+// bathymetric contour of Shizugawa Bay. Vertex colours shade from warm sandy tan
+// (shallow east) to dark muddy brown (deep west), giving a clear topography read.
+// Respects slice mode: only the cells within the active slice plane are rendered.
+function SeabedMesh({
+  sliceMode,
+  sliceLevel,
+  sliceAxis,
+}: {
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceAxis: "x" | "z";
+}) {
+  const geometry = useMemo(() => {
+    // Which cells contribute to this render
+    const shouldRender = (gx: number, gz: number): boolean => {
+      if (!BAY_MASK[gz]?.[gx]) return false;
+      if (sliceMode === "slice-v") {
+        return sliceAxis === "x" ? gx === sliceLevel : gz === sliceLevel;
+      }
+      return true; // full bay or horizontal slice (seabed always visible below)
+    };
+
+    // True seabed scene-Y for a cell — uses full bathymetry, not shore-clamped
+    function seabedSceneY(gx: number, gz: number): number {
+      const seabedM  = getBathymetryDepthM(gx, gz);
+      const maxLayer = deepestVisibleLayer(seabedM);
+      if (maxLayer < 0) return Y_SURFACE - DEPTH_TOTAL_H;
+      return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
+    }
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indexMap   = new Map<string, number>();
+    const triIndices: number[] = [];
+
+    // Each vertex sits at a grid corner (gx, gz); its Y is the weighted average
+    // of the seabed depth of up to four adjacent active cells, producing a smooth
+    // terrain surface rather than stepped per-cell boxes.
+    function addVert(gx: number, gz: number): number {
+      const key = `${gz}-${gx}`;
+      if (indexMap.has(key)) return indexMap.get(key)!;
+      const idx = positions.length / 3;
+
+      const px = offsetX + gx * STEP;
+      const pz = offsetZ + gz * STEP;
+
+      let sumY = 0, cnt = 0;
+      for (let dz = -1; dz <= 0; dz++) {
+        for (let dx = -1; dx <= 0; dx++) {
+          const ngx = gx + dx, ngz = gz + dz;
+          if (ngx >= 0 && ngx < GRID_W && ngz >= 0 && ngz < GRID_D && BAY_MASK[ngz]?.[ngx]) {
+            sumY += seabedSceneY(ngx, ngz);
+            cnt++;
+          }
+        }
+      }
+      const py = cnt > 0 ? sumY / cnt : Y_SURFACE - DEPTH_TOTAL_H;
+      positions.push(px, py, pz);
+
+      // Depth-based vertex colour: warm sandy tan (shallow) → dark muddy brown (deep)
+      const depthT = Math.max(0, Math.min(1, (Y_SURFACE - py) / DEPTH_TOTAL_H));
+      colors.push(
+        0.66 - depthT * 0.32,  // R
+        0.52 - depthT * 0.26,  // G
+        0.34 - depthT * 0.16,  // B
+      );
+
+      indexMap.set(key, idx);
+      return idx;
+    }
+
+    for (let gz = 0; gz < GRID_D; gz++) {
+      for (let gx = 0; gx < GRID_W; gx++) {
+        if (!shouldRender(gx, gz)) continue;
+        const v00 = addVert(gx,     gz);
+        const v10 = addVert(gx + 1, gz);
+        const v01 = addVert(gx,     gz + 1);
+        const v11 = addVert(gx + 1, gz + 1);
+        triIndices.push(v00, v10, v11);
+        triIndices.push(v00, v11, v01);
+      }
+    }
+
+    if (triIndices.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
+    geo.setIndex(triIndices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [sliceMode, sliceLevel, sliceAxis]);
+
+  if (!geometry) return null;
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial
+        vertexColors
+        roughness={0.93}
+        metalness={0.04}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
   );
 }
 
@@ -556,6 +648,12 @@ export default function OceanBasin3D({
         sliceAxis={sliceAxis}
         onCellClick={onCellClick}
         onCellHover={onCellHover}
+      />
+
+      <SeabedMesh
+        sliceMode={dashboardState}
+        sliceLevel={sliceLevel}
+        sliceAxis={sliceAxis}
       />
 
       <RiverGrid week={week} colorScale={colorScale} />
