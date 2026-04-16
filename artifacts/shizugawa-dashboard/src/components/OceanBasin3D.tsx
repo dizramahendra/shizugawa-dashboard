@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useMemo, useState, useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
 import {
@@ -665,7 +665,7 @@ function BoundingBox() {
 // ── In-scene axis labels ──────────────────────────────────────────────────────
 const LABEL_STYLE: React.CSSProperties = {
   fontFamily: "monospace",
-  fontSize: "9px",
+  fontSize: "11px",
   color: "#333",
   whiteSpace: "nowrap",
   pointerEvents: "none",
@@ -674,12 +674,52 @@ const LABEL_STYLE: React.CSSProperties = {
 
 const COMPASS_STYLE: React.CSSProperties = {
   fontFamily: "monospace",
-  fontSize: "11px",
+  fontSize: "14px",
   fontWeight: "bold",
   color: "#222",
   pointerEvents: "none",
   userSelect: "none",
 };
+
+// Renders a label that scales with camera distance, clamped to [minScale, maxScale].
+// Uses imperative DOM mutation inside useFrame — no React re-render per frame.
+function ScaledLabel({
+  position,
+  children,
+  center,
+  zIndexRange,
+  baseDistance = 18,
+  minScale = 0.55,
+  maxScale = 2.2,
+}: {
+  position: [number, number, number];
+  children: React.ReactNode;
+  center?: boolean;
+  zIndexRange?: [number, number];
+  baseDistance?: number;
+  minScale?: number;
+  maxScale?: number;
+}) {
+  const { camera } = useThree();
+  const wrapRef  = useRef<HTMLDivElement>(null);
+  const posVec   = useRef(new THREE.Vector3(...position));
+
+  useFrame(() => {
+    if (!wrapRef.current) return;
+    const dist = camera.position.distanceTo(posVec.current);
+    const raw  = baseDistance / Math.max(dist, 0.01);
+    const s    = Math.max(minScale, Math.min(maxScale, raw));
+    wrapRef.current.style.transform = `scale(${s.toFixed(3)})`;
+  });
+
+  return (
+    <Html position={position} center={center} zIndexRange={zIndexRange}>
+      <div ref={wrapRef} style={{ transformOrigin: "center center" }}>
+        {children}
+      </div>
+    </Html>
+  );
+}
 
 function AxisLabels() {
   const lonTicks: React.ReactElement[] = [];
@@ -691,9 +731,9 @@ function AxisLabels() {
     const lon   = BAY_LON_W + (gx / (GRID_W - 1)) * (BAY_LON_E - BAY_LON_W);
     const scenX = offsetX + gx * STEP + CELL_W / 2;
     lonTicks.push(
-      <Html key={`lon-${gx}`} position={[scenX, BOX_BOT - 0.7, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
+      <ScaledLabel key={`lon-${gx}`} position={[scenX, BOX_BOT - 0.7, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
         <div style={LABEL_STYLE}>{lon.toFixed(3)}°E</div>
-      </Html>
+      </ScaledLabel>
     );
   }
 
@@ -702,9 +742,9 @@ function AxisLabels() {
     const lat   = BAY_LAT_S + (gz / (GRID_D - 1)) * (BAY_LAT_N - BAY_LAT_S);
     const scenZ = offsetZ + gz * STEP + CELL_W / 2;
     latTicks.push(
-      <Html key={`lat-${gz}`} position={[BOX_WEST_X, BOX_BOT - 0.7, scenZ]} center distanceFactor={12} zIndexRange={[0,0]}>
+      <ScaledLabel key={`lat-${gz}`} position={[BOX_WEST_X, BOX_BOT - 0.7, scenZ]} center zIndexRange={[0,0]}>
         <div style={LABEL_STYLE}>{lat.toFixed(3)}°N</div>
-      </Html>
+      </ScaledLabel>
     );
   }
 
@@ -712,26 +752,26 @@ function AxisLabels() {
   for (let d = 0; d < DEPTH_LAYERS; d++) {
     const y = Y_SURFACE - DEPTH_TOPS[d];
     depthTicks.push(
-      <Html key={`dep-${d}`} position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
+      <ScaledLabel key={`dep-${d}`} position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
         <div style={LABEL_STYLE}>{DEPTH_REAL_M[d]}m</div>
-      </Html>
+      </ScaledLabel>
     );
   }
 
   return (
     <>
-      <Html position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
+      <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>N</div>
-      </Html>
-      <Html position={[0, BOX_TOP + 0.6, BOX_SOUTH_Z]} center distanceFactor={12} zIndexRange={[0,0]}>
+      </ScaledLabel>
+      <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>S</div>
-      </Html>
-      <Html position={[BOX_EAST_X, BOX_TOP + 0.6, 0]} center distanceFactor={12} zIndexRange={[0,0]}>
+      </ScaledLabel>
+      <ScaledLabel position={[BOX_EAST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>E</div>
-      </Html>
-      <Html position={[BOX_WEST_X, BOX_TOP + 0.6, 0]} center distanceFactor={12} zIndexRange={[0,0]}>
+      </ScaledLabel>
+      <ScaledLabel position={[BOX_WEST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>W</div>
-      </Html>
+      </ScaledLabel>
       {lonTicks}
       {latTicks}
       {depthTicks}
