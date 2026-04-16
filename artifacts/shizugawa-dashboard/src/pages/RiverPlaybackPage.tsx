@@ -7,6 +7,10 @@ import {
   getWeekLabel,
   valueToConcentration,
   generateRiverData,
+  generateCompositeRiverData,
+  getCompositeRiver,
+  getCompositeSegmentMeans,
+  COMPOSITE_RIVERS,
   RIVERS,
   RIVER_ROWS,
   RIVER_COLS,
@@ -116,7 +120,8 @@ export default function RiverPlaybackPage() {
   const watershedName = searchParams.get("wname") ?? undefined;
 
   const { year, setYear, weekRange, setWeekRange } = usePlayback();
-  const river = RIVERS.find((r) => r.id === riverId) ?? RIVERS[0];
+  const composite = getCompositeRiver(riverId);
+  const river = composite ? null : (RIVERS.find((r) => r.id === riverId) ?? RIVERS[0]);
   const [week, setWeek] = useState(weekRange[0]);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -147,7 +152,12 @@ export default function RiverPlaybackPage() {
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
   const { label: weekLabel } = getWeekLabel(week, year);
 
-  const riverWeekData = useMemo(() => generateRiverData(week, riverId, year), [week, riverId, year]);
+  const riverWeekData = useMemo(
+    () => composite
+      ? generateCompositeRiverData(week, riverId, year)
+      : generateRiverData(week, riverId, year),
+    [week, riverId, year, composite]
+  );
 
   const cellValue = selectedCell
     ? valueToConcentration(
@@ -168,16 +178,26 @@ export default function RiverPlaybackPage() {
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [riverWeekData, selectedVariable]);
 
+  // Per-segment means for composite rivers (current week)
+  const compositeSegmentMeans = useMemo(
+    () => composite
+      ? getCompositeSegmentMeans(week, riverId, selectedVariable, year)
+      : null,
+    [composite, week, riverId, selectedVariable, year]
+  );
+
   // Full 52-week time series — recompute only when river, variable, or year changes
   const allWeekMeans = useMemo(() => {
     return Array.from({ length: TOTAL_WEEKS }, (_, w) => {
-      const grid = generateRiverData(w, riverId, year);
+      const grid = composite
+        ? generateCompositeRiverData(w, riverId, year)
+        : generateRiverData(w, riverId, year);
       let s = 0, c = 0;
       for (let r = 0; r < RIVER_ROWS; r++)
         for (let col = 0; col < RIVER_COLS; col++) { s += grid[r]?.[col] ?? 0; c++; }
       return c > 0 ? valueToConcentration(s / c, selectedVariable) : 0;
     });
-  }, [riverId, selectedVariable, year]);
+  }, [riverId, selectedVariable, year, composite]);
 
   const CHART_COLORS: Record<string, string> = {
     nitrogen: "#3b6fa0", phosphorus: "#4a7fb5", flow: "#26c6da",
@@ -195,7 +215,7 @@ export default function RiverPlaybackPage() {
           <select
             value={riverId}
             onChange={e => { setRiverId(e.target.value); setSelectedCell(null); }}
-            className="filter-select pr-8 appearance-none min-w-[180px]"
+            className="filter-select pr-8 appearance-none min-w-[220px]"
             style={{
               backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")",
               backgroundPosition: "right 0.5rem center",
@@ -203,7 +223,14 @@ export default function RiverPlaybackPage() {
               backgroundSize: "1.25rem",
             }}
           >
-            {RIVERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            <optgroup label="── Single-basin rivers ──">
+              {RIVERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </optgroup>
+            <optgroup label="── Multi-basin corridors ──">
+              {COMPOSITE_RIVERS.map(c => (
+                <option key={c.id} value={c.id}>⇢ {c.name}</option>
+              ))}
+            </optgroup>
           </select>
         </div>
 
@@ -303,29 +330,75 @@ export default function RiverPlaybackPage() {
 
           <div className="flex-1 overflow-y-auto divide-y divide-border">
 
-            {/* 1. River context */}
+            {/* 1. River / corridor context */}
             <div className="px-4 py-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-blue-500">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
-                  </svg>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-foreground">{river.name}</div>
-                  <div className="text-xs text-muted-foreground">{river.sub}</div>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="bg-muted/40 rounded-md p-2.5">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Length</div>
-                  <div className="text-sm font-semibold text-foreground font-mono">{river.length}</div>
-                </div>
-                <div className="bg-muted/40 rounded-md p-2.5">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">View</div>
-                  <div className="text-sm font-semibold text-foreground">2D Grid</div>
-                </div>
-              </div>
+              {composite ? (
+                <>
+                  {/* Composite corridor header */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center border border-violet-200 flex-shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500">
+                        <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{composite.name}</div>
+                      <div className="text-[10px] text-muted-foreground leading-snug mt-0.5">{composite.description}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="bg-muted/40 rounded-md p-2.5">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Total Length</div>
+                      <div className="text-sm font-semibold text-foreground font-mono">{composite.totalLength}</div>
+                    </div>
+                    <div className="bg-violet-50 border border-violet-100 rounded-md p-2.5">
+                      <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Segments</div>
+                      <div className="text-sm font-semibold text-violet-700">2 sub-basins</div>
+                    </div>
+                  </div>
+                  {/* Segment chips */}
+                  <div className="mt-2 flex gap-2">
+                    {composite.segments.map((seg, i) => (
+                      <div
+                        key={seg.riverId}
+                        className="flex-1 rounded border px-2 py-1.5"
+                        style={{ borderColor: i === 0 ? "#93c5fd" : "#fcd34d", background: i === 0 ? "#eff6ff" : "#fffbeb" }}
+                      >
+                        <div className="text-[9px] uppercase tracking-wide font-medium" style={{ color: i === 0 ? "#2563eb" : "#d97706" }}>
+                          {i === 0 ? "Upstream" : "Downstream"}
+                        </div>
+                        <div className="text-[11px] font-semibold text-foreground">{seg.name}</div>
+                        <div className="text-[9px] text-muted-foreground">{seg.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-blue-500">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{river!.name}</div>
+                      <div className="text-xs text-muted-foreground">{river!.sub}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="bg-muted/40 rounded-md p-2.5">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Length</div>
+                      <div className="text-sm font-semibold text-foreground font-mono">{river!.length}</div>
+                    </div>
+                    <div className="bg-muted/40 rounded-md p-2.5">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">View</div>
+                      <div className="text-sm font-semibold text-foreground">2D Grid</div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 2. Playback status / time */}
@@ -346,24 +419,81 @@ export default function RiverPlaybackPage() {
               </div>
             </div>
 
-            {/* 3b. Reach Mean */}
-            <div className="px-4 py-4">
-              <div className="panel-section-title mb-2">Reach Mean</div>
-              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
-                  <div className="text-xl font-mono font-bold text-blue-600 leading-none">
-                    {reachMean ?? "—"}
-                    <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reach cells</div>
+            {/* 3b. Reach Mean — or per-segment comparison for composites */}
+            {composite && compositeSegmentMeans ? (
+              <div className="px-4 py-4">
+                <div className="panel-section-title mb-2">Sub-basin Values</div>
+                <div className="text-[9px] text-muted-foreground mb-2">
+                  {variable.label} · spatial mean per segment · {variable.unit}
                 </div>
-                <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
-                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
-                </svg>
+                {composite.segments.map((seg, i) => {
+                  const val = compositeSegmentMeans[i];
+                  const isBlue = i === 0;
+                  return (
+                    <div
+                      key={seg.riverId}
+                      className="rounded-md border p-3 mb-2 last:mb-0"
+                      style={{
+                        borderColor: isBlue ? "#93c5fd" : "#fcd34d",
+                        background:  isBlue ? "#eff6ff" : "#fffbeb",
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
+                               style={{ color: isBlue ? "#2563eb" : "#d97706" }}>
+                            {i === 0 ? "Upstream" : "Downstream"} · {seg.sub}
+                          </div>
+                          <div className="text-xs font-semibold text-foreground">{seg.name}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-mono font-bold leading-none"
+                               style={{ color: isBlue ? "#1d4ed8" : "#b45309" }}>
+                            {val}
+                          </div>
+                          <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Delta indicator */}
+                {(() => {
+                  const delta = (compositeSegmentMeans[1] - compositeSegmentMeans[0]);
+                  const pct = compositeSegmentMeans[0] > 0
+                    ? ((delta / compositeSegmentMeans[0]) * 100).toFixed(1)
+                    : "—";
+                  const up = delta >= 0;
+                  return (
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span>Δ downstream vs upstream:</span>
+                      <span className={`font-mono font-semibold ${up ? "text-amber-600" : "text-blue-600"}`}>
+                        {up ? "+" : ""}{delta.toFixed(2)} {variable.unit}
+                        {pct !== "—" && <span className="text-muted-foreground font-normal"> ({up ? "+" : ""}{pct}%)</span>}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
+            ) : (
+              <div className="px-4 py-4">
+                <div className="panel-section-title mb-2">Reach Mean</div>
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
+                    <div className="text-xl font-mono font-bold text-blue-600 leading-none">
+                      {reachMean ?? "—"}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reach cells</div>
+                  </div>
+                  <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                  </svg>
+                </div>
+              </div>
+            )}
 
             {/* 3c. Time-series line chart */}
             <div className="px-4 py-4">

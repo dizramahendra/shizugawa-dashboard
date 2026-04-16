@@ -1,6 +1,8 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
   generateRiverData,
+  generateCompositeRiverData,
+  getCompositeRiver,
   valueToConcentration,
   VARIABLE_OPTIONS,
   RIVER_ROWS,
@@ -131,8 +133,16 @@ interface RiverGrid2DProps {
 export default function RiverGrid2D({
   week, variableId, riverId, selectedCell, onCellClick,
 }: RiverGrid2DProps) {
-  const data     = useMemo(() => generateRiverData(week, riverId), [week, riverId]);
-  const mask     = MASKS[riverId] ?? MASKS.shizugawa;
+  const composite = useMemo(() => getCompositeRiver(riverId), [riverId]);
+  const data = useMemo(
+    () => composite
+      ? generateCompositeRiverData(week, riverId)
+      : generateRiverData(week, riverId),
+    [week, riverId, composite]
+  );
+  // Composite rivers always use the "shizugawa" winding profile for shape
+  const maskKey  = composite ? "shizugawa" : riverId;
+  const mask     = MASKS[maskKey] ?? MASKS.shizugawa;
   const stops    = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const variable = VARIABLE_OPTIONS.find(v => v.id === variableId) ?? VARIABLE_OPTIONS[0];
 
@@ -322,6 +332,85 @@ export default function RiverGrid2D({
                 );
               })
             )}
+
+            {/* ── Composite sub-basin boundary overlay ─── */}
+            {composite && (() => {
+              const splitX = (composite.segments[0].colEnd + 1) * CELL;
+              const segA = composite.segments[0];
+              const segB = composite.segments[1];
+              return (
+                <>
+                  {/* Segment A label — top-left of grid */}
+                  <div
+                    className="absolute pointer-events-none flex items-center gap-1"
+                    style={{
+                      left: 8,
+                      top: -20,
+                      transform: `scale(${1 / xform.scale})`,
+                      transformOrigin: "left top",
+                      zIndex: 40,
+                    }}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="text-[10px] font-semibold text-blue-700 whitespace-nowrap">
+                      {segA.name}
+                    </span>
+                    <span className="text-[9px] text-blue-400 whitespace-nowrap">
+                      ({segA.sub})
+                    </span>
+                  </div>
+
+                  {/* Segment B label */}
+                  <div
+                    className="absolute pointer-events-none flex items-center gap-1"
+                    style={{
+                      left: splitX + 8,
+                      top: -20,
+                      transform: `scale(${1 / xform.scale})`,
+                      transformOrigin: "left top",
+                      zIndex: 40,
+                    }}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-[10px] font-semibold text-amber-700 whitespace-nowrap">
+                      {segB.name}
+                    </span>
+                    <span className="text-[9px] text-amber-400 whitespace-nowrap">
+                      ({segB.sub})
+                    </span>
+                  </div>
+
+                  {/* Vertical boundary line */}
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      left: splitX - 1,
+                      top: -24,
+                      width: 2,
+                      height: gridH + 24,
+                      background: "repeating-linear-gradient(to bottom, #64748b 4px, transparent 4px, transparent 8px)",
+                      zIndex: 35,
+                    }}
+                  />
+
+                  {/* "Sub-basin boundary" badge at midpoint */}
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      left: splitX,
+                      top: gridH / 2,
+                      transform: `translate(-50%, -50%) scale(${1 / xform.scale})`,
+                      transformOrigin: "center center",
+                      zIndex: 40,
+                    }}
+                  >
+                    <div className="bg-slate-700/90 text-white text-[9px] font-mono px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
+                      sub-basin boundary
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

@@ -516,6 +516,126 @@ const RIVER_PARAMS: Record<string, [number, number, number]> = {
   kamaishi:  [0.45, 0.92, 0.08],
 };
 
+// ── Composite (multi-basin) river definitions ────────────────────────────────
+
+export interface CompositeSegment {
+  riverId: string;
+  name: string;       // display name
+  sub: string;        // sub-basin label
+  colStart: number;   // first column (0-based, inclusive)
+  colEnd: number;     // last column (inclusive)
+}
+
+export interface CompositeRiver {
+  id: string;
+  name: string;
+  description: string;
+  totalLength: string;
+  segments: [CompositeSegment, CompositeSegment];
+}
+
+/**
+ * Composite corridors: each river flows through TWO sub-basins.
+ * Upstream segment (left half) → downstream segment (right half).
+ * The 2D River view shows the transition point where values shift.
+ */
+export const COMPOSITE_RIVERS: CompositeRiver[] = [
+  {
+    id: "comp-karakuwa-shizugawa",
+    name: "Karakuwa → Shizugawa Corridor",
+    description: "Kesennuma tributary merging into Minamisanriku main channel",
+    totalLength: "27.5 km",
+    segments: [
+      { riverId: "karakuwa",  name: "Karakuwa",   sub: "Kesennuma",      colStart: 0,  colEnd: 59  },
+      { riverId: "shizugawa", name: "Shizugawa",  sub: "Minamisanriku",  colStart: 60, colEnd: 119 },
+    ],
+  },
+  {
+    id: "comp-oya-kamaishi",
+    name: "Oya → Kamaishi Corridor",
+    description: "Low-load upstream entering high-load coastal basin",
+    totalLength: "21.9 km",
+    segments: [
+      { riverId: "oya",       name: "Oya",         sub: "Minamisanriku",  colStart: 0,  colEnd: 59  },
+      { riverId: "kamaishi",  name: "Kamaishi",    sub: "Kamaishi",       colStart: 60, colEnd: 119 },
+    ],
+  },
+];
+
+export function getCompositeRiver(id: string): CompositeRiver | undefined {
+  return COMPOSITE_RIVERS.find(c => c.id === id);
+}
+
+/** Segment means at a given week for a composite river (returns [segA mean, segB mean]) */
+export function getCompositeSegmentMeans(
+  week: number,
+  compositeId: string,
+  variableId: string,
+  year: number = 2023
+): [number, number] {
+  const comp = getCompositeRiver(compositeId);
+  if (!comp) return [0, 0];
+  const data = generateCompositeRiverData(week, compositeId, year);
+  const means: [number, number] = [0, 0];
+  comp.segments.forEach((seg, si) => {
+    let sum = 0, count = 0;
+    for (let row = 0; row < RIVER_ROWS; row++) {
+      for (let col = seg.colStart; col <= seg.colEnd; col++) {
+        sum += data[row]?.[col] ?? 0;
+        count++;
+      }
+    }
+    means[si] = count > 0 ? valueToConcentration(sum / count, variableId) : 0;
+  });
+  return means;
+}
+
+/**
+ * Generate composite river data: the grid is split at the segment boundary.
+ * A smooth cosine blend over BLEND_COLS columns prevents a hard jump.
+ */
+export function generateCompositeRiverData(
+  week: number,
+  compositeId: string,
+  year: number = 2023
+): number[][] {
+  const comp = getCompositeRiver(compositeId);
+  if (!comp) return generateRiverData(week, "shizugawa", year);
+
+  const BLEND_COLS = 8; // blend zone on each side of the split
+  const splitCol = comp.segments[0].colEnd + 1;
+
+  const yearShift = (year - 2023) * 0.31;
+  const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
+
+  const makeVal = (riverId: string, col: number, row: number): number => {
+    const [phaseOffset, baseline, amplitude] = RIVER_PARAMS[riverId] ?? [0, 0.5, 0.3];
+    const seasonalBase = Math.sin(t + phaseOffset) * amplitude + baseline;
+    const upstreamInfluence = Math.max(0, 1 - col / RIVER_COLS) * 0.4;
+    const centerBoost = 1 - Math.abs(row - RIVER_ROWS / 2 + 0.5) / (RIVER_ROWS / 2) * 0.25;
+    const v =
+      Math.sin(col * 0.4 + t * 0.9 + phaseOffset) * 0.12 +
+      Math.cos(row * 0.8 + t * 0.7) * 0.09 +
+      Math.sin((col + row) * 0.3 + t * 1.2) * 0.07;
+    return Math.min(1, Math.max(0, seasonalBase * 0.7 + v * 0.3 + upstreamInfluence * 0.2 + centerBoost * 0.04));
+  };
+
+  const data: number[][] = [];
+  for (let row = 0; row < RIVER_ROWS; row++) {
+    data[row] = [];
+    for (let col = 0; col < RIVER_COLS; col++) {
+      const vA = makeVal(comp.segments[0].riverId, col, row);
+      const vB = makeVal(comp.segments[1].riverId, col, row);
+      // Smooth cosine blend through the transition zone
+      const blendRaw = (col - (splitCol - BLEND_COLS)) / (BLEND_COLS * 2);
+      const blendT = Math.min(1, Math.max(0, blendRaw));
+      const mix = (1 - Math.cos(blendT * Math.PI)) / 2;
+      data[row][col] = vA * (1 - mix) + vB * mix;
+    }
+  }
+  return data;
+}
+
 /** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
 export function generateRiverData(week: number, riverId: string, year: number = 2023): number[][] {
   const yearShift = (year - 2023) * 0.31;
