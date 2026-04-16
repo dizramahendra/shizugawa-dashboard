@@ -460,6 +460,14 @@ function RiverSeabedMesh({
   sliceAxis: "x" | "z";
 }) {
   const geometry = useMemo(() => {
+    // River water only exists at layer 0; return empty geometry for deeper horizontal slices
+    if (sliceMode === "slice-h" && sliceLevel > 0) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute([], 3));
+      g.setAttribute("color",    new THREE.Float32BufferAttribute([], 3));
+      return g;
+    }
+
     // In slice-h mode, clip seabed tops above this Y (top boundary of the selected layer)
     const sliceClipY = sliceMode === "slice-h"
       ? Y_SURFACE - DEPTH_TOPS[sliceLevel]
@@ -768,7 +776,7 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
     return (
       <mesh position={[x, BOX_CY, 0]} rotation={[0, Math.PI / 2, 0]}>
         <planeGeometry args={[GRID_D * STEP, BOX_H]} />
-        <meshStandardMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
         <Edges color="#f59e0b" threshold={1} />
       </mesh>
     );
@@ -778,7 +786,7 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
     return (
       <mesh position={[0, BOX_CY, z]}>
         <planeGeometry args={[GRID_W * STEP, BOX_H]} />
-        <meshStandardMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
         <Edges color="#f59e0b" threshold={1} />
       </mesh>
     );
