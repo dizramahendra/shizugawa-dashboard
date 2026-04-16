@@ -460,9 +460,6 @@ function RiverSeabedMesh({
   sliceAxis: "x" | "z";
 }) {
   const geometry = useMemo(() => {
-    const DELTA_ROWS = 3;
-    const Y_BOT = BOX_BOT;
-
     // In slice-h mode, clip seabed tops above this Y (top boundary of the selected layer)
     const sliceClipY = sliceMode === "slice-h"
       ? Y_SURFACE - DEPTH_TOPS[sliceLevel]
@@ -478,15 +475,6 @@ function RiverSeabedMesh({
         return sliceAxis === "x" ? gx === sliceLevel : gz === sliceLevel;
       }
       return true;
-    }
-
-    // All river water is single-layer; seabed uses upstream distance to detect delta zone
-    function upstreamDistFor(gx: number, gz: number): number {
-      const inBayBounds = gz >= 0 && gz < GRID_D && gx >= 0 && gx < GRID_W;
-      if (inBayBounds) return 0;
-      return gx >= GRID_W ? gx - GRID_W + 1 :
-             gz >= 0      ? Math.max(0, gz - GRID_D) :
-                            -gz;
     }
 
     const positions: number[] = [];
@@ -509,10 +497,8 @@ function RiverSeabedMesh({
       // All river water is layer 0 only; clip the seabed top at the slice plane
       const rawTopY = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0];
       const topY    = Math.min(rawTopY, sliceClipY);
-      // Delta cells (within DELTA_ROWS of the mouth) join the ocean solid at BOX_BOT;
-      // upstream cells get a shallow channel bed one layer deep
-      const dist    = upstreamDistFor(gx, gz);
-      const bottomY = dist <= DELTA_ROWS ? Y_BOT : topY - DEPTH_HEIGHTS[0];
+      // River is a surface feature — floor is always one layer deep, never BOX_BOT
+      const bottomY = topY - DEPTH_HEIGHTS[0];
 
       const x0 = offsetX + gx       * STEP;
       const x1 = offsetX + (gx + 1) * STEP;
