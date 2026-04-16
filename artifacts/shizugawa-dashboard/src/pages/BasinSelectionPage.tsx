@@ -15,6 +15,9 @@ import {
   valueToConcentration,
   RIVER_ROWS,
   RIVER_COLS,
+  COMPOSITE_RIVERS,
+  getCompositeRiver,
+  getCompositeSegmentMeans,
 } from "@/lib/simulatedData";
 
 const OCEAN_ENTRY = {
@@ -37,6 +40,7 @@ export default function BasinSelectionPage() {
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
   const [selectedRiver, setSelectedRiver] = useState<string | null>(null);
+  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(null);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
   const [tiltedIn, setTiltedIn] = useState(!fromCS);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,12 +116,36 @@ export default function BasinSelectionPage() {
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [selectedRiver, week, selectedVariable]);
 
+  // Corridor derived state
+  const corridorObj = useMemo(
+    () => selectedCorridorId ? getCompositeRiver(selectedCorridorId) : null,
+    [selectedCorridorId]
+  );
+  const corridorSegments = useMemo(
+    () => corridorObj
+      ? { segA: corridorObj.segments[0].riverId, segB: corridorObj.segments[1].riverId, corridorId: corridorObj.id }
+      : null,
+    [corridorObj]
+  );
+  const corridorMeans = useMemo(
+    () => corridorObj && selectedCorridorId
+      ? getCompositeSegmentMeans(week, selectedCorridorId, selectedVariable)
+      : null,
+    [corridorObj, selectedCorridorId, week, selectedVariable]
+  );
+
   const handleSelectOcean = useCallback(() => {
     navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`);
   }, [navigate, activeWS]);
 
   const handleSelectRiver = useCallback((riverId: string | null) => {
     setSelectedRiver(riverId);
+    if (riverId) setSelectedCorridorId(null); // river selection clears corridor
+  }, []);
+
+  const handleSelectCorridor = useCallback((corridorId: string | null) => {
+    setSelectedCorridorId(corridorId);
+    if (corridorId) setSelectedRiver(null); // corridor selection clears river
   }, []);
 
   const wnameSuffix = activeWS ? `&wname=${encodeURIComponent(activeWS.name)}` : "";
@@ -204,6 +232,14 @@ export default function BasinSelectionPage() {
                   ✕ Deselect river
                 </button>
               )}
+              {selectedCorridorId && (
+                <button
+                  className="text-[10px] px-2 py-0.5 rounded bg-violet-100 text-violet-600 hover:bg-violet-200 cursor-pointer border border-violet-200"
+                  onClick={() => setSelectedCorridorId(null)}
+                >
+                  ✕ Deselect corridor
+                </button>
+              )}
             </div>
           </div>
 
@@ -214,6 +250,7 @@ export default function BasinSelectionPage() {
               selectedRiver={selectedRiver}
               onSelectRiver={handleSelectRiver}
               onSelectOcean={handleSelectOcean}
+              corridorSegments={corridorSegments}
             />
           </div>
 
@@ -263,7 +300,98 @@ export default function BasinSelectionPage() {
 
           <div className="flex-1 overflow-y-auto">
 
-            {selectedRiverObj ? (
+            {corridorObj ? (
+              /* ── Corridor detail panel ── */
+              <div className="px-4 py-4">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center border border-violet-200 flex-shrink-0">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500">
+                      <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">{corridorObj.name}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{corridorObj.description}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-muted/40 rounded-md p-2.5">
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Total Length</div>
+                    <div className="text-sm font-semibold text-foreground font-mono">{corridorObj.totalLength}</div>
+                  </div>
+                  <div className="bg-violet-50 border border-violet-100 rounded-md p-2.5">
+                    <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Segments</div>
+                    <div className="text-sm font-semibold text-violet-700">2 sub-basins</div>
+                  </div>
+                </div>
+
+                {/* Per-segment values */}
+                <div className="panel-section-title mb-2">Sub-basin Values</div>
+                <div className="text-[9px] text-muted-foreground mb-2">{variable.label} · {variable.unit} · current week</div>
+                {corridorObj.segments.map((seg, i) => {
+                  const val = corridorMeans ? corridorMeans[i] : null;
+                  const isBlue = i === 0;
+                  return (
+                    <div
+                      key={seg.riverId}
+                      className="rounded-md border p-3 mb-2 last:mb-0"
+                      style={{
+                        borderColor: isBlue ? "#93c5fd" : "#fcd34d",
+                        background: isBlue ? "#eff6ff" : "#fffbeb",
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
+                               style={{ color: isBlue ? "#2563eb" : "#d97706" }}>
+                            {i === 0 ? "Upstream" : "Downstream"} · {seg.sub}
+                          </div>
+                          <div className="text-xs font-semibold text-foreground">{seg.name}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-mono font-bold leading-none"
+                               style={{ color: isBlue ? "#1d4ed8" : "#b45309" }}>
+                            {val ?? "—"}
+                          </div>
+                          <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Δ indicator */}
+                {corridorMeans && (() => {
+                  const delta = corridorMeans[1] - corridorMeans[0];
+                  const up = delta >= 0;
+                  return (
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground mb-3">
+                      <span>Δ downstream vs upstream:</span>
+                      <span className={`font-mono font-semibold ${up ? "text-amber-600" : "text-blue-600"}`}>
+                        {up ? "+" : ""}{delta.toFixed(2)} {variable.unit}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                <button
+                  className="w-full py-2 rounded-md text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-colors cursor-pointer mb-2"
+                  onClick={() => navigate(`/river?river=${corridorObj.id}`)}
+                >
+                  View in 2D River →
+                </button>
+                <button
+                  className="w-full py-1.5 rounded-md text-xs text-muted-foreground border border-border hover:bg-muted/40 cursor-pointer"
+                  onClick={() => setSelectedCorridorId(null)}
+                >
+                  ← Back to full map
+                </button>
+              </div>
+
+            ) : selectedRiverObj ? (
+              /* ── Single-river detail panel ── */
               <div className="px-4 py-4">
                 <div className="flex items-center gap-2.5 mb-3">
                   <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
@@ -454,7 +582,49 @@ export default function BasinSelectionPage() {
                   </>
                 )}
 
-                {filtered.length === 0 && (
+                {/* Multi-basin corridors section */}
+                {!search && (
+                  <>
+                    <div className="px-4 pt-4 pb-1 flex items-center gap-1.5">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-violet-500">
+                        <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      <span className="panel-section-title">Multi-basin Corridors</span>
+                    </div>
+                    {COMPOSITE_RIVERS.map((cr) => {
+                      const isActive = selectedCorridorId === cr.id;
+                      return (
+                        <div
+                          key={cr.id}
+                          className="basin-list-item cursor-pointer"
+                          style={isActive
+                            ? { background: "rgba(139,92,246,0.07)", borderLeft: "3px solid #8b5cf6", paddingLeft: "12px" }
+                            : {}
+                          }
+                          onClick={() => handleSelectCorridor(isActive ? null : cr.id)}
+                          data-testid={`corridor-item-${cr.id}`}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center flex-shrink-0 border border-violet-200">
+                            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500">
+                              <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                              <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-foreground truncate">{cr.name}</div>
+                            <div className="text-xs text-muted-foreground">{cr.totalLength} · 2 sub-basins</div>
+                          </div>
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 uppercase tracking-wide flex-shrink-0 border border-violet-200">
+                            2D
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {filtered.length === 0 && !COMPOSITE_RIVERS.length && (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">No results</div>
                 )}
               </>
@@ -463,7 +633,9 @@ export default function BasinSelectionPage() {
 
           <div className="px-4 py-3 border-t border-border bg-muted/20 flex-shrink-0">
             <div className="text-[10px] text-muted-foreground text-center">
-              {selectedRiver
+              {selectedCorridorId
+                ? `Corridor view active · map zoomed to both rivers`
+                : selectedRiver
                 ? `River zoom active · click map to deselect`
                 : activeWS
                 ? `${activeWS.name} · ${activeWS.basinIds.length} sub-basins selected`

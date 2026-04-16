@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
 import { generateRiverData, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
 
@@ -201,6 +202,29 @@ function computeRiverSvgBounds(modelRiver: string): { x: number; y: number; w: n
   return { x: rx, y: ry, w: Math.max(120, rw), h: Math.max(120, rh) };
 }
 
+/** Union viewBox that frames both rivers in a corridor */
+function computeCorridorSvgBounds(
+  modelA: string,
+  modelB: string
+): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [idStr, d] of Object.entries(RIVER_PATHS)) {
+    const m = MODEL_RIVER[Number(idStr)];
+    if (m !== modelA && m !== modelB) continue;
+    for (const [x, y] of parseSvgPath(d)) {
+      if (x < minX) minX = x; if (y < minY) minY = y;
+      if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+    }
+  }
+  if (!isFinite(minX)) return { x: 0, y: 0, w: SVG_W, h: SVG_H };
+  const PAD = 70;
+  const rx = Math.max(0, minX - PAD);
+  const ry = Math.max(0, minY - PAD);
+  const rw = Math.min(SVG_W, maxX + PAD) - rx;
+  const rh = Math.min(SVG_H, maxY + PAD) - ry;
+  return { x: rx, y: ry, w: Math.max(150, rw), h: Math.max(150, rh) };
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface MapLibreMapProps {
@@ -209,6 +233,7 @@ interface MapLibreMapProps {
   selectedRiver: string | null;
   onSelectRiver: (id: string | null) => void;
   onSelectOcean: () => void;
+  corridorSegments?: { segA: string; segB: string; corridorId: string } | null;
 }
 
 export default function MapLibreMap({
@@ -217,16 +242,25 @@ export default function MapLibreMap({
   selectedRiver,
   onSelectRiver,
   onSelectOcean,
+  corridorSegments,
 }: MapLibreMapProps) {
+  const navigate = useNavigate();
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [vb, setVb] = useState({ x: 0, y: 0, w: SVG_W, h: SVG_H });
 
   useEffect(() => {
-    if (!selectedRiver) { setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H }); setShowGrid(false); }
-    else setVb(computeRiverSvgBounds(selectedRiver));
-  }, [selectedRiver]);
+    if (corridorSegments) {
+      setShowGrid(false);
+      setVb(computeCorridorSvgBounds(corridorSegments.segA, corridorSegments.segB));
+    } else if (!selectedRiver) {
+      setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H });
+      setShowGrid(false);
+    } else {
+      setVb(computeRiverSvgBounds(selectedRiver));
+    }
+  }, [selectedRiver, corridorSegments]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onSelectRiver(null); };
@@ -307,31 +341,48 @@ export default function MapLibreMap({
         {/* Rivers: single solid color per reach */}
         {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
           const id = Number(idStr);
-          const isSelected = selectedRiver === MODEL_RIVER[id];
+          const modelId = MODEL_RIVER[id];
+
+          // ── Corridor mode ──
+          const isSegA = !!corridorSegments && modelId === corridorSegments.segA;
+          const isSegB = !!corridorSegments && modelId === corridorSegments.segB;
+          const inCorridor = isSegA || isSegB;
+          const corridorActive = !!corridorSegments;
+
+          const isSelected = selectedRiver === modelId;
           const isHovered = hoveredRiver === id;
-          const isOther = !!selectedRiver && !isSelected;
+          const isOther = corridorActive
+            ? !inCorridor
+            : (!!selectedRiver && !isSelected);
+
           const isMainStem = MAIN_STEMS.has(id);
           const sw = isMainStem
-            ? (isSelected || isHovered ? 6 : 4)
-            : (isSelected || isHovered ? 4 : 2.5);
+            ? (isSelected || isHovered || inCorridor ? 6 : 4)
+            : (isSelected || isHovered || inCorridor ? 4 : 2.5);
+
           const samples = REACH_SAMPLES[id];
-          const color = reachColors[id] ?? "#60a5fa";
+
+          // Color: corridor segments get fixed identity colors, others use data color
+          const baseColor = reachColors[id] ?? "#60a5fa";
+          const corridorColor = isSegA ? "#3b82f6" : isSegB ? "#f59e0b" : baseColor;
+          const color = corridorActive ? corridorColor : baseColor;
+
           const otherStyle = isOther
-            ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" }
+            ? { filter: "grayscale(100%)", opacity: 0.15, transition: "opacity 0.3s, filter 0.3s" }
             : { transition: "opacity 0.3s, filter 0.3s" };
 
           return (
             <g key={id} style={otherStyle}>
-              {/* Glow halo when hovered/selected */}
-              {(isSelected || isHovered) && (
+              {/* Glow halo — corridor segments or hovered/selected */}
+              {(isSelected || isHovered || inCorridor) && (
                 <polyline
                   points={samples.map(p => `${p[0]},${p[1]}`).join(" ")}
                   fill="none"
                   stroke={color}
-                  strokeWidth={sw + 10}
+                  strokeWidth={sw + (inCorridor ? 12 : 10)}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={0.22}
+                  opacity={inCorridor ? 0.28 : 0.22}
                   style={{ pointerEvents: "none" }}
                 />
               )}
@@ -347,12 +398,29 @@ export default function MapLibreMap({
                 style={{ pointerEvents: "none" }}
               />
 
+              {/* Corridor segment label tag in the middle of each river */}
+              {inCorridor && (() => {
+                const mid = samples[Math.floor(samples.length / 2)];
+                if (!mid) return null;
+                const label = isSegA ? "Upstream" : "Downstream";
+                return (
+                  <g style={{ pointerEvents: "none" }}>
+                    <rect x={mid[0] - 22} y={mid[1] - 9} width={44} height={13} rx={3}
+                      fill={isSegA ? "#3b82f6" : "#f59e0b"} opacity={0.92} />
+                    <text x={mid[0]} y={mid[1] + 1.5} textAnchor="middle"
+                      fontSize={7} fill="white" fontWeight="bold" fontFamily="monospace">
+                      {label}
+                    </text>
+                  </g>
+                );
+              })()}
+
               {/* Transparent wide hit zone */}
               <path d={d} stroke="transparent" strokeWidth={18} fill="none"
-                style={{ pointerEvents: "all", cursor: "pointer" }}
+                style={{ pointerEvents: corridorActive ? "none" : "all", cursor: "pointer" }}
                 onMouseEnter={() => setHoveredRiver(id)}
                 onMouseLeave={() => setHoveredRiver(null)}
-                onClick={() => onSelectRiver(MODEL_RIVER[id] ?? null)}
+                onClick={() => onSelectRiver(modelId ?? null)}
               />
             </g>
           );
@@ -498,8 +566,24 @@ export default function MapLibreMap({
         );
       })()}
 
+      {/* Controls when a corridor is active */}
+      {corridorSegments && (
+        <div className="absolute top-2 left-2 flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-white/95 border border-violet-200 rounded px-2.5 py-1 shadow-sm text-[10px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+            <span className="text-violet-700 font-semibold">Corridor View</span>
+          </div>
+          <button
+            onClick={() => navigate(`/river?river=${corridorSegments.corridorId}`)}
+            className="bg-violet-600 text-white border border-violet-700 rounded px-2.5 py-1 text-[10px] font-semibold shadow-sm hover:bg-violet-700 transition-colors"
+          >
+            View in 2D River →
+          </button>
+        </div>
+      )}
+
       {/* Controls when zoomed into a river */}
-      {selectedRiver && (
+      {selectedRiver && !corridorSegments && (
         <div className="absolute top-2 left-2 flex items-center gap-2">
           <button
             onClick={() => onSelectRiver(null)}
