@@ -592,7 +592,10 @@ function RiverGrid({
   const elements: React.ReactNode[] = [];
 
   for (const { gx, gz, mouthGx, mouthGz } of RIVER_CELLS) {
-    // Slice filtering — mirrors RiverSeabedMesh logic
+    // Slice filtering
+    // Horizontal: river water lives at layer 0 — hide it when the slice is below that
+    if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
+    // Vertical: keep only the cell column/row at the slice position
     if (sliceMode === "slice-v") {
       if (sliceAxis === "x" && gx !== sliceLevel) continue;
       if (sliceAxis === "z" && gz !== sliceLevel) continue;
