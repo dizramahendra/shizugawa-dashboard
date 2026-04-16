@@ -157,6 +157,7 @@ interface VoxelGridProps {
   selectedPoint: { x: number; z: number } | null;
   sliceMode: DashboardState;
   sliceLevel: number;
+  sliceAxis: "x" | "z";
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
 }
@@ -167,6 +168,7 @@ function VoxelGrid({
   selectedPoint,
   sliceMode,
   sliceLevel,
+  sliceAxis,
   onCellClick,
   onCellHover,
 }: VoxelGridProps) {
@@ -213,7 +215,8 @@ function VoxelGrid({
       // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
         if (d > effectiveMaxLayer) continue;                 // below shore-clamped seabed
-        if (sliceMode === "slice-v" && gx !== sliceLevel) continue;
+        if (sliceMode === "slice-v" && sliceAxis === "x" && gx !== sliceLevel) continue;
+        if (sliceMode === "slice-v" && sliceAxis === "z" && gz !== sliceLevel) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const [r, g, b] = lerpColor(stops, val);
@@ -478,9 +481,10 @@ function GridFloor() {
 interface SliceIndicatorProps {
   mode: DashboardState;
   level: number;
+  sliceAxis: "x" | "z";
 }
 
-function SliceIndicator({ mode, level }: SliceIndicatorProps) {
+function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
   if (mode === "slice-h") {
     const y = Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2;
     return (
@@ -490,12 +494,21 @@ function SliceIndicator({ mode, level }: SliceIndicatorProps) {
       </mesh>
     );
   }
-  if (mode === "slice-v") {
+  if (mode === "slice-v" && sliceAxis === "x") {
     const x = offsetX + level * STEP + STEP / 2;
     return (
       <mesh position={[x, BOX_CY, 0]}>
         <planeGeometry args={[0.05, BOX_H, DEPTH_LAYERS, GRID_D]} />
-        <meshStandardMaterial color="#4a90d9" opacity={0.12} transparent side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#f59e0b" opacity={0.14} transparent side={THREE.DoubleSide} />
+      </mesh>
+    );
+  }
+  if (mode === "slice-v" && sliceAxis === "z") {
+    const z = offsetZ + level * STEP + STEP / 2;
+    return (
+      <mesh position={[0, BOX_CY, z]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[GRID_D * STEP, BOX_H, DEPTH_LAYERS, GRID_W]} />
+        <meshStandardMaterial color="#f59e0b" opacity={0.14} transparent side={THREE.DoubleSide} />
       </mesh>
     );
   }
@@ -509,6 +522,7 @@ interface OceanBasin3DProps {
   dashboardState: DashboardState;
   selectedPoint: { x: number; z: number } | null;
   sliceLevel: number;
+  sliceAxis: "x" | "z";
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
 }
@@ -519,6 +533,7 @@ export default function OceanBasin3D({
   dashboardState,
   selectedPoint,
   sliceLevel,
+  sliceAxis,
   onCellClick,
   onCellHover,
 }: OceanBasin3DProps) {
@@ -538,6 +553,7 @@ export default function OceanBasin3D({
         selectedPoint={selectedPoint}
         sliceMode={dashboardState}
         sliceLevel={sliceLevel}
+        sliceAxis={sliceAxis}
         onCellClick={onCellClick}
         onCellHover={onCellHover}
       />
@@ -547,7 +563,7 @@ export default function OceanBasin3D({
       <BoundingBox />
       <AxisLabels />
       <GridFloor />
-      <SliceIndicator mode={dashboardState} level={sliceLevel} />
+      <SliceIndicator mode={dashboardState} level={sliceLevel} sliceAxis={sliceAxis} />
 
       <OrbitControls
         enablePan={true}

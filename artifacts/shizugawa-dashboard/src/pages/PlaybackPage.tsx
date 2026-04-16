@@ -22,9 +22,14 @@ type ToolState = "none" | "point-select" | "slice-h" | "slice-v" | "depth-graph"
 const tools: { id: ToolState; label: string; icon: typeof Crosshair; desc: string }[] = [
   { id: "point-select", label: "Point Inspection", icon: Crosshair, desc: "Click a voxel to inspect its value" },
   { id: "slice-h", label: "Horizontal Slice", icon: Layers, desc: "Cross-section at fixed depth" },
-  { id: "slice-v", label: "Vertical Slice", icon: GitBranchPlus, desc: "Cross-section along a column" },
+  { id: "slice-v", label: "Vertical Slice", icon: GitBranchPlus, desc: "Draw a transect · drag the mini-map line" },
   { id: "depth-graph", label: "Depth Profile", icon: BarChart2, desc: "Concentration vs. depth" },
 ];
+
+// ── Mini-map constants (top-down bay view for vertical slice) ─────────────────
+const MINI_CELL = 3;            // px per grid cell
+const MINI_W = GRID_W * MINI_CELL; // 168
+const MINI_H = GRID_D * MINI_CELL; // 144
 
 function toDashboardState(tool: ToolState, isPlaying: boolean): DashboardState {
   if (tool !== "none") return tool as DashboardState;
@@ -65,6 +70,7 @@ export default function PlaybackPage() {
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState("nitrogen");
   const [sliceLevel, setSliceLevel] = useState(3);
+  const [sliceAxis, setSliceAxis] = useState<"x" | "z">("x");
   const [activeTool, setActiveTool] = useState<ToolState>("none");
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
@@ -74,6 +80,50 @@ export default function PlaybackPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pause = useCallback(() => setIsPlaying(false), []);
+
+  // ── Slice helpers ────────────────────────────────────────────────────────────
+  const sliceMax = activeTool === "slice-h" ? 7
+    : sliceAxis === "x" ? GRID_W - 1
+    : GRID_D - 1;
+
+  function handleSliceAxisChange(axis: "x" | "z") {
+    setSliceAxis(axis);
+    setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2));
+  }
+
+  function handleMiniPointer(e: React.PointerEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (sliceAxis === "x") {
+      const frac = (e.clientX - rect.left) / rect.width;
+      setSliceLevel(Math.round(Math.max(0, Math.min(1, frac)) * (GRID_W - 1)));
+    } else {
+      const frac = (e.clientY - rect.top) / rect.height;
+      setSliceLevel(Math.round(Math.max(0, Math.min(1, frac)) * (GRID_D - 1)));
+    }
+  }
+
+  // Pre-render bay cells as SVG rects (memoised — shape never changes)
+  const miniMapCells = useMemo(() => {
+    const cells: React.ReactElement[] = [];
+    for (let gz = 0; gz < GRID_D; gz++) {
+      for (let gx = 0; gx < GRID_W; gx++) {
+        if (BAY_MASK[gz]?.[gx]) {
+          cells.push(
+            <rect
+              key={`mc-${gz}-${gx}`}
+              x={gx * MINI_CELL}
+              y={gz * MINI_CELL}
+              width={MINI_CELL}
+              height={MINI_CELL}
+              fill="#93c5d9"
+              opacity={0.72}
+            />
+          );
+        }
+      }
+    }
+    return cells;
+  }, []);
 
   useEffect(() => {
     setWeek(w => Math.max(weekRange[0], Math.min(weekRange[1], w)));
@@ -206,6 +256,7 @@ export default function PlaybackPage() {
               dashboardState={dashboardState}
               selectedPoint={selectedPoint}
               sliceLevel={sliceLevel}
+              sliceAxis={sliceAxis}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
             />
@@ -277,6 +328,69 @@ export default function PlaybackPage() {
                 </div>
               );
             })()}
+
+            {/* ── Vertical-slice mini-map overlay ────────────────────────────── */}
+            {activeTool === "slice-v" && (
+              <div className="absolute bottom-3 right-3 z-20 pointer-events-auto select-none">
+                <div className="bg-white/96 border border-border rounded-lg shadow-lg overflow-hidden" style={{ backdropFilter: "blur(4px)" }}>
+                  {/* Header */}
+                  <div className="px-2.5 py-1.5 bg-slate-50 border-b border-border flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {sliceAxis === "x" ? "N–S Slice" : "E–W Slice"} · drag to reposition
+                    </span>
+                  </div>
+                  {/* Bay top-down SVG */}
+                  <svg
+                    width={MINI_W}
+                    height={MINI_H}
+                    viewBox={`0 0 ${MINI_W} ${MINI_H}`}
+                    style={{ display: "block", cursor: sliceAxis === "x" ? "col-resize" : "row-resize" }}
+                    onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); handleMiniPointer(e); }}
+                    onPointerMove={(e) => { if (e.buttons > 0) handleMiniPointer(e); }}
+                    onPointerUp={() => {}}
+                  >
+                    {/* Bay water cells */}
+                    {miniMapCells}
+                    {/* Cardinal labels */}
+                    <text x={MINI_W / 2} y={9} textAnchor="middle" fontSize={8} fill="#64748b" fontWeight="600">N</text>
+                    <text x={MINI_W / 2} y={MINI_H - 1} textAnchor="middle" fontSize={8} fill="#64748b" fontWeight="600">S</text>
+                    <text x={5} y={MINI_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#64748b" fontWeight="600">W</text>
+                    <text x={MINI_W - 5} y={MINI_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#64748b" fontWeight="600">E</text>
+                    {/* Slice line */}
+                    {sliceAxis === "x" ? (
+                      <>
+                        {/* Glow */}
+                        <line
+                          x1={sliceLevel * MINI_CELL + MINI_CELL / 2} y1={0}
+                          x2={sliceLevel * MINI_CELL + MINI_CELL / 2} y2={MINI_H}
+                          stroke="#f59e0b" strokeWidth={6} opacity={0.22}
+                        />
+                        {/* Line */}
+                        <line
+                          x1={sliceLevel * MINI_CELL + MINI_CELL / 2} y1={0}
+                          x2={sliceLevel * MINI_CELL + MINI_CELL / 2} y2={MINI_H}
+                          stroke="#f59e0b" strokeWidth={1.5} opacity={0.95}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <line
+                          x1={0} y1={sliceLevel * MINI_CELL + MINI_CELL / 2}
+                          x2={MINI_W} y2={sliceLevel * MINI_CELL + MINI_CELL / 2}
+                          stroke="#f59e0b" strokeWidth={6} opacity={0.22}
+                        />
+                        <line
+                          x1={0} y1={sliceLevel * MINI_CELL + MINI_CELL / 2}
+                          x2={MINI_W} y2={sliceLevel * MINI_CELL + MINI_CELL / 2}
+                          stroke="#f59e0b" strokeWidth={1.5} opacity={0.95}
+                        />
+                      </>
+                    )}
+                  </svg>
+                </div>
+              </div>
+            )}
           </div>
 
           <PlaybackControls
@@ -420,25 +534,73 @@ export default function PlaybackPage() {
             </div>
             */}
 
-            {/* Slice level */}
+            {/* Slice controls */}
             {(activeTool === "slice-h" || activeTool === "slice-v") && (
-              <div className="px-4 py-4">
-                <div className="panel-section-title mb-2 flex items-center gap-1.5">
+              <div className="px-4 py-4 space-y-3">
+                <div className="panel-section-title flex items-center gap-1.5">
                   <ArrowUpDown size={11} />
-                  {activeTool === "slice-h" ? "Depth Level" : "Column Index"}
+                  {activeTool === "slice-h" ? "Horizontal Slice" : "Vertical Slice"}
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={activeTool === "slice-h" ? 7 : 13}
-                  value={sliceLevel}
-                  onChange={(e) => setSliceLevel(Number(e.target.value))}
-                  className="w-full accent-primary cursor-pointer"
-                />
-                <div className="text-xs text-muted-foreground mt-1.5">
-                  {activeTool === "slice-h"
-                    ? `Layer ${sliceLevel + 1} · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
-                    : `Column ${sliceLevel + 1} of 14`}
+
+                {/* ── Vertical slice: step-by-step ── */}
+                {activeTool === "slice-v" && (
+                  <>
+                    {/* Step 1: cut direction */}
+                    <div>
+                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
+                        Step 1 · Cut direction
+                      </div>
+                      <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+                        {([
+                          { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E" },
+                          { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S" },
+                        ]).map(({ axis, label, sub }) => (
+                          <button
+                            key={axis}
+                            onClick={() => handleSliceAxisChange(axis)}
+                            className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
+                              sliceAxis === axis
+                                ? "bg-white text-foreground shadow-sm font-semibold"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <span>{label}</span>
+                            <span className="text-[8px] opacity-60">{sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Step 2: draw hint */}
+                    <div className="bg-amber-50 border border-amber-100 rounded-md px-2.5 py-2 flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="text-[10px] text-amber-700 leading-snug">
+                        <span className="font-semibold">Step 2 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Step 3 (both modes): slider */}
+                <div>
+                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
+                    {activeTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={sliceMax}
+                    value={sliceLevel}
+                    onChange={(e) => setSliceLevel(Number(e.target.value))}
+                    className="w-full accent-primary cursor-pointer"
+                  />
+                  <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
+                    {activeTool === "slice-h"
+                      ? `Layer ${sliceLevel + 1} of 8 · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
+                      : sliceAxis === "x"
+                        ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
+                        : `Row ${sliceLevel + 1} of ${GRID_D} · ${(38.582 + (sliceLevel / (GRID_D - 1)) * 0.069).toFixed(4)}°N`}
+                  </div>
                 </div>
               </div>
             )}
