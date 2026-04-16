@@ -353,26 +353,42 @@ export default function RiverPlaybackPage() {
                       <div className="text-sm font-semibold text-foreground font-mono">{composite.totalLength}</div>
                     </div>
                     <div className="bg-violet-50 border border-violet-100 rounded-md p-2.5">
-                      <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Segments</div>
-                      <div className="text-sm font-semibold text-violet-700">2 sub-basins</div>
+                      <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Topology</div>
+                      <div className="text-sm font-semibold text-violet-700 capitalize">{composite.topology}</div>
                     </div>
                   </div>
                   {/* Segment chips */}
-                  <div className="mt-2 flex gap-2">
-                    {composite.segments.map((seg, i) => (
-                      <div
-                        key={seg.riverId}
-                        className="flex-1 rounded border px-2 py-1.5"
-                        style={{ borderColor: i === 0 ? "#93c5fd" : "#fcd34d", background: i === 0 ? "#eff6ff" : "#fffbeb" }}
-                      >
-                        <div className="text-[9px] uppercase tracking-wide font-medium" style={{ color: i === 0 ? "#2563eb" : "#d97706" }}>
-                          {i === 0 ? "Upstream" : "Downstream"}
-                        </div>
-                        <div className="text-[11px] font-semibold text-foreground">{seg.name}</div>
-                        <div className="text-[9px] text-muted-foreground">{seg.sub}</div>
+                  {(() => {
+                    const UPPER_BORDERS = ["#93c5fd", "#c4b5fd"];
+                    const UPPER_BG      = ["#eff6ff", "#f5f3ff"];
+                    const UPPER_COLORS  = ["#2563eb", "#7c3aed"];
+                    let ui = 0;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {composite.segments.map(seg => {
+                          const isLower = seg.role === "lower";
+                          const border = isLower ? "#5eead4" : UPPER_BORDERS[ui % 2];
+                          const bg     = isLower ? "#f0fdfa"  : UPPER_BG[ui % 2];
+                          const color  = isLower ? "#0d9488"  : UPPER_COLORS[ui % 2];
+                          const label  = isLower ? "Lower (→ Bay)" : `Upper ${composite.topology === "convergent" ? ui + 1 : ""}`;
+                          if (!isLower) ui++;
+                          return (
+                            <div
+                              key={seg.riverId}
+                              className="flex-1 min-w-[5rem] rounded border px-2 py-1.5"
+                              style={{ borderColor: border, background: bg }}
+                            >
+                              <div className="text-[9px] uppercase tracking-wide font-medium" style={{ color }}>
+                                {label}
+                              </div>
+                              <div className="text-[11px] font-semibold text-foreground">{seg.name}</div>
+                              <div className="text-[9px] text-muted-foreground">{seg.sub}</div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </>
               ) : (
                 <>
@@ -426,48 +442,62 @@ export default function RiverPlaybackPage() {
                 <div className="text-[9px] text-muted-foreground mb-2">
                   {variable.label} · spatial mean per segment · {variable.unit}
                 </div>
-                {composite.segments.map((seg, i) => {
-                  const val = compositeSegmentMeans[i];
-                  const isBlue = i === 0;
-                  return (
-                    <div
-                      key={seg.riverId}
-                      className="rounded-md border p-3 mb-2 last:mb-0"
-                      style={{
-                        borderColor: isBlue ? "#93c5fd" : "#fcd34d",
-                        background:  isBlue ? "#eff6ff" : "#fffbeb",
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
-                               style={{ color: isBlue ? "#2563eb" : "#d97706" }}>
-                            {i === 0 ? "Upstream" : "Downstream"} · {seg.sub}
+                {(() => {
+                  const UPPER_COLORS  = ["#1d4ed8", "#5b21b6"];
+                  const UPPER_LABELS  = ["#2563eb", "#7c3aed"];
+                  const UPPER_BORDERS = ["#93c5fd", "#c4b5fd"];
+                  const UPPER_BG      = ["#eff6ff", "#f5f3ff"];
+                  let ui = 0;
+                  return composite.segments.map((seg, i) => {
+                    const val = compositeSegmentMeans[i];
+                    const isLower = seg.role === "lower";
+                    const border  = isLower ? "#5eead4"         : UPPER_BORDERS[ui % 2];
+                    const bg      = isLower ? "#f0fdfa"          : UPPER_BG[ui % 2];
+                    const lcolor  = isLower ? "#0d9488"          : UPPER_LABELS[ui % 2];
+                    const vcolor  = isLower ? "#0f766e"          : UPPER_COLORS[ui % 2];
+                    const roleTag = isLower ? "Lower (→ Bay)"
+                      : `Upper ${composite.topology === "convergent" ? ui + 1 : ""} · ${seg.sub}`;
+                    if (!isLower) ui++;
+                    return (
+                      <div
+                        key={seg.riverId}
+                        className="rounded-md border p-3 mb-2 last:mb-0"
+                        style={{ borderColor: border, background: bg }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
+                                 style={{ color: lcolor }}>
+                              {roleTag}
+                            </div>
+                            <div className="text-xs font-semibold text-foreground">{seg.name}</div>
                           </div>
-                          <div className="text-xs font-semibold text-foreground">{seg.name}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-mono font-bold leading-none"
-                               style={{ color: isBlue ? "#1d4ed8" : "#b45309" }}>
-                            {val}
+                          <div className="text-right">
+                            <div className="text-lg font-mono font-bold leading-none"
+                                 style={{ color: vcolor }}>
+                              {val}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
                           </div>
-                          <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-                {/* Delta indicator */}
+                    );
+                  });
+                })()}
+                {/* Delta: lower vs average of uppers */}
                 {(() => {
-                  const delta = (compositeSegmentMeans[1] - compositeSegmentMeans[0]);
-                  const pct = compositeSegmentMeans[0] > 0
-                    ? ((delta / compositeSegmentMeans[0]) * 100).toFixed(1)
-                    : "—";
+                  const uppers = composite.segments.filter(s => s.role === "upper");
+                  const lowerIdx = composite.segments.findIndex(s => s.role === "lower");
+                  if (lowerIdx < 0) return null;
+                  const upperAvg = uppers.reduce((s, _, i) => s + (compositeSegmentMeans[i] ?? 0), 0) / (uppers.length || 1);
+                  const lowerVal = compositeSegmentMeans[lowerIdx] ?? 0;
+                  const delta = lowerVal - upperAvg;
+                  const pct = upperAvg > 0 ? ((delta / upperAvg) * 100).toFixed(1) : "—";
                   const up = delta >= 0;
                   return (
                     <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>Δ downstream vs upstream:</span>
-                      <span className={`font-mono font-semibold ${up ? "text-amber-600" : "text-blue-600"}`}>
+                      <span>Δ lower vs upper{uppers.length > 1 ? " avg" : ""}:</span>
+                      <span className={`font-mono font-semibold ${up ? "text-teal-600" : "text-blue-600"}`}>
                         {up ? "+" : ""}{delta.toFixed(2)} {variable.unit}
                         {pct !== "—" && <span className="text-muted-foreground font-normal"> ({up ? "+" : ""}{pct}%)</span>}
                       </span>

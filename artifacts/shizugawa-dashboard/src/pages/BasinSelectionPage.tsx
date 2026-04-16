@@ -123,7 +123,7 @@ export default function BasinSelectionPage() {
   );
   const corridorSegments = useMemo(
     () => corridorObj
-      ? { segA: corridorObj.segments[0].riverId, segB: corridorObj.segments[1].riverId, corridorId: corridorObj.id }
+      ? { rivers: corridorObj.segments.map(s => ({ id: s.riverId, role: s.role })), corridorId: corridorObj.id }
       : null,
     [corridorObj]
   );
@@ -322,54 +322,67 @@ export default function BasinSelectionPage() {
                     <div className="text-sm font-semibold text-foreground font-mono">{corridorObj.totalLength}</div>
                   </div>
                   <div className="bg-violet-50 border border-violet-100 rounded-md p-2.5">
-                    <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Segments</div>
-                    <div className="text-sm font-semibold text-violet-700">2 sub-basins</div>
+                    <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Topology</div>
+                    <div className="text-sm font-semibold text-violet-700 capitalize">{corridorObj.topology}</div>
                   </div>
                 </div>
 
                 {/* Per-segment values */}
                 <div className="panel-section-title mb-2">Sub-basin Values</div>
                 <div className="text-[9px] text-muted-foreground mb-2">{variable.label} · {variable.unit} · current week</div>
-                {corridorObj.segments.map((seg, i) => {
-                  const val = corridorMeans ? corridorMeans[i] : null;
-                  const isBlue = i === 0;
-                  return (
-                    <div
-                      key={seg.riverId}
-                      className="rounded-md border p-3 mb-2 last:mb-0"
-                      style={{
-                        borderColor: isBlue ? "#93c5fd" : "#fcd34d",
-                        background: isBlue ? "#eff6ff" : "#fffbeb",
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
-                               style={{ color: isBlue ? "#2563eb" : "#d97706" }}>
-                            {i === 0 ? "Upstream" : "Downstream"} · {seg.sub}
+                {(() => {
+                  const UPPER_PALETTES = [
+                    { border: "#93c5fd", bg: "#eff6ff", labelColor: "#2563eb", valColor: "#1d4ed8" },
+                    { border: "#c4b5fd", bg: "#f5f3ff", labelColor: "#7c3aed", valColor: "#5b21b6" },
+                  ];
+                  const LOWER_PALETTE = { border: "#5eead4", bg: "#f0fdfa", labelColor: "#0d9488", valColor: "#0f766e" };
+                  let upperCount = 0;
+                  return corridorObj.segments.map((seg, i) => {
+                    const val = corridorMeans ? corridorMeans[i] : null;
+                    const palette = seg.role === "lower" ? LOWER_PALETTE : UPPER_PALETTES[upperCount++ % 2];
+                    const roleLabel = seg.role === "lower"
+                      ? "Lower (→ Bay)"
+                      : `Upper ${corridorObj.topology === "convergent" ? upperCount : ""} · ${seg.sub}`;
+                    return (
+                      <div
+                        key={seg.riverId}
+                        className="rounded-md border p-3 mb-2 last:mb-0"
+                        style={{ borderColor: palette.border, background: palette.bg }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
+                                 style={{ color: palette.labelColor }}>
+                              {roleLabel}
+                            </div>
+                            <div className="text-xs font-semibold text-foreground">{seg.name}</div>
                           </div>
-                          <div className="text-xs font-semibold text-foreground">{seg.name}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-mono font-bold leading-none"
-                               style={{ color: isBlue ? "#1d4ed8" : "#b45309" }}>
-                            {val ?? "—"}
+                          <div className="text-right">
+                            <div className="text-lg font-mono font-bold leading-none"
+                                 style={{ color: palette.valColor }}>
+                              {val ?? "—"}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
                           </div>
-                          <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
 
-                {/* Δ indicator */}
+                {/* Δ lower vs upper(s) */}
                 {corridorMeans && (() => {
-                  const delta = corridorMeans[1] - corridorMeans[0];
+                  const uppers = corridorObj.segments.filter(s => s.role === "upper");
+                  const lowerIdx = corridorObj.segments.findIndex(s => s.role === "lower");
+                  if (lowerIdx < 0) return null;
+                  const upperAvg = uppers.reduce((sum, _, i) => sum + (corridorMeans[i] ?? 0), 0) / (uppers.length || 1);
+                  const lowerVal = corridorMeans[lowerIdx] ?? 0;
+                  const delta = lowerVal - upperAvg;
                   const up = delta >= 0;
                   return (
                     <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground mb-3">
-                      <span>Δ downstream vs upstream:</span>
-                      <span className={`font-mono font-semibold ${up ? "text-amber-600" : "text-blue-600"}`}>
+                      <span>Δ lower vs upper{uppers.length > 1 ? " avg" : ""}:</span>
+                      <span className={`font-mono font-semibold ${up ? "text-teal-600" : "text-blue-600"}`}>
                         {up ? "+" : ""}{delta.toFixed(2)} {variable.unit}
                       </span>
                     </div>

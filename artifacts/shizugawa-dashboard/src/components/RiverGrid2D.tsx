@@ -333,54 +333,88 @@ export default function RiverGrid2D({
               })
             )}
 
-            {/* ── Composite sub-basin boundary overlay ─── */}
+            {/* ── Composite corridor overlay ─── */}
             {composite && (() => {
-              const splitX = (composite.segments[0].colEnd + 1) * CELL;
-              const segA = composite.segments[0];
-              const segB = composite.segments[1];
+              const uppers = composite.segments.filter(s => s.role === "upper");
+              const lower  = composite.segments.find(s => s.role === "lower");
+              const splitX = (composite.segments.find(s => s.role === "lower")?.colStart ?? 60) * CELL;
+              const isConvergent = composite.topology === "convergent";
+
+              // Convergent: horizontal band divider between the two upper segments
+              const upperRowSplit = isConvergent && uppers.length >= 2
+                ? ((uppers[0].rowEnd ?? 10) + 1) * CELL
+                : null;
+
+              const UPPER_COLORS = ["#3b82f6", "#8b5cf6"];
+              const LOWER_COLOR  = "#14b8a6";
+
               return (
                 <>
-                  {/* Segment A label — top-left of grid */}
-                  <div
-                    className="absolute pointer-events-none flex items-center gap-1"
-                    style={{
-                      left: 8,
-                      top: -20,
-                      transform: `scale(${1 / xform.scale})`,
-                      transformOrigin: "left top",
-                      zIndex: 40,
-                    }}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                    <span className="text-[10px] font-semibold text-blue-700 whitespace-nowrap">
-                      {segA.name}
-                    </span>
-                    <span className="text-[9px] text-blue-400 whitespace-nowrap">
-                      ({segA.sub})
-                    </span>
-                  </div>
+                  {/* Upper segment labels — above the left half */}
+                  {uppers.map((seg, ui) => {
+                    const color = UPPER_COLORS[ui % 2];
+                    const topY = ui === 0 ? -20 : (upperRowSplit ?? 0) - 20;
+                    return (
+                      <div
+                        key={seg.riverId}
+                        className="absolute pointer-events-none flex items-center gap-1"
+                        style={{
+                          left: 8,
+                          top: topY,
+                          transform: `scale(${1 / xform.scale})`,
+                          transformOrigin: "left top",
+                          zIndex: 40,
+                        }}
+                      >
+                        <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                        <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color }}>
+                          {seg.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400 whitespace-nowrap">
+                          ({seg.sub})
+                        </span>
+                      </div>
+                    );
+                  })}
 
-                  {/* Segment B label */}
-                  <div
-                    className="absolute pointer-events-none flex items-center gap-1"
-                    style={{
-                      left: splitX + 8,
-                      top: -20,
-                      transform: `scale(${1 / xform.scale})`,
-                      transformOrigin: "left top",
-                      zIndex: 40,
-                    }}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-[10px] font-semibold text-amber-700 whitespace-nowrap">
-                      {segB.name}
-                    </span>
-                    <span className="text-[9px] text-amber-400 whitespace-nowrap">
-                      ({segB.sub})
-                    </span>
-                  </div>
+                  {/* Lower segment label — above the right half */}
+                  {lower && (
+                    <div
+                      className="absolute pointer-events-none flex items-center gap-1"
+                      style={{
+                        left: splitX + 8,
+                        top: -20,
+                        transform: `scale(${1 / xform.scale})`,
+                        transformOrigin: "left top",
+                        zIndex: 40,
+                      }}
+                    >
+                      <div className="w-2 h-2 rounded-full" style={{ background: LOWER_COLOR }} />
+                      <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: LOWER_COLOR }}>
+                        {lower.name}
+                      </span>
+                      <span className="text-[9px] text-slate-400 whitespace-nowrap">
+                        ({lower.sub})
+                      </span>
+                    </div>
+                  )}
 
-                  {/* Vertical boundary line */}
+                  {/* Horizontal divider between upper bands (convergent only) */}
+                  {upperRowSplit !== null && (
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: 0,
+                        top: upperRowSplit - 1,
+                        width: splitX,
+                        height: 2,
+                        background: "repeating-linear-gradient(to right, #94a3b8 4px, transparent 4px, transparent 8px)",
+                        zIndex: 35,
+                      }}
+                    />
+                  )}
+
+                  {/* Vertical boundary line (upper ↔ lower) */}
                   <div
                     className="absolute pointer-events-none"
                     style={{
@@ -393,7 +427,7 @@ export default function RiverGrid2D({
                     }}
                   />
 
-                  {/* "Sub-basin boundary" badge at midpoint */}
+                  {/* Confluence / boundary badge */}
                   <div
                     className="absolute pointer-events-none"
                     style={{
@@ -404,8 +438,9 @@ export default function RiverGrid2D({
                       zIndex: 40,
                     }}
                   >
-                    <div className="bg-slate-700/90 text-white text-[9px] font-mono px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
-                      sub-basin boundary
+                    <div className="text-white text-[9px] font-mono px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm"
+                         style={{ background: isConvergent ? "#0f766e" : "#475569", opacity: 0.9 }}>
+                      {isConvergent ? "confluence" : "sub-basin boundary"}
                     </div>
                   </div>
                 </>

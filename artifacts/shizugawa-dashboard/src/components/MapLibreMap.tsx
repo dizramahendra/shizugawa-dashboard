@@ -202,15 +202,14 @@ function computeRiverSvgBounds(modelRiver: string): { x: number; y: number; w: n
   return { x: rx, y: ry, w: Math.max(120, rw), h: Math.max(120, rh) };
 }
 
-/** Union viewBox that frames both rivers in a corridor */
+/** Union viewBox that frames all rivers in a corridor */
 function computeCorridorSvgBounds(
-  modelA: string,
-  modelB: string
+  modelIds: string[]
 ): { x: number; y: number; w: number; h: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [idStr, d] of Object.entries(RIVER_PATHS)) {
     const m = MODEL_RIVER[Number(idStr)];
-    if (m !== modelA && m !== modelB) continue;
+    if (!modelIds.includes(m)) continue;
     for (const [x, y] of parseSvgPath(d)) {
       if (x < minX) minX = x; if (y < minY) minY = y;
       if (x > maxX) maxX = x; if (y > maxY) maxY = y;
@@ -227,13 +226,15 @@ function computeCorridorSvgBounds(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+interface CorridorRiverEntry { id: string; role: "upper" | "lower" }
+
 interface MapLibreMapProps {
   week: number;
   variableId: string;
   selectedRiver: string | null;
   onSelectRiver: (id: string | null) => void;
   onSelectOcean: () => void;
-  corridorSegments?: { segA: string; segB: string; corridorId: string } | null;
+  corridorSegments?: { rivers: CorridorRiverEntry[]; corridorId: string } | null;
 }
 
 export default function MapLibreMap({
@@ -253,7 +254,7 @@ export default function MapLibreMap({
   useEffect(() => {
     if (corridorSegments) {
       setShowGrid(false);
-      setVb(computeCorridorSvgBounds(corridorSegments.segA, corridorSegments.segB));
+      setVb(computeCorridorSvgBounds(corridorSegments.rivers.map(r => r.id)));
     } else if (!selectedRiver) {
       setVb({ x: 0, y: 0, w: SVG_W, h: SVG_H });
       setShowGrid(false);
@@ -261,6 +262,24 @@ export default function MapLibreMap({
       setVb(computeRiverSvgBounds(selectedRiver));
     }
   }, [selectedRiver, corridorSegments]);
+
+  // Color + label lookup for each corridor river (upper1=blue, upper2=violet, lower=teal)
+  const corridorRiverMap = useMemo(() => {
+    if (!corridorSegments) return {} as Record<string, { color: string; label: string }>;
+    const UPPER_COLORS = ["#3b82f6", "#8b5cf6"];
+    const UPPER_LABELS = ["Upper 1", "Upper 2"];
+    let ui = 0;
+    const map: Record<string, { color: string; label: string }> = {};
+    corridorSegments.rivers.forEach(r => {
+      if (r.role === "lower") {
+        map[r.id] = { color: "#14b8a6", label: "Lower → Bay" };
+      } else {
+        map[r.id] = { color: UPPER_COLORS[ui % 2], label: UPPER_LABELS[ui % 2] };
+        ui++;
+      }
+    });
+    return map;
+  }, [corridorSegments]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onSelectRiver(null); };
@@ -344,9 +363,8 @@ export default function MapLibreMap({
           const modelId = MODEL_RIVER[id];
 
           // ── Corridor mode ──
-          const isSegA = !!corridorSegments && modelId === corridorSegments.segA;
-          const isSegB = !!corridorSegments && modelId === corridorSegments.segB;
-          const inCorridor = isSegA || isSegB;
+          const corridorInfo = corridorRiverMap[modelId];
+          const inCorridor = !!corridorInfo;
           const corridorActive = !!corridorSegments;
 
           const isSelected = selectedRiver === modelId;
@@ -362,10 +380,9 @@ export default function MapLibreMap({
 
           const samples = REACH_SAMPLES[id];
 
-          // Color: corridor segments get fixed identity colors, others use data color
+          // Color: corridor rivers get role-based identity colors, others use data color
           const baseColor = reachColors[id] ?? "#60a5fa";
-          const corridorColor = isSegA ? "#3b82f6" : isSegB ? "#f59e0b" : baseColor;
-          const color = corridorActive ? corridorColor : baseColor;
+          const color = inCorridor ? corridorInfo.color : baseColor;
 
           const otherStyle = isOther
             ? { filter: "grayscale(100%)", opacity: 0.15, transition: "opacity 0.3s, filter 0.3s" }
@@ -398,15 +415,16 @@ export default function MapLibreMap({
                 style={{ pointerEvents: "none" }}
               />
 
-              {/* Corridor segment label tag in the middle of each river */}
+              {/* Corridor river label tag in the middle of each river */}
               {inCorridor && (() => {
                 const mid = samples[Math.floor(samples.length / 2)];
                 if (!mid) return null;
-                const label = isSegA ? "Upstream" : "Downstream";
+                const label = corridorInfo.label;
+                const tagW = label.length * 4.8 + 8;
                 return (
                   <g style={{ pointerEvents: "none" }}>
-                    <rect x={mid[0] - 22} y={mid[1] - 9} width={44} height={13} rx={3}
-                      fill={isSegA ? "#3b82f6" : "#f59e0b"} opacity={0.92} />
+                    <rect x={mid[0] - tagW / 2} y={mid[1] - 9} width={tagW} height={13} rx={3}
+                      fill={corridorInfo.color} opacity={0.92} />
                     <text x={mid[0]} y={mid[1] + 1.5} textAnchor="middle"
                       fontSize={7} fill="white" fontWeight="bold" fontFamily="monospace">
                       {label}

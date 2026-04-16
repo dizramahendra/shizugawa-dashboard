@@ -518,12 +518,17 @@ const RIVER_PARAMS: Record<string, [number, number, number]> = {
 
 // ── Composite (multi-basin) river definitions ────────────────────────────────
 
+export type CorridorTopology = "linear" | "convergent";
+
 export interface CompositeSegment {
   riverId: string;
   name: string;       // display name
   sub: string;        // sub-basin label
+  role: "upper" | "lower";
   colStart: number;   // first column (0-based, inclusive)
   colEnd: number;     // last column (inclusive)
+  rowStart?: number;  // first row (inclusive, defaults to 0)
+  rowEnd?: number;    // last row  (inclusive, defaults to RIVER_ROWS - 1)
 }
 
 export interface CompositeRiver {
@@ -531,33 +536,62 @@ export interface CompositeRiver {
   name: string;
   description: string;
   totalLength: string;
-  segments: [CompositeSegment, CompositeSegment];
+  topology: CorridorTopology;
+  segments: CompositeSegment[];
 }
 
+const SPLIT_COL = 60;       // column index where upper half ends / lower half begins
+const UPPER_ROW_SPLIT = 11; // first row of the second upper band (≈ RIVER_ROWS / 2)
+
 /**
- * Composite corridors: each river flows through TWO sub-basins.
- * Upstream segment (left half) → downstream segment (right half).
- * The 2D River view shows the transition point where values shift.
+ * Multi-basin corridors — defined by actual hydrological network topology.
+ *
+ * Linear (sub-basin 25 → sub-basin 3):
+ *   Kamaishi river flows continuously from sub-basin 25 into sub-basin 3
+ *   (karakuwa), which empties closest to the ocean.
+ *
+ * Convergent Y-shape:
+ *   Two upper tributaries merge into one lower mainstem.
+ *   · Sub-basins 7 (okawa) + 24 (oya)   → sub-basin 4 (togura)
+ *   · Sub-basins 14 (motoyoshi) + 13 (hachiman) → sub-basin 6 (iriya)
+ *
+ * In the 2D River view, convergent corridors show two parallel row-bands in
+ * the left (upper) half that merge into a single channel in the right (lower) half.
  */
 export const COMPOSITE_RIVERS: CompositeRiver[] = [
   {
-    id: "comp-karakuwa-shizugawa",
-    name: "Karakuwa → Shizugawa Corridor",
-    description: "Kesennuma tributary merging into Minamisanriku main channel",
-    totalLength: "27.5 km",
+    id: "comp-kamaishi-karakuwa",
+    name: "Kamaishi → Karakuwa",
+    description: "Sub-basin 25 upper reach flows into sub-basin 3 (ocean-proximate)",
+    totalLength: "20.8 km",
+    topology: "linear",
     segments: [
-      { riverId: "karakuwa",  name: "Karakuwa",   sub: "Kesennuma",      colStart: 0,  colEnd: 59  },
-      { riverId: "shizugawa", name: "Shizugawa",  sub: "Minamisanriku",  colStart: 60, colEnd: 119 },
+      { riverId: "kamaishi", name: "Kamaishi", sub: "Sub-basin 25 (Kamaishi)", role: "upper", colStart: 0,  colEnd: 59  },
+      { riverId: "karakuwa", name: "Karakuwa", sub: "Sub-basin 3 (Kesennuma)", role: "lower", colStart: 60, colEnd: 119 },
     ],
   },
   {
-    id: "comp-oya-kamaishi",
-    name: "Oya → Kamaishi Corridor",
-    description: "Low-load upstream entering high-load coastal basin",
-    totalLength: "21.9 km",
+    id: "comp-okawa-oya-togura",
+    name: "Okawa + Oya → Togura",
+    description: "Sub-basins 7 & 24 converge into sub-basin 4 (ocean-proximate)",
+    totalLength: "28.5 km",
+    topology: "convergent",
     segments: [
-      { riverId: "oya",       name: "Oya",         sub: "Minamisanriku",  colStart: 0,  colEnd: 59  },
-      { riverId: "kamaishi",  name: "Kamaishi",    sub: "Kamaishi",       colStart: 60, colEnd: 119 },
+      { riverId: "okawa",  name: "Okawa",  sub: "Sub-basin 7",  role: "upper", colStart: 0,  colEnd: 59,  rowStart: 0,              rowEnd: UPPER_ROW_SPLIT - 1 },
+      { riverId: "oya",    name: "Oya",    sub: "Sub-basin 24", role: "upper", colStart: 0,  colEnd: 59,  rowStart: UPPER_ROW_SPLIT, rowEnd: RIVER_ROWS - 1      },
+      { riverId: "togura", name: "Togura", sub: "Sub-basin 4",  role: "lower", colStart: 60, colEnd: 119 },
+    ],
+  },
+  {
+    id: "comp-motoyoshi-hachiman-iriya",
+    name: "Motoyoshi + Hachiman → Iriya",
+    description: "Sub-basins 14 & 13 converge into sub-basin 6 (ocean-proximate)",
+    totalLength: "25.1 km",
+    topology: "convergent",
+    segments: [
+      { riverId: "motoyoshi", name: "Motoyoshi", sub: "Sub-basin 14", role: "upper", colStart: 0,  colEnd: 59,  rowStart: 0,              rowEnd: UPPER_ROW_SPLIT - 1 },
+      { riverId: "hachiman",  name: "Hachiman",  sub: "Sub-basin 13", role: "upper", colStart: 0,  colEnd: 59,  rowStart: UPPER_ROW_SPLIT, rowEnd: RIVER_ROWS - 1      },
+      { riverId: "iriya",     name: "Iriya",     sub: "Sub-basin 6",  role: "lower", colStart: 60, colEnd: 119 },
     ],
   },
 ];
@@ -566,33 +600,37 @@ export function getCompositeRiver(id: string): CompositeRiver | undefined {
   return COMPOSITE_RIVERS.find(c => c.id === id);
 }
 
-/** Segment means at a given week for a composite river (returns [segA mean, segB mean]) */
+/** Returns the spatial mean per segment at a given week (one value per segment). */
 export function getCompositeSegmentMeans(
   week: number,
   compositeId: string,
   variableId: string,
   year: number = 2023
-): [number, number] {
+): number[] {
   const comp = getCompositeRiver(compositeId);
-  if (!comp) return [0, 0];
+  if (!comp) return [];
   const data = generateCompositeRiverData(week, compositeId, year);
-  const means: [number, number] = [0, 0];
-  comp.segments.forEach((seg, si) => {
+  return comp.segments.map(seg => {
+    const rowS = seg.rowStart ?? 0;
+    const rowE = seg.rowEnd ?? RIVER_ROWS - 1;
     let sum = 0, count = 0;
-    for (let row = 0; row < RIVER_ROWS; row++) {
+    for (let row = rowS; row <= rowE; row++) {
       for (let col = seg.colStart; col <= seg.colEnd; col++) {
         sum += data[row]?.[col] ?? 0;
         count++;
       }
     }
-    means[si] = count > 0 ? valueToConcentration(sum / count, variableId) : 0;
+    return count > 0 ? valueToConcentration(sum / count, variableId) : 0;
   });
-  return means;
 }
 
 /**
- * Generate composite river data: the grid is split at the segment boundary.
- * A smooth cosine blend over BLEND_COLS columns prevents a hard jump.
+ * Generate a RIVER_ROWS × RIVER_COLS data grid for a composite corridor.
+ *
+ * Linear: left half = upper params, right half = lower params, cosine blend at the boundary.
+ *
+ * Convergent: left half has two horizontal row bands (upper1 top, upper2 bottom),
+ *   right half is a single merged lower channel. Cosine blend bridges the transition.
  */
 export function generateCompositeRiverData(
   week: number,
@@ -602,9 +640,7 @@ export function generateCompositeRiverData(
   const comp = getCompositeRiver(compositeId);
   if (!comp) return generateRiverData(week, "shizugawa", year);
 
-  const BLEND_COLS = 8; // blend zone on each side of the split
-  const splitCol = comp.segments[0].colEnd + 1;
-
+  const BLEND_COLS = 8;
   const yearShift = (year - 2023) * 0.31;
   const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
 
@@ -620,19 +656,41 @@ export function generateCompositeRiverData(
     return Math.min(1, Math.max(0, seasonalBase * 0.7 + v * 0.3 + upstreamInfluence * 0.2 + centerBoost * 0.04));
   };
 
+  const blend = (col: number) => {
+    const raw = (col - (SPLIT_COL - BLEND_COLS)) / (BLEND_COLS * 2);
+    const clamp = Math.min(1, Math.max(0, raw));
+    return (1 - Math.cos(clamp * Math.PI)) / 2; // 0 = all upper, 1 = all lower
+  };
+
   const data: number[][] = [];
-  for (let row = 0; row < RIVER_ROWS; row++) {
-    data[row] = [];
-    for (let col = 0; col < RIVER_COLS; col++) {
-      const vA = makeVal(comp.segments[0].riverId, col, row);
-      const vB = makeVal(comp.segments[1].riverId, col, row);
-      // Smooth cosine blend through the transition zone
-      const blendRaw = (col - (splitCol - BLEND_COLS)) / (BLEND_COLS * 2);
-      const blendT = Math.min(1, Math.max(0, blendRaw));
-      const mix = (1 - Math.cos(blendT * Math.PI)) / 2;
-      data[row][col] = vA * (1 - mix) + vB * mix;
+
+  if (comp.topology === "linear") {
+    const upper = comp.segments.find(s => s.role === "upper") ?? comp.segments[0];
+    const lower = comp.segments.find(s => s.role === "lower") ?? comp.segments[1];
+    for (let row = 0; row < RIVER_ROWS; row++) {
+      data[row] = [];
+      for (let col = 0; col < RIVER_COLS; col++) {
+        const mix = blend(col);
+        data[row][col] = makeVal(upper.riverId, col, row) * (1 - mix)
+                       + makeVal(lower.riverId, col, row) * mix;
+      }
+    }
+  } else {
+    // Convergent: two upper row-bands → one lower channel
+    const uppers = comp.segments.filter(s => s.role === "upper");
+    const lower  = comp.segments.find(s => s.role === "lower") ?? comp.segments[2];
+    for (let row = 0; row < RIVER_ROWS; row++) {
+      data[row] = [];
+      const upperSeg = uppers.find(u => row >= (u.rowStart ?? 0) && row <= (u.rowEnd ?? RIVER_ROWS - 1))
+        ?? uppers[0];
+      for (let col = 0; col < RIVER_COLS; col++) {
+        const mix = blend(col);
+        data[row][col] = makeVal(upperSeg.riverId, col, row) * (1 - mix)
+                       + makeVal(lower.riverId, col, row) * mix;
+      }
     }
   }
+
   return data;
 }
 
