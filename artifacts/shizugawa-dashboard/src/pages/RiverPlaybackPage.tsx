@@ -9,7 +9,6 @@ import {
   generateRiverData,
   generateCompositeRiverData,
   getCompositeRiver,
-  getCompositeSegmentMeans,
   COMPOSITE_RIVERS,
   RIVERS,
   RIVER_ROWS,
@@ -177,14 +176,6 @@ export default function RiverPlaybackPage() {
     }
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [riverWeekData, selectedVariable]);
-
-  // Per-segment means for composite rivers (current week)
-  const compositeSegmentMeans = useMemo(
-    () => composite
-      ? getCompositeSegmentMeans(week, riverId, selectedVariable, year)
-      : null,
-    [composite, week, riverId, selectedVariable, year]
-  );
 
   // Full 52-week time series — recompute only when river, variable, or year changes
   const allWeekMeans = useMemo(() => {
@@ -435,95 +426,31 @@ export default function RiverPlaybackPage() {
               </div>
             </div>
 
-            {/* 3b. Reach Mean — or per-segment comparison for composites */}
-            {composite && compositeSegmentMeans ? (
-              <div className="px-4 py-4">
-                <div className="panel-section-title mb-2">Sub-basin Values</div>
-                <div className="text-[9px] text-muted-foreground mb-2">
-                  {variable.label} · spatial mean per segment · {variable.unit}
+            {/* 3b. Reach Mean — spatial average across all reach cells */}
+            <div className="px-4 py-4">
+              <div className="panel-section-title mb-2">Reach Mean</div>
+              {composite && (
+                <div className="text-[9px] text-muted-foreground mb-1.5">
+                  Corridor average · {composite.segments.map(s => s.name).join(" + ")}
                 </div>
-                {(() => {
-                  const UPPER_COLORS  = ["#1d4ed8", "#5b21b6"];
-                  const UPPER_LABELS  = ["#2563eb", "#7c3aed"];
-                  const UPPER_BORDERS = ["#93c5fd", "#c4b5fd"];
-                  const UPPER_BG      = ["#eff6ff", "#f5f3ff"];
-                  let ui = 0;
-                  return composite.segments.map((seg, i) => {
-                    const val = compositeSegmentMeans[i];
-                    const isLower = seg.role === "lower";
-                    const border  = isLower ? "#5eead4"         : UPPER_BORDERS[ui % 2];
-                    const bg      = isLower ? "#f0fdfa"          : UPPER_BG[ui % 2];
-                    const lcolor  = isLower ? "#0d9488"          : UPPER_LABELS[ui % 2];
-                    const vcolor  = isLower ? "#0f766e"          : UPPER_COLORS[ui % 2];
-                    const roleTag = isLower ? "Lower (→ Bay)"
-                      : `Upper ${composite.topology === "convergent" ? ui + 1 : ""} · ${seg.sub}`;
-                    if (!isLower) ui++;
-                    return (
-                      <div
-                        key={seg.riverId}
-                        className="rounded-md border p-3 mb-2 last:mb-0"
-                        style={{ borderColor: border, background: bg }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
-                                 style={{ color: lcolor }}>
-                              {roleTag}
-                            </div>
-                            <div className="text-xs font-semibold text-foreground">{seg.name}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-lg font-mono font-bold leading-none"
-                                 style={{ color: vcolor }}>
-                              {val}
-                            </div>
-                            <div className="text-[9px] text-muted-foreground">{variable.unit}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-                {/* Delta: lower vs average of uppers */}
-                {(() => {
-                  const uppers = composite.segments.filter(s => s.role === "upper");
-                  const lowerIdx = composite.segments.findIndex(s => s.role === "lower");
-                  if (lowerIdx < 0) return null;
-                  const upperAvg = uppers.reduce((s, _, i) => s + (compositeSegmentMeans[i] ?? 0), 0) / (uppers.length || 1);
-                  const lowerVal = compositeSegmentMeans[lowerIdx] ?? 0;
-                  const delta = lowerVal - upperAvg;
-                  const pct = upperAvg > 0 ? ((delta / upperAvg) * 100).toFixed(1) : "—";
-                  const up = delta >= 0;
-                  return (
-                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>Δ lower vs upper{uppers.length > 1 ? " avg" : ""}:</span>
-                      <span className={`font-mono font-semibold ${up ? "text-teal-600" : "text-blue-600"}`}>
-                        {up ? "+" : ""}{delta.toFixed(2)} {variable.unit}
-                        {pct !== "—" && <span className="text-muted-foreground font-normal"> ({up ? "+" : ""}{pct}%)</span>}
-                      </span>
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : (
-              <div className="px-4 py-4">
-                <div className="panel-section-title mb-2">Reach Mean</div>
-                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
-                    <div className="text-xl font-mono font-bold text-blue-600 leading-none">
-                      {reachMean ?? "—"}
-                      <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
-                    </div>
-                    <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reach cells</div>
+              )}
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
+                  <div className="text-xl font-mono font-bold text-blue-600 leading-none">
+                    {reachMean ?? "—"}
+                    <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                   </div>
-                  <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
-                    <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
-                  </svg>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    {composite ? "Spatial mean · all corridor cells" : "Spatial mean · all reach cells"}
+                  </div>
                 </div>
+                <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                </svg>
               </div>
-            )}
+            </div>
 
             {/* 3c. Time-series line chart */}
             <div className="px-4 py-4">

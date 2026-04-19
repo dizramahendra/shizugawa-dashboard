@@ -76,6 +76,31 @@ const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
       [0.85,4.0],[0.90,2.5],[0.95,3.5],[1.00,4.5],
     ],
   },
+  // ── Kamaishi–Karakuwa corridor (sub-basins 25 → 3) ────────────────────────
+  // Kamaishi: inland mountain river — narrow, S-curved, flows from upper-left toward coast
+  kamaishi: {
+    center: [
+      [0.00,10.0],[0.10, 8.5],[0.20, 7.5],[0.30, 8.5],
+      [0.42,10.5],[0.52,12.5],[0.62,13.8],[0.72,14.2],
+      [0.82,13.5],[0.92,13.0],[1.00,13.0],
+    ],
+    halfW: [
+      [0.00,1.5],[0.20,2.0],[0.40,2.8],[0.55,3.2],
+      [0.70,3.0],[0.85,2.8],[1.00,3.0],
+    ],
+  },
+  // Karakuwa: coastal / estuarine river — wider, distinct S from Kamaishi, widens at mouth
+  karakuwa: {
+    center: [
+      [0.00,13.0],[0.12,14.5],[0.25,16.0],[0.38,17.0],
+      [0.50,16.5],[0.62,14.5],[0.72,12.5],
+      [0.82,11.0],[0.92,11.5],[1.00,12.5],
+    ],
+    halfW: [
+      [0.00,3.0],[0.15,3.5],[0.35,4.0],[0.55,5.0],
+      [0.70,5.5],[0.85,6.0],[1.00,6.5],
+    ],
+  },
 };
 
 function edgeJitter(col: number, side: "top" | "bot"): number {
@@ -96,10 +121,42 @@ function buildMask(riverId: string): boolean[][] {
   );
 }
 
+/** Build mask for one segment, applying its profile only within colStart..colEnd */
+function buildSegmentMask(
+  riverId: string,
+  colStart: number, colEnd: number,
+  rowStart: number = 0, rowEnd: number = RIVER_ROWS - 1,
+): boolean[][] {
+  const p = RIVER_PROFILES[riverId] ?? RIVER_PROFILES.shizugawa;
+  const span = Math.max(1, colEnd - colStart);
+  return Array.from({ length: RIVER_ROWS }, (_, row) =>
+    Array.from({ length: RIVER_COLS }, (_, col) => {
+      if (col < colStart || col > colEnd || row < rowStart || row > rowEnd) return false;
+      const t = (col - colStart) / span;
+      const center = cosineInterp(p.center, t);
+      const halfW  = cosineInterp(p.halfW, t);
+      return row >= center - halfW + edgeJitter(col, "top")
+          && row <= center + halfW + edgeJitter(col, "bot");
+    })
+  );
+}
+
+/** Merge multiple segment masks (logical OR) */
+function mergeMasks(masks: boolean[][][]): boolean[][] {
+  return Array.from({ length: RIVER_ROWS }, (_, r) =>
+    Array.from({ length: RIVER_COLS }, (_, c) => masks.some(m => m[r][c]))
+  );
+}
+
 const MASKS: Record<string, boolean[][]> = {
   shizugawa: buildMask("shizugawa"),
   kitakami:  buildMask("kitakami"),
   hachiman:  buildMask("hachiman"),
+  // Kamaishi → Karakuwa: each half uses its own profile, joined at col 60
+  "comp-kamaishi-karakuwa": mergeMasks([
+    buildSegmentMask("kamaishi",  0,  59),
+    buildSegmentMask("karakuwa", 60, 119),
+  ]),
 };
 
 // ── Coordinate axis config ────────────────────────────────────
@@ -140,9 +197,8 @@ export default function RiverGrid2D({
       : generateRiverData(week, riverId),
     [week, riverId, composite]
   );
-  // Composite rivers always use the "shizugawa" winding profile for shape
-  const maskKey  = composite ? "shizugawa" : riverId;
-  const mask     = MASKS[maskKey] ?? MASKS.shizugawa;
+  // Corridor-specific masks take priority; unknown ids fall back to shizugawa
+  const mask = MASKS[riverId] ?? MASKS.shizugawa;
   const stops    = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const variable = VARIABLE_OPTIONS.find(v => v.id === variableId) ?? VARIABLE_OPTIONS[0];
 
@@ -350,6 +406,32 @@ export default function RiverGrid2D({
 
               return (
                 <>
+                  {/* Sub-basin area fills — subtle tint behind each segment */}
+                  {(() => {
+                    let ui = 0;
+                    return composite.segments.map(seg => {
+                      const isLower = seg.role === "lower";
+                      const fillColor = isLower ? LOWER_COLOR : UPPER_COLORS[ui++ % 2];
+                      const rowS = (seg.rowStart ?? 0) * CELL;
+                      const rowE = ((seg.rowEnd ?? RIVER_ROWS - 1) + 1) * CELL;
+                      return (
+                        <div
+                          key={`area-${seg.riverId}`}
+                          className="absolute pointer-events-none"
+                          style={{
+                            left: seg.colStart * CELL,
+                            top: rowS,
+                            width: (seg.colEnd - seg.colStart + 1) * CELL,
+                            height: rowE - rowS,
+                            background: fillColor,
+                            opacity: 0.07,
+                            zIndex: 0,
+                          }}
+                        />
+                      );
+                    });
+                  })()}
+
                   {/* Upper segment labels — above the left half */}
                   {uppers.map((seg, ui) => {
                     const color = UPPER_COLORS[ui % 2];
@@ -414,15 +496,16 @@ export default function RiverGrid2D({
                     />
                   )}
 
-                  {/* Vertical boundary line (upper ↔ lower) */}
+                  {/* Vertical boundary line (upper ↔ lower) — colored gradient */}
                   <div
                     className="absolute pointer-events-none"
                     style={{
                       left: splitX - 1,
                       top: -24,
-                      width: 2,
+                      width: 3,
                       height: gridH + 24,
-                      background: "repeating-linear-gradient(to bottom, #64748b 4px, transparent 4px, transparent 8px)",
+                      background: `linear-gradient(to bottom, ${UPPER_COLORS[0]}cc, ${LOWER_COLOR}cc)`,
+                      opacity: 0.75,
                       zIndex: 35,
                     }}
                   />
