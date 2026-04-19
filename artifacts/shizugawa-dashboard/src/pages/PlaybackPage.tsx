@@ -82,6 +82,7 @@ export default function PlaybackPage() {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
   const [showExchange, setShowExchange] = useState(true);
   const [showElution, setShowElution] = useState(true);
+  const [showAnnotations, setShowAnnotations] = useState(true);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -270,12 +271,33 @@ export default function PlaybackPage() {
               sliceAxis={sliceAxis}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
+              showAnnotations={showAnnotations}
             />
             <FlowIndicators
               week={week}
               showExchange={showExchange}
               showElution={showElution}
             />
+
+            {/* Annotations toggle — top-left corner */}
+            <div className="absolute top-3 left-3 z-20 pointer-events-auto">
+              <button
+                onClick={() => setShowAnnotations(v => !v)}
+                title={showAnnotations ? "Hide axes, grid & box" : "Show axes, grid & box"}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[10px] font-mono transition-all shadow-sm border ${
+                  showAnnotations
+                    ? "bg-white/90 border-border text-foreground hover:bg-muted/80"
+                    : "bg-slate-800/80 border-slate-600 text-white/80 hover:bg-slate-700/90"
+                }`}
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 flex-shrink-0">
+                  <rect x="1" y="1" width="14" height="14" rx="1.5" />
+                  <line x1="1" y1="5.5" x2="15" y2="5.5" />
+                  <line x1="5.5" y1="1" x2="5.5" y2="15" />
+                </svg>
+                {showAnnotations ? "Hide grid & axes" : "Show grid & axes"}
+              </button>
+            </div>
 
             {/* Live coordinate HUD — top-right corner */}
             {(() => {

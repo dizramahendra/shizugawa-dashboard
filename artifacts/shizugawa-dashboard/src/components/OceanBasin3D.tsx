@@ -94,14 +94,16 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 }
 
 // ── Bathymetry ────────────────────────────────────────────────────────────────
-// Deepest on the WEST (gx=0, ~42 m); shallowest on the EAST (gx=27, ~5 m).
-// A gentle N-S taper makes it slightly shallower at the northern/southern
-// extremes, matching natural bay seabed topography.
+// Gaussian bowl: deepest (~55 m) around 55 % of the way in from the western
+// entrance; shallow (~8 m) at the entrance; moderately shallow (~14 m) at the
+// very inner eastern end.  A gentle N-S taper makes it slightly shallower at
+// the northern/southern extremes, matching natural bay seabed topography.
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const westFrac = 1 - gx / (GRID_W - 1);          // 1.0 = west/deep, 0.0 = east/shallow
-  const nsFrac   = gz / (GRID_D - 1);               // 0 = south, 1 = north
-  const nsBias   = 1 - 0.2 * Math.abs(nsFrac - 0.5) * 2; // 1.0 mid-bay, 0.9 at extremes
-  return Math.min(42, Math.max(3, (5 + 37 * Math.pow(westFrac, 0.75)) * nsBias));
+  const frac   = gx / (GRID_W - 1);                  // 0 = west entrance, 1 = east inner
+  const bowl   = Math.exp(-Math.pow((frac - 0.55) / 0.35, 2)); // Gaussian, peak at ~55 %
+  const nsFrac = gz / (GRID_D - 1);
+  const nsBias = 1 - 0.18 * Math.abs(nsFrac - 0.5) * 2;
+  return Math.min(55, Math.max(3, (4 + 52 * bowl) * nsBias));
 }
 
 // Returns the index of the deepest depth layer whose TOP is above the seabed.
@@ -593,11 +595,23 @@ function RiverGrid({
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
-  const DELTA_ROWS = 3;
+  // Uniform colour: mean surface value across all active bay cells so every
+  // river tile gets the same flat colour regardless of upstream position.
+  const uniformVal = useMemo(() => {
+    let sum = 0, cnt = 0;
+    for (let gz = 0; gz < GRID_D; gz++) {
+      for (let gx = 0; gx < GRID_W; gx++) {
+        if (BAY_MASK[gz]?.[gx]) { sum += data[gz]?.[gx]?.[0] ?? 0.5; cnt++; }
+      }
+    }
+    return cnt > 0 ? sum / cnt : 0.5;
+  }, [data]);
+
+  const [ur, ug, ub] = lerpColor(stops, uniformVal);
 
   const elements: React.ReactNode[] = [];
 
-  for (const { gx, gz, mouthGx, mouthGz } of RIVER_CELLS) {
+  for (const { gx, gz } of RIVER_CELLS) {
     // Slice filtering
     // Horizontal: river water lives at layer 0 — hide it when the slice is below that
     if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
@@ -606,24 +620,12 @@ function RiverGrid({
       if (sliceAxis === "x" && gx !== sliceLevel) continue;
       if (sliceAxis === "z" && gz !== sliceLevel) continue;
     }
-    // Upstream distance by river direction
-    const upstreamDist =
-      gx >= GRID_W ? gx - GRID_W + 1 :
-      gz >= 0      ? Math.max(0, gz - GRID_D) :
-                     -gz;
-
-    // Cells that extend into the bay grid are gap-fillers only — render as a
-    // single surface tile so they don't conflict with ocean depth stacks.
-    const inBayBounds = gz >= 0 && gz < GRID_D && gx >= 0 && gx < GRID_W;
 
     // All river cells render exactly one water layer — rivers are surface features
     const numLayers = 1;
 
-    // Colour: sample bay-edge top layer, amplify slightly upstream
-    const baseVal = data[mouthGz]?.[mouthGx]?.[0] ?? 0.5;
-    const amp     = 1 + upstreamDist * 0.03;
-    const val     = Math.min(1, Math.max(0, baseVal * amp));
-    const [r, g, b] = lerpColor(stops, val);
+    // All river cells share the same uniform colour derived from the bay mean
+    const [r, g, b] = [ur, ug, ub];
 
     const px = offsetX + gx * STEP + CELL_W / 2;
     const pz = offsetZ + gz * STEP + CELL_W / 2;
@@ -721,43 +723,8 @@ function ScaledLabel({
   );
 }
 
-function AxisLabels() {
-  const lonTicks: React.ReactElement[] = [];
-  const latTicks: React.ReactElement[] = [];
-  const depthTicks: React.ReactElement[] = [];
-
-  // Longitude ticks — south bottom edge
-  for (const gx of [0, 7, 14, 21, 27]) {
-    const lon   = BAY_LON_W + (gx / (GRID_W - 1)) * (BAY_LON_E - BAY_LON_W);
-    const scenX = offsetX + gx * STEP + CELL_W / 2;
-    lonTicks.push(
-      <ScaledLabel key={`lon-${gx}`} position={[scenX, BOX_BOT - 0.7, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
-        <div style={LABEL_STYLE}>{lon.toFixed(3)}°E</div>
-      </ScaledLabel>
-    );
-  }
-
-  // Latitude ticks — west bottom edge
-  for (const gz of [0, 5, 10, 15, 20, 23]) {
-    const lat   = BAY_LAT_S + (gz / (GRID_D - 1)) * (BAY_LAT_N - BAY_LAT_S);
-    const scenZ = offsetZ + gz * STEP + CELL_W / 2;
-    latTicks.push(
-      <ScaledLabel key={`lat-${gz}`} position={[BOX_WEST_X, BOX_BOT - 0.7, scenZ]} center zIndexRange={[0,0]}>
-        <div style={LABEL_STYLE}>{lat.toFixed(3)}°N</div>
-      </ScaledLabel>
-    );
-  }
-
-  // Depth ticks — SW vertical edge
-  for (let d = 0; d < DEPTH_LAYERS; d++) {
-    const y = Y_SURFACE - DEPTH_TOPS[d];
-    depthTicks.push(
-      <ScaledLabel key={`dep-${d}`} position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
-        <div style={LABEL_STYLE}>{DEPTH_REAL_M[d]}m</div>
-      </ScaledLabel>
-    );
-  }
-
+// Always-visible N/W/S/E compass labels
+function CompassLabels() {
   return (
     <>
       <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center zIndexRange={[0,0]}>
@@ -772,11 +739,46 @@ function AxisLabels() {
       <ScaledLabel position={[BOX_WEST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]}>
         <div style={COMPASS_STYLE}>W</div>
       </ScaledLabel>
-      {lonTicks}
-      {latTicks}
-      {depthTicks}
     </>
   );
+}
+
+// Toggleable coordinate tick labels (lon / lat / depth)
+function CoordTickLabels() {
+  const lonTicks: React.ReactElement[] = [];
+  const latTicks: React.ReactElement[] = [];
+  const depthTicks: React.ReactElement[] = [];
+
+  for (const gx of [0, 7, 14, 21, 27]) {
+    const lon   = BAY_LON_W + (gx / (GRID_W - 1)) * (BAY_LON_E - BAY_LON_W);
+    const scenX = offsetX + gx * STEP + CELL_W / 2;
+    lonTicks.push(
+      <ScaledLabel key={`lon-${gx}`} position={[scenX, BOX_BOT - 0.7, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
+        <div style={LABEL_STYLE}>{lon.toFixed(3)}°E</div>
+      </ScaledLabel>
+    );
+  }
+
+  for (const gz of [0, 5, 10, 15, 20, 23]) {
+    const lat   = BAY_LAT_S + (gz / (GRID_D - 1)) * (BAY_LAT_N - BAY_LAT_S);
+    const scenZ = offsetZ + gz * STEP + CELL_W / 2;
+    latTicks.push(
+      <ScaledLabel key={`lat-${gz}`} position={[BOX_WEST_X, BOX_BOT - 0.7, scenZ]} center zIndexRange={[0,0]}>
+        <div style={LABEL_STYLE}>{lat.toFixed(3)}°N</div>
+      </ScaledLabel>
+    );
+  }
+
+  for (let d = 0; d < DEPTH_LAYERS; d++) {
+    const y = Y_SURFACE - DEPTH_TOPS[d];
+    depthTicks.push(
+      <ScaledLabel key={`dep-${d}`} position={[DEPTH_LABEL_X, y, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
+        <div style={LABEL_STYLE}>{DEPTH_REAL_M[d]}m</div>
+      </ScaledLabel>
+    );
+  }
+
+  return <>{lonTicks}{latTicks}{depthTicks}</>;
 }
 
 // ── Grid floor ────────────────────────────────────────────────────────────────
@@ -841,6 +843,7 @@ interface OceanBasin3DProps {
   sliceAxis: "x" | "z";
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
+  showAnnotations?: boolean;
 }
 
 export default function OceanBasin3D({
@@ -852,6 +855,7 @@ export default function OceanBasin3D({
   sliceAxis,
   onCellClick,
   onCellHover,
+  showAnnotations = true,
 }: OceanBasin3DProps) {
   return (
     <Canvas
@@ -894,9 +898,16 @@ export default function OceanBasin3D({
         sliceAxis={sliceAxis}
       />
 
-      <BoundingBox />
-      <AxisLabels />
-      <GridFloor />
+      {/* Bounding box + grid: toggleable */}
+      {showAnnotations && <BoundingBox />}
+      {showAnnotations && <GridFloor />}
+
+      {/* Compass: always visible */}
+      <CompassLabels />
+
+      {/* Coordinate ticks (X/Y/Z values): toggleable */}
+      {showAnnotations && <CoordTickLabels />}
+
       <SliceIndicator mode={dashboardState} level={sliceLevel} sliceAxis={sliceAxis} />
 
       <OrbitControls
