@@ -94,16 +94,14 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 }
 
 // ── Bathymetry ────────────────────────────────────────────────────────────────
-// Gaussian bowl: deepest (~55 m) around 55 % of the way in from the western
-// entrance; shallow (~8 m) at the entrance; moderately shallow (~14 m) at the
-// very inner eastern end.  A gentle N-S taper makes it slightly shallower at
-// the northern/southern extremes, matching natural bay seabed topography.
+// Linear west-deep profile: depth decreases monotonically from west (~55 m) to
+// east (~8 m).  A gentle N-S taper makes the northern/southern edges slightly
+// shallower than the centre channel.
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const frac   = gx / (GRID_W - 1);                  // 0 = west entrance, 1 = east inner
-  const bowl   = Math.exp(-Math.pow((frac - 0.55) / 0.35, 2)); // Gaussian, peak at ~55 %
+  const frac   = gx / (GRID_W - 1);          // 0 = west (deep), 1 = east (shallow)
   const nsFrac = gz / (GRID_D - 1);
   const nsBias = 1 - 0.18 * Math.abs(nsFrac - 0.5) * 2;
-  return Math.min(55, Math.max(3, (4 + 52 * bowl) * nsBias));
+  return Math.min(55, Math.max(3, (8 + 47 * (1 - frac)) * nsBias));
 }
 
 // Returns the index of the deepest depth layer whose TOP is above the seabed.
