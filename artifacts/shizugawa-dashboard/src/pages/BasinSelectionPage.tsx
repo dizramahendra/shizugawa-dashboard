@@ -27,6 +27,145 @@ const OCEAN_ENTRY = {
   type: "ocean" as const,
 };
 
+// ── Shared chart constants ───────────────────────────────────────────────────
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const CHART_COLORS: Record<string, string> = {
+  nitrogen: "#3b6fa0", phosphorus: "#2d8a5e", flow: "#7c3ad8",
+};
+
+// Palette used by corridor segment cards — kept in sync with the card renderer
+const CORRIDOR_UPPER_COLORS = ["#1d4ed8", "#5b21b6"];
+const CORRIDOR_LOWER_COLOR  = "#0f766e";
+
+function MultiLineChart({
+  series, currentWeek, unit,
+}: {
+  series: { name: string; color: string; data: number[] }[];
+  currentWeek: number;
+  unit: string;
+}) {
+  const W = 236, H = 90, PAD_L = 30, PAD_R = 6, PAD_T = 8, PAD_B = 20;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const n = series[0]?.data.length ?? 1;
+
+  const allValues = series.flatMap(s => s.data);
+  const minV = Math.min(...allValues);
+  const maxV = Math.max(...allValues);
+  const range = maxV - minV || 1;
+
+  const toX = (i: number) => PAD_L + (i / Math.max(n - 1, 1)) * innerW;
+  const toY = (v: number) => PAD_T + (1 - (v - minV) / range) * innerH;
+
+  const monthTicks = [0, 4, 9, 13, 17, 22, 26, 30, 35, 39, 43, 48].map((w, i) => ({
+    x: toX(w), label: MONTHS[i],
+  }));
+  const yTicks = [minV, (minV + maxV) / 2, maxV].map(v => ({ y: toY(v), label: v.toFixed(1) }));
+  const cx = toX(currentWeek);
+
+  return (
+    <div>
+      {/* Legend */}
+      {series.length > 1 && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-1.5">
+          {series.map(s => (
+            <div key={s.name} className="flex items-center gap-1 text-[9px] text-muted-foreground">
+              <span className="w-3 h-0.5 rounded-full inline-block" style={{ background: s.color }} />
+              {s.name}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <svg width={W} height={H} className="overflow-visible">
+        <defs>
+          {series.map((s, si) => (
+            <linearGradient key={si} id={`mapGrad-${si}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity="0.14" />
+              <stop offset="100%" stopColor={s.color} stopOpacity="0.01" />
+            </linearGradient>
+          ))}
+        </defs>
+
+        {/* Y grid */}
+        {yTicks.map(({ y, label }) => (
+          <g key={label}>
+            <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e2e8f0" strokeWidth="1" />
+            <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="7" fill="#94a3b8" fontFamily="monospace">
+              {label}
+            </text>
+          </g>
+        ))}
+
+        {/* Area + line per series */}
+        {series.map((s, si) => {
+          const pts     = s.data.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
+          const areaPts = [
+            `${toX(0)},${PAD_T + innerH}`,
+            ...s.data.map((v, i) => `${toX(i)},${toY(v)}`),
+            `${toX(s.data.length - 1)},${PAD_T + innerH}`,
+          ].join(" ");
+          return (
+            <g key={s.name}>
+              <polygon points={areaPts} fill={`url(#mapGrad-${si})`} />
+              <polyline points={pts} fill="none" stroke={s.color} strokeWidth="1.5"
+                strokeLinejoin="round" strokeLinecap="round" />
+            </g>
+          );
+        })}
+
+        {/* Current-week cursor */}
+        <line x1={cx} y1={PAD_T} x2={cx} y2={PAD_T + innerH}
+          stroke="#64748b" strokeWidth="1" strokeDasharray="3 2" opacity="0.5" />
+
+        {/* Dots at cursor (+ inline label for single-series) */}
+        {series.map((s, si) => {
+          const val = s.data[currentWeek] ?? 0;
+          const cy  = toY(val);
+          return (
+            <g key={`dot-${si}`}>
+              <circle cx={cx} cy={cy} r="3" fill={s.color} stroke="white" strokeWidth="1.5" />
+              {series.length === 1 && (
+                <>
+                  <rect x={cx - 22} y={cy - 17} width={44} height={12} rx="2" fill={s.color} opacity="0.9" />
+                  <text x={cx} y={cy - 8} textAnchor="middle" fontSize="7"
+                    fill="white" fontFamily="monospace" fontWeight="bold">
+                    {val.toFixed(2)} {unit}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Multi-series value row at cursor */}
+        {series.length > 1 && (() => {
+          const rowY = PAD_T + innerH - 2;
+          return series.map((s, si) => {
+            const val = s.data[currentWeek] ?? 0;
+            return (
+              <text key={`val-${si}`} x={cx + 5 + si * 38} y={rowY}
+                fontSize="7" fill={s.color} fontFamily="monospace" fontWeight="bold">
+                {val.toFixed(1)}
+              </text>
+            );
+          });
+        })()}
+
+        {/* Month labels */}
+        {monthTicks.map(({ x, label }) => (
+          <text key={label} x={x} y={H - 4} textAnchor="middle" fontSize="7"
+            fill="#94a3b8" fontFamily="monospace">{label}</text>
+        ))}
+
+        {/* Axis lines */}
+        <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + innerH} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={PAD_L} y1={PAD_T + innerH} x2={W - PAD_R} y2={PAD_T + innerH} stroke="#cbd5e1" strokeWidth="1" />
+      </svg>
+    </div>
+  );
+}
+
 const ALL_ITEMS = [
   OCEAN_ENTRY,
   ...RIVERS.map((r) => ({ id: r.id, name: r.name, sub: r.sub, type: "river" as const })),
@@ -133,6 +272,30 @@ export default function BasinSelectionPage() {
       : null,
     [corridorObj, selectedCorridorId, week, selectedVariable]
   );
+
+  // 52-week time series for single river (recomputes only when river or variable changes)
+  const riverTimeSeries = useMemo(() => {
+    if (!selectedRiver) return null;
+    return Array.from({ length: TOTAL_WEEKS }, (_, w) => {
+      const grid = generateRiverData(w, selectedRiver);
+      let s = 0, c = 0;
+      for (let r = 0; r < RIVER_ROWS; r++)
+        for (let col = 0; col < RIVER_COLS; col++) { s += grid[r]?.[col] ?? 0; c++; }
+      return c > 0 ? valueToConcentration(s / c, selectedVariable) : 0;
+    });
+  }, [selectedRiver, selectedVariable]);
+
+  // Per-segment 52-week time series for corridor
+  const corridorTimeSeries = useMemo(() => {
+    if (!corridorObj || !selectedCorridorId) return null;
+    const nSeg = corridorObj.segments.length;
+    const series: number[][] = Array.from({ length: nSeg }, () => []);
+    for (let w = 0; w < TOTAL_WEEKS; w++) {
+      const means = getCompositeSegmentMeans(w, selectedCorridorId, selectedVariable);
+      for (let i = 0; i < nSeg; i++) series[i].push(means[i] ?? 0);
+    }
+    return series;
+  }, [corridorObj, selectedCorridorId, selectedVariable]);
 
   const handleSelectOcean = useCallback(() => {
     navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`);
@@ -389,6 +552,33 @@ export default function BasinSelectionPage() {
                   );
                 })()}
 
+                {/* Time-series chart — one line per segment */}
+                {corridorTimeSeries && (() => {
+                  let upperCount = 0;
+                  const seriesData = corridorObj.segments.map((seg, i) => {
+                    const color = seg.role === "lower"
+                      ? CORRIDOR_LOWER_COLOR
+                      : CORRIDOR_UPPER_COLORS[upperCount++ % CORRIDOR_UPPER_COLORS.length];
+                    const shortName = seg.role === "lower"
+                      ? `${seg.name.split(" ")[0]} (lower)`
+                      : seg.name.split(" ")[0];
+                    return { name: shortName, color, data: corridorTimeSeries[i] ?? [] };
+                  });
+                  return (
+                    <div className="border border-border rounded-md p-2.5 bg-white mb-3">
+                      <div className="panel-section-title mb-1.5">Annual Time Series</div>
+                      <div className="text-[9px] text-muted-foreground mb-2">
+                        {variable.label} · {variable.unit} · per segment
+                      </div>
+                      <MultiLineChart
+                        series={seriesData}
+                        currentWeek={week}
+                        unit={variable.unit}
+                      />
+                    </div>
+                  );
+                })()}
+
                 <button
                   className="w-full py-2 rounded-md text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-colors cursor-pointer mb-2"
                   onClick={() => navigate(`/river?river=${corridorObj.id}`)}
@@ -444,6 +634,21 @@ export default function BasinSelectionPage() {
                     <path d="M4 18c2-4 6-6 8-6s6 2 8 6" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
                   </svg>
                 </div>
+
+                {/* Time-series chart */}
+                {riverTimeSeries && (
+                  <div className="mt-3 border border-border rounded-md p-2.5 bg-white">
+                    <div className="panel-section-title mb-1.5">Annual Time Series</div>
+                    <div className="text-[9px] text-muted-foreground mb-2">
+                      {variable.label} · {variable.unit} · reach mean
+                    </div>
+                    <MultiLineChart
+                      series={[{ name: selectedRiverObj?.name ?? "", color: CHART_COLORS[selectedVariable] ?? "#3b6fa0", data: riverTimeSeries }]}
+                      currentWeek={week}
+                      unit={variable.unit}
+                    />
+                  </div>
+                )}
 
                 <button
                   className="mt-3 w-full py-1.5 rounded-md text-xs text-muted-foreground border border-border hover:bg-muted/40 cursor-pointer"
