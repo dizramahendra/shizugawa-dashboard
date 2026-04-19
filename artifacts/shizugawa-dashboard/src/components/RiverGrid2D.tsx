@@ -85,11 +85,11 @@ const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
       [0.82,13.5],[0.92,13.0],[1.00,13.0],
     ],
     halfW: [
-      [0.00,1.5],[0.20,2.0],[0.40,2.8],[0.55,3.2],
-      [0.70,3.0],[0.85,2.8],[1.00,3.0],
+      [0.00,0.7],[0.20,0.9],[0.40,1.1],[0.55,1.3],
+      [0.70,1.2],[0.85,1.1],[1.00,1.2],
     ],
   },
-  // Karakuwa: coastal / estuarine river — wider, distinct S from Kamaishi, widens at mouth
+  // Karakuwa: coastal / estuarine river — slightly wider, distinct meander, widens at mouth
   karakuwa: {
     center: [
       [0.00,13.0],[0.12,14.5],[0.25,16.0],[0.38,17.0],
@@ -97,8 +97,8 @@ const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
       [0.82,11.0],[0.92,11.5],[1.00,12.5],
     ],
     halfW: [
-      [0.00,3.0],[0.15,3.5],[0.35,4.0],[0.55,5.0],
-      [0.70,5.5],[0.85,6.0],[1.00,6.5],
+      [0.00,1.2],[0.15,1.4],[0.35,1.6],[0.55,2.0],
+      [0.70,2.2],[0.85,2.4],[1.00,2.5],
     ],
   },
 };
@@ -157,6 +157,31 @@ const MASKS: Record<string, boolean[][]> = {
     buildSegmentMask("kamaishi",  0,  59),
     buildSegmentMask("karakuwa", 60, 119),
   ]),
+};
+
+/**
+ * Per-corridor administrative boundary waypoints in [col, row] grid units.
+ * The stepped polyline mimics a GIS watershed / administrative boundary line.
+ * Col 0 = left edge, RIVER_COLS = right edge; Row 0 = top, RIVER_ROWS = bottom.
+ * Each segment is a horizontal move then a vertical drop, creating a staircase
+ * that traces the actual sub-basin divide shape.
+ */
+const CORRIDOR_BOUNDARY_PATHS: Record<string, [number, number][]> = {
+  "comp-kamaishi-karakuwa": [
+    // Start at top, slightly right of split (col 60)
+    [60, 0], [62, 0],
+    // dip down, then jog left — Karakuwa territory bites into Kamaishi here
+    [62, 3], [58, 3],
+    // back up right and drop further
+    [58, 7], [61, 7],
+    // continue right — Kamaishi ridge pushes east at mid-reach
+    [61, 11], [63, 11],
+    // swing back left — valley cuts west near the estuary
+    [63, 15], [60, 15],
+    // final segment to bottom — boundary settles back near col 60
+    [60, 19], [62, 19],
+    [62, RIVER_ROWS],
+  ],
 };
 
 // ── Coordinate axis config ────────────────────────────────────
@@ -496,19 +521,58 @@ export default function RiverGrid2D({
                     />
                   )}
 
-                  {/* Vertical boundary line (upper ↔ lower) — colored gradient */}
-                  <div
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: splitX - 1,
-                      top: -24,
-                      width: 3,
-                      height: gridH + 24,
-                      background: `linear-gradient(to bottom, ${UPPER_COLORS[0]}cc, ${LOWER_COLOR}cc)`,
-                      opacity: 0.75,
-                      zIndex: 35,
-                    }}
-                  />
+                  {/* Sub-basin boundary — administrative stepped line or fallback straight */}
+                  {(() => {
+                    const bPts = CORRIDOR_BOUNDARY_PATHS[composite.id];
+                    if (bPts) {
+                      // Jagged stepped path tracing the GIS watershed boundary
+                      const points = bPts
+                        .map(([c, r]) => `${c * CELL},${r * CELL}`)
+                        .join(" ");
+                      const gradId = `bound-grad-${composite.id.replace(/[^a-z0-9]/g, "-")}`;
+                      return (
+                        <svg
+                          className="absolute pointer-events-none"
+                          style={{
+                            left: 0, top: 0,
+                            width: gridW, height: gridH,
+                            overflow: "visible",
+                            zIndex: 35,
+                          }}
+                        >
+                          <defs>
+                            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%"   stopColor={UPPER_COLORS[0]} stopOpacity="0.85" />
+                              <stop offset="100%" stopColor={LOWER_COLOR}      stopOpacity="0.85" />
+                            </linearGradient>
+                          </defs>
+                          <polyline
+                            points={points}
+                            fill="none"
+                            stroke={`url(#${gradId})`}
+                            strokeWidth="2.5"
+                            strokeLinejoin="miter"
+                            strokeLinecap="square"
+                          />
+                        </svg>
+                      );
+                    }
+                    // Fallback: straight gradient line for corridors without a traced boundary
+                    return (
+                      <div
+                        className="absolute pointer-events-none"
+                        style={{
+                          left: splitX - 1,
+                          top: 0,
+                          width: 3,
+                          height: gridH,
+                          background: `linear-gradient(to bottom, ${UPPER_COLORS[0]}cc, ${LOWER_COLOR}cc)`,
+                          opacity: 0.75,
+                          zIndex: 35,
+                        }}
+                      />
+                    );
+                  })()}
 
                   {/* Confluence / boundary badge */}
                   <div
