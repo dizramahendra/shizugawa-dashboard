@@ -231,7 +231,7 @@ function densifyEW(
 // Sub-basin 2/4/9  → WEST:  cz_28=13 (gz=52), gx gap-fill at 5 (gx=20)
 // Sub-basin 6      → WEST:  cz_28=6  (gz=24), gx gap-fill at 5 (gx=20)
 // Sub-basin 8      → NORTH: gz_28=20 (gz=80), cx_28=20 (gx=80), extends NW
-// Sub-basin 10     → SOUTH: gz_28=6  (gz=24), cx_28=8  (gx=32), extends south
+// Sub-basin 10     → SOUTH: gz_28=3  (gz=12), cx_28=6  (gx=24), runs SW
 
 // ── River spines — positions derived from SVG path start coords ──────────────
 // Bay polygon scaled 2.1565× uniformly from SVG-traced shape.
@@ -289,15 +289,26 @@ const SPINE_RIVER9_WEST = densifyEW([
   { gx:  4, cz: 20 },
 ]);
 
-// Sub-basin 10 (Hachiman): south river, gap-fill at gz_28=6 (gz=24), cx_28=8 (gx=32).
-// Bay at gz=24 spans gx=5–96; gx=32 is well inside. Extends south below bay.
+// Sub-basin 10 (Hachiman): south river — spine traced from SVG RIVER_PATHS[10].
+// Affine transform (SVG 465×586, scale 2.1565×) applied to key waypoints:
+//   Mouth (255.697, 419.584) → gx=24, gz=9 (south bay edge).
+//   Gap-fill at gz_28=3 (gz=12, gx=24) — first cell safely inside bay.
+//   Path runs SW: (251,426)→gx=22,gz=6; (237,441)→gx=15,gz=1;
+//   (228,446)→gx=10,gz=-1; (212,461)→gx=2,gz=-6; (203,474)→gx=-3,gz=-11;
+//   source (170,539)→gx=-20,gz=-34. Cells with gx<0 are clipped by buildRiver.
 const SPINE_RIVER10_SOUTH = densifyNS([
-  { gz:  6, cx: 8 }, // gap-fill (gz=24, gx=32) — inside bay south
-  { gz:  5, cx: 8 }, { gz:  4, cx: 8 },
-  { gz:  3, cx: 8 }, { gz:  2, cx: 8 },
-  { gz:  1, cx: 8 }, { gz:  0, cx: 8 },
-  { gz: -1, cx: 8 }, { gz: -2, cx: 8 },
-  { gz: -3, cx: 8 }, { gz: -4, cx: 8 },
+  { gz:  3, cx:  6 }, // gap-fill (gz=12, gx=24) — inside bay south
+  { gz:  2, cx:  6 }, // (gz=8, gx=24) — south bay boundary
+  { gz:  1, cx:  5 }, // (gz=4, gx=19)
+  { gz:  0, cx:  3 }, // (gz=0, gx=12)
+  { gz: -1, cx:  1 }, // (gz=-4, gx=5)
+  { gz: -2, cx:  0 }, // (gz=-8, gx=1)
+  { gz: -3, cx: -1 }, // (gz=-12, gx=-4)
+  { gz: -4, cx: -1 }, // (gz=-16, gx=-4) — eastern jog matches SVG
+  { gz: -5, cx: -2 }, // (gz=-20, gx=-8)
+  { gz: -6, cx: -3 }, // (gz=-24, gx=-12)
+  { gz: -7, cx: -4 }, // (gz=-28, gx=-16)
+  { gz: -8, cx: -4 }, // (gz=-32, gx=-16) — source area
 ]);
 
 export const RIVER_CELLS: RiverCell[] = [
@@ -313,8 +324,8 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "sub6"),
   // Sub-basin 8 (Karakuwa): north river; mouth at gx=80 gz=80 (NW corner of north arm)
   ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 80, 80,  "sub8"),
-  // Sub-basin 10 (Hachiman): south river; mouth at gx=32 gz=28 (inside bay)
-  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 32, 28,  "sub10"),
+  // Sub-basin 10 (Hachiman): south river; mouth at gx=24 gz=12 (south bay edge)
+  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 24, 12,  "sub10"),
 ];
 
 // River metadata for hover labels in the 3D view.
