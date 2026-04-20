@@ -91,6 +91,7 @@ export interface RiverCell {
   gz: number;      // row index; ≥ GRID_D = north rivers, < 0 = south rivers
   mouthGx: number; // bay-boundary column for value / colour sampling
   mouthGz: number; // bay-boundary row  for value / colour sampling
+  riverId: string; // key into RIVER_META for hover labels
 }
 
 // buildRiver: north/south rivers — sweeps along gz, spreads in gx.
@@ -102,6 +103,7 @@ function buildRiver(
   halfWUpstream: number,
   mouthGx: number,
   mouthGz: number,
+  riverId: string,
 ): RiverCell[] {
   const cells: RiverCell[] = [];
   const seen = new Set<string>();
@@ -117,34 +119,7 @@ function buildRiver(
       const key = `${gz},${gx}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      cells.push({ gx, gz, mouthGx, mouthGz });
-    }
-  });
-  return cells;
-}
-
-// buildRiverEast: east river — sweeps along gx (gx >= GRID_W), spreads in gz.
-function buildRiverEast(
-  spine: Array<{ gx: number; cz: number; w?: number }>,
-  halfWDelta: number,
-  halfWUpstream: number,
-  mouthGx: number,
-  mouthGz: number,
-): RiverCell[] {
-  const cells: RiverCell[] = [];
-  const seen = new Set<string>();
-  const n = spine.length;
-  spine.forEach(({ gx, cz, w }, i) => {
-    const t     = n > 1 ? i / (n - 1) : 0;
-    const halfW = w !== undefined
-      ? w
-      : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
-    for (let dz = -halfW; dz <= halfW; dz++) {
-      const gz = cz + dz;
-      const key = `${gz},${gx}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      cells.push({ gx, gz, mouthGx, mouthGz });
+      cells.push({ gx, gz, mouthGx, mouthGz, riverId });
     }
   });
   return cells;
@@ -158,6 +133,7 @@ function buildRiverWest(
   halfWUpstream: number,
   mouthGx: number,
   mouthGz: number,
+  riverId: string,
 ): RiverCell[] {
   const cells: RiverCell[] = [];
   const seen = new Set<string>();
@@ -172,7 +148,7 @@ function buildRiverWest(
       const key = `${gz},${gx}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      cells.push({ gx, gz, mouthGx, mouthGz });
+      cells.push({ gx, gz, mouthGx, mouthGz, riverId });
     }
   });
   return cells;
@@ -256,71 +232,6 @@ function densifyEW(
 // Sub-basin 8         → NORTH:  at gx_28≈13, secondary north inlet
 // Sub-basin 9         → WEST:   at gz_28≈17, upper-west inlet
 // Sub-basin 10        → SOUTH:  at gx_28≈5,  western south inlet
-// Sub-basin 12        → SOUTH:  at gx_28≈6,  eastern south inlet
-
-// North river — traced from river 24 (oya): straight with a very mild left drift.
-// Gap-fill cx=22 aligns with the north-passage water cells at gz=21–23 in the new mask.
-const SPINE_NORTH = densifyNS([
-  { gz:21, cx:22 }, { gz:22, cx:22 }, { gz:23, cx:22 }, // bay gap-fill
-  { gz:24, cx:22 },                                       // exit
-  { gz:25, cx:21 }, { gz:26, cx:21 },
-  { gz:27, cx:21 }, { gz:28, cx:20 },
-  { gz:29, cx:20 }, { gz:30, cx:21 },                    // small right undulation
-  { gz:31, cx:21 }, { gz:32, cx:20 },
-  { gz:33, cx:20 }, { gz:34, cx:20 },
-  { gz:35, cx:19 }, { gz:36, cx:19 },
-  { gz:37, cx:20 }, { gz:38, cx:20 },                    // slight right return
-  { gz:39, cx:19 }, { gz:40, cx:19 },
-  { gz:41, cx:19 }, { gz:42, cx:19 },
-  { gz:43, cx:18 }, { gz:44, cx:18 },                    // final gentle drift left
-]);
-
-// NE river — traced from river 3 (karakuwa): exits from the right side,
-// hugs gx=25-27 with a slow sinusoid
-const SPINE_NE = densifyNS([
-  { gz:21, cx:25 }, { gz:22, cx:25 }, { gz:23, cx:25 }, // bay gap-fill
-  { gz:24, cx:25 },                                       // exit
-  { gz:25, cx:25 }, { gz:26, cx:26 },
-  { gz:27, cx:27 }, { gz:28, cx:27 },                    // swing right to boundary
-  { gz:29, cx:26 }, { gz:30, cx:26 },
-  { gz:31, cx:25 }, { gz:32, cx:26 },
-  { gz:33, cx:27 }, { gz:34, cx:27 },                    // right again
-  { gz:35, cx:26 }, { gz:36, cx:25 },
-  { gz:37, cx:25 }, { gz:38, cx:26 },
-  { gz:39, cx:27 }, { gz:40, cx:27 },                    // third oscillation
-  { gz:41, cx:26 }, { gz:42, cx:25 },
-  { gz:43, cx:25 }, { gz:44, cx:26 },
-]);
-
-// SE river — traced from river 13 (hachiman): consistent left drift going south
-const SPINE_SE = densifyNS([
-  { gz:2,   cx:15 }, { gz:1,   cx:15 }, { gz:0,   cx:15 }, // bay gap-fill
-  { gz:-1,  cx:15 },                                          // exit
-  { gz:-2,  cx:15 }, { gz:-3,  cx:14 },
-  { gz:-4,  cx:14 }, { gz:-5,  cx:14 },
-  { gz:-6,  cx:13 }, { gz:-7,  cx:13 },
-  { gz:-8,  cx:13 }, { gz:-9,  cx:12 },
-  { gz:-10, cx:12 }, { gz:-11, cx:12 },
-  { gz:-12, cx:11 }, { gz:-13, cx:11 },
-  { gz:-14, cx:12 }, { gz:-15, cx:12 },                     // slight right undulation
-  { gz:-16, cx:11 }, { gz:-17, cx:11 },
-  { gz:-18, cx:10 }, { gz:-19, cx:10 }, { gz:-20, cx:10 },
-]);
-
-// East river — traced from river 7 (okawa, reversed): gentle northward drift
-const SPINE_EAST_RIVER = densifyEW([
-  { gx:25, cz:13 }, { gx:26, cz:13 }, { gx:27, cz:13 }, // bay gap-fill
-  { gx:28, cz:13 },                                        // exit
-  { gx:29, cz:13 }, { gx:30, cz:14 },
-  { gx:31, cz:14 }, { gx:32, cz:14 },
-  { gx:33, cz:15 }, { gx:34, cz:15 },
-  { gx:35, cz:14 }, { gx:36, cz:15 },                     // slight south dip
-  { gx:37, cz:15 }, { gx:38, cz:16 },
-  { gx:39, cz:16 }, { gx:40, cz:16 },
-  { gx:41, cz:15 }, { gx:42, cz:16 },                     // slight south dip
-  { gx:43, cz:17 }, { gx:44, cz:17 },
-  { gx:45, cz:16 }, { gx:46, cz:17 }, { gx:47, cz:17 },
-]);
 
 // Sub-basin 2 (River 2): West river at gz_28≈14 — mostly straight, slight south drift
 const SPINE_RIVER2_WEST = densifyEW([
@@ -376,35 +287,32 @@ const SPINE_RIVER10_SOUTH = densifyNS([
   { gz: -4, cx: 5 }, { gz: -5, cx: 5 },
 ]);
 
-// Sub-basin 12 (River 12): South river at gx_28≈6 — eastern south inlet
-const SPINE_RIVER12_SOUTH = densifyNS([
-  { gz: 2,  cx: 6 }, { gz: 1, cx: 6 }, { gz: 0, cx: 6 }, // bay gap-fill
-  { gz: -1, cx: 6 },                                        // exit
-  { gz: -2, cx: 6 }, { gz: -3, cx: 7 },
-  { gz: -4, cx: 7 }, { gz: -5, cx: 7 },
-]);
-
 export const RIVER_CELLS: RiverCell[] = [
-  // halfW values in 112×96 coords; spines authored in 28×24 space, densified ×4.
-  ...buildRiver(SPINE_NORTH,           4, 0, 88, GRID_D - 1),
-  ...buildRiver(SPINE_NE,              2, 0, 100, GRID_D - 1),
-  ...buildRiver(SPINE_SE,              4, 0, 60, 0),
-  ...buildRiverEast(SPINE_EAST_RIVER,  4, 0, 111, 52),
-  // Sub-basin 2: west river at gz≈56 (gz_28=14)
-  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 0, 56),
-  // Sub-basin 4: west river at gz≈80 (gz_28=20)
-  ...buildRiverWest(SPINE_RIVER4_WEST, 3, 1, 0, 80),
-  // Sub-basin 6: west river at gz≈16 (gz_28=4)
-  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 0, 16),
-  // Sub-basin 8: north river at gx≈52 (gx_28=13)
-  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 52, GRID_D - 1),
-  // Sub-basin 9: west river at gz≈68 (gz_28=17)
-  ...buildRiverWest(SPINE_RIVER9_WEST, 2, 1, 0, 68),
-  // Sub-basin 10: south river at gx≈20 (gx_28=5)
-  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 20, 0),
-  // Sub-basin 12: south river at gx≈24 (gx_28=6)
-  ...buildRiver(SPINE_RIVER12_SOUTH,   3, 1, 24, 0),
+  // 6 active sub-basin rivers; spines authored in 28×24 space, densified ×4.
+  // Sub-basin 2 (Shizugawa): west river at gz≈56 (gz_28=14)
+  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 0, 56,       "sub2"),
+  // Sub-basin 4 (Togura):    west river at gz≈80 (gz_28=20)
+  ...buildRiverWest(SPINE_RIVER4_WEST, 3, 1, 0, 80,       "sub4"),
+  // Sub-basin 6 (Iriya):     west river at gz≈16 (gz_28=4)
+  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 0, 16,       "sub6"),
+  // Sub-basin 8 (Karakuwa):  north river at gx≈52 (gx_28=13)
+  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 52, GRID_D - 1, "sub8"),
+  // Sub-basin 9 (Oura):      west river at gz≈68 (gz_28=17)
+  ...buildRiverWest(SPINE_RIVER9_WEST, 2, 1, 0, 68,       "sub9"),
+  // Sub-basin 10 (Hachiman): south river at gx≈20 (gx_28=5)
+  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 20, 0,        "sub10"),
 ];
+
+// River metadata for hover labels in the 3D view.
+// These mirror the river names shown in the Map viewport sidebar.
+export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
+  sub2:  { name: "Shizugawa River", subBasin: "Sub-basin 2" },
+  sub4:  { name: "Togura River",    subBasin: "Sub-basin 4" },
+  sub6:  { name: "Iriya River",     subBasin: "Sub-basin 6" },
+  sub8:  { name: "Karakuwa River",  subBasin: "Sub-basin 8" },
+  sub9:  { name: "Oura River",      subBasin: "Sub-basin 9" },
+  sub10: { name: "Hachiman River",  subBasin: "Sub-basin 10" },
+};
 
 function noise(x: number, z: number, t: number, scale: number): number {
   return (

@@ -5,6 +5,7 @@ import * as THREE from "three";
 import {
   BAY_MASK,
   RIVER_CELLS,
+  RIVER_META,
   GRID_W,
   GRID_D,
   DEPTH_LAYERS,
@@ -94,14 +95,14 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
 }
 
 // ── Bathymetry ────────────────────────────────────────────────────────────────
-// Linear west-deep profile: depth decreases monotonically from west (~55 m) to
-// east (~8 m).  A gentle N-S taper makes the northern/southern edges slightly
-// shallower than the centre channel.
+// Linear east-deep profile: depth increases from west (~8 m) to east (~55 m,
+// open-ocean side).  No river enters from the east.  A gentle N-S taper makes
+// the northern/southern edges slightly shallower than the centre channel.
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const frac   = gx / (GRID_W - 1);          // 0 = west (deep), 1 = east (shallow)
+  const frac   = gx / (GRID_W - 1);          // 0 = west (shallow), 1 = east (deep)
   const nsFrac = gz / (GRID_D - 1);
   const nsBias = 1 - 0.18 * Math.abs(nsFrac - 0.5) * 2;
-  return Math.min(55, Math.max(3, (8 + 47 * (1 - frac)) * nsBias));
+  return Math.min(55, Math.max(3, (8 + 47 * frac) * nsBias));
 }
 
 // Returns the index of the deepest depth layer whose TOP is above the seabed.
@@ -780,6 +781,10 @@ function RiverGrid({
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
+  // Hover state — which river group is under the pointer
+  const [hoveredId, setHoveredId]  = useState<string | null>(null);
+  const [hoverPos,  setHoverPos]   = useState<[number, number, number]>([0, 0, 0]);
+
   // Uniform colour: mean surface value across all active bay cells so every
   // river tile gets the same flat colour regardless of upstream position.
   const uniformVal = useMemo(() => {
@@ -797,7 +802,7 @@ function RiverGrid({
   const elements: React.ReactNode[] = [];
 
   for (let ri = 0; ri < RIVER_CELLS.length; ri++) {
-    const { gx, gz } = RIVER_CELLS[ri];
+    const { gx, gz, riverId } = RIVER_CELLS[ri];
     // Slice filtering
     // Horizontal: river water lives at layer 0 — hide it when the slice is below that
     if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
@@ -807,36 +812,69 @@ function RiverGrid({
       if (sliceAxis === "z" && gz !== sliceLevel) continue;
     }
 
-    // All river cells render exactly one water layer — rivers are surface features
-    const numLayers = 1;
-
-    // All river cells share the same uniform colour derived from the bay mean
-    const [r, g, b] = [ur, ug, ub];
+    const isHov = hoveredId === riverId;
+    // Slightly brighten hovered river cells
+    const [r, g, b] = isHov
+      ? [Math.min(1, ur + 0.25), Math.min(1, ug + 0.25), Math.min(1, ub + 0.25)]
+      : [ur, ug, ub];
 
     const px = offsetX + gx * STEP + CELL_W / 2;
     const pz = offsetZ + gz * STEP + CELL_W / 2;
+    const py = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0] / 2;
 
-    // Water voxels — same positioning / material style as OceanGrid
-    for (let d = 0; d < numLayers; d++) {
-      const depthOpacity = sliceMode === "slice-v" ? 1.0 : 0.85 - d * 0.02;
-      const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
-      elements.push(
-        <mesh key={`rv-${ri}-${d}`} position={[px, py, pz]}>
-          <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
-          <meshStandardMaterial
-            color={new THREE.Color(r, g, b)}
-            transparent={depthOpacity < 1}
-            opacity={depthOpacity}
-            roughness={0.7}
-            metalness={0.05}
-          />
-        </mesh>
-      );
-    }
-
+    // River cells render exactly one surface water layer
+    const depthOpacity = sliceMode === "slice-v" ? 1.0 : 0.85;
+    elements.push(
+      <mesh
+        key={`rv-${ri}`}
+        position={[px, py, pz]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHoveredId(riverId);
+          setHoverPos([px, py + DEPTH_HEIGHTS[0] * 0.5 + 0.3, pz]);
+        }}
+        onPointerOut={() => setHoveredId(null)}
+      >
+        <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[0], CELL_W]} />
+        <meshStandardMaterial
+          color={new THREE.Color(r, g, b)}
+          transparent={depthOpacity < 1}
+          opacity={depthOpacity}
+          roughness={0.7}
+          metalness={0.05}
+        />
+      </mesh>
+    );
   }
 
-  return <>{elements}</>;
+  // Hover tooltip — rendered once at the position of the last hovered cell
+  const meta = hoveredId ? RIVER_META[hoveredId] : null;
+
+  return (
+    <>
+      {elements}
+      {meta && (
+        <Html position={hoverPos} center zIndexRange={[200, 0]}>
+          <div style={{
+            background: "rgba(15,23,42,0.88)",
+            border: "1px solid rgba(148,163,184,0.35)",
+            borderRadius: 6,
+            padding: "6px 10px",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+            fontFamily: "system-ui, sans-serif",
+          }}>
+            <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 600 }}>
+              {meta.name}
+            </div>
+            <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 2 }}>
+              {meta.subBasin}
+            </div>
+          </div>
+        </Html>
+      )}
+    </>
+  );
 }
 
 // ── GIS wireframe bounding box ────────────────────────────────────────────────
