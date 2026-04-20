@@ -1171,7 +1171,8 @@ export default function OceanBasin3D({
         {showAnnotations && <BoundingBox />}
         {showAnnotations && <GridFloor />}
 
-        {showAnnotations && <CompassLabels />}
+        {/* Compass: always visible */}
+        <CompassLabels />
 
         {/* Coordinate ticks (X/Y/Z values): toggleable */}
         {showAnnotations && <CoordTickLabels />}
