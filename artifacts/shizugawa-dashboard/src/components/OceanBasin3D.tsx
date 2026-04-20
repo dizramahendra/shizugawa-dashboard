@@ -1101,7 +1101,7 @@ export default function OceanBasin3D({
 
   return (
     <Canvas
-      camera={{ position: [38, 22, 46], fov: 38 }}
+      camera={{ position: [0, 72, 6], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
