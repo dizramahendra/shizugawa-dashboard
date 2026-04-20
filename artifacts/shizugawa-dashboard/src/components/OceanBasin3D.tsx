@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
@@ -360,7 +360,12 @@ function InstancedDepthLayer({
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const { positions, rgbs, count, opacity } = batch;
 
-  useEffect(() => {
+  // useLayoutEffect fires synchronously before the first Three.js frame.
+  // This guarantees instance matrices are in their correct positions before
+  // Three.js computes & caches the bounding sphere for raycasting — fixing a
+  // bug where clicks on voxels were silently missed on initial mount because
+  // the bounding sphere was cached from identity matrices (all at origin).
+  useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
     const m4  = new THREE.Matrix4();
@@ -373,6 +378,8 @@ function InstancedDepthLayer({
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    // Recompute bounding sphere from actual instance positions so raycasting works.
+    mesh.computeBoundingSphere();
   }, [positions, rgbs, count]);
 
   if (count === 0) return null;
