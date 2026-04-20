@@ -249,13 +249,13 @@ const SPINE_RIVER2_WEST = densifyEW([
 ]);
 
 // Sub-basin 4 (Togura): west river, cz_28=13 (gz=52), gap-fill shifted east to gx_28=6 (gx=24).
-// Diverges northward upstream — stronger northward arc.
+// Curves northward, tip at the end continues drifting north (not back south/west).
 const SPINE_RIVER4_WEST = densifyEW([
   { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52)
   { gx:  4, cz: 15 }, { gx:  2, cz: 17 },
   { gx:  0, cz: 19 }, { gx: -2, cz: 21 },
   { gx: -4, cz: 22 }, { gx: -6, cz: 22 },
-  { gx: -8, cz: 21 }, { gx:-10, cz: 20 },
+  { gx: -8, cz: 23 }, { gx:-10, cz: 25 },
 ]);
 
 // Sub-basin 6 (Iriya): west river, cz_28=6 (gz=24), gap-fill at gx_28=5 (gx=20).
@@ -304,8 +304,8 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 32, 48,  "sub2"),
   // Sub-basin 4 (Togura):  west river; mouth at gx=32 gz=48
   ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 32, 48,  "sub4"),
-  // Sub-basin 9 (Oura):  west river; mouth at gx=32 gz=50
-  ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 32, 50,  "sub9"),
+  // Sub-basin 9 (Oura):  west river; mouth at gx=32 gz=50 — 1-cell wide (≈4–5 px)
+  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "sub9"),
   // Sub-basin 6 (Iriya): west river; mouth at gx=32 gz=22
   ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "sub6"),
   // Sub-basin 8 (Karakuwa): north river; mouth at gx=90 gz=70 (inside north arm)
