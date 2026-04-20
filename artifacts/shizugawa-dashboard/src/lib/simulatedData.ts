@@ -239,13 +239,13 @@ function densifyEW(
 // North arm at gz=68 spans gx=87–102; sub8 uses cx_28=22 (gx=88).
 
 // Sub-basin 2 (Shizugawa): west river, cz_28=13 (gz=52), gap-fill at gx_28=5 (gx=20).
-// Bay west wall at gz=52 is gx≈9; gx=20 is clearly inside. Extends west-southwest.
+// Bay west wall at gz=52 is gx≈9; gx=20 is clearly inside. Extends west-northwest.
 const SPINE_RIVER2_WEST = densifyEW([
   { gx:  5, cz: 13 }, // gap-fill inside bay (gx=20, gz=52)
   { gx:  3, cz: 13 }, { gx:  1, cz: 13 },
-  { gx: -1, cz: 12 }, { gx: -3, cz: 12 },
-  { gx: -5, cz: 11 }, { gx: -7, cz: 10 },
-  { gx: -9, cz:  9 }, { gx:-11, cz:  8 },
+  { gx: -1, cz: 14 }, { gx: -3, cz: 14 },
+  { gx: -5, cz: 15 }, { gx: -7, cz: 16 },
+  { gx: -9, cz: 17 }, { gx:-11, cz: 18 },
 ]);
 
 // Sub-basin 4 (Togura): west river, cz_28=13 (gz=52), gap-fill shifted east to gx_28=6 (gx=24).
