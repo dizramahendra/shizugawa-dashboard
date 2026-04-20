@@ -412,7 +412,7 @@ export default function PlaybackPage() {
             })()}
 
             {/* ── Vertical-slice mini-map overlay ────────────────────────────── */}
-            {activeTool === "slice-v" && (
+            {showUI && activeTool === "slice-v" && (
               <div className="absolute bottom-3 right-3 z-20 pointer-events-auto select-none">
                 <div className="bg-white/96 border border-border rounded-lg shadow-lg overflow-hidden" style={{ backdropFilter: "blur(4px)" }}>
                   {/* Header */}
