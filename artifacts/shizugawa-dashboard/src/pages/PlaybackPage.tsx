@@ -83,6 +83,7 @@ export default function PlaybackPage() {
   const [showExchange, setShowExchange] = useState(true);
   const [showElution, setShowElution] = useState(true);
   const [showAnnotations, setShowAnnotations] = useState(true);
+  const [useInstanced,    setUseInstanced]    = useState(false);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -272,6 +273,7 @@ export default function PlaybackPage() {
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
               showAnnotations={showAnnotations}
+              useInstanced={useInstanced}
             />
             <FlowIndicators
               week={week}
@@ -279,8 +281,9 @@ export default function PlaybackPage() {
               showElution={showElution}
             />
 
-            {/* Annotations toggle — top-left corner */}
-            <div className="absolute top-3 left-3 z-20 pointer-events-auto">
+            {/* Viewport controls — top-left corner */}
+            <div className="absolute top-3 left-3 z-20 pointer-events-auto flex items-center gap-2">
+              {/* Annotations toggle */}
               <button
                 onClick={() => setShowAnnotations(v => !v)}
                 title={showAnnotations ? "Hide axes, grid & box" : "Show axes, grid & box"}
@@ -296,6 +299,27 @@ export default function PlaybackPage() {
                   <line x1="5.5" y1="1" x2="5.5" y2="15" />
                 </svg>
                 {showAnnotations ? "Hide grid & axes" : "Show grid & axes"}
+              </button>
+
+              {/* Renderer toggle: Classic vs Instanced */}
+              <button
+                onClick={() => setUseInstanced(v => !v)}
+                title={useInstanced ? "Switch to classic renderer" : "Switch to instanced renderer (faster orbit)"}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[10px] font-mono transition-all shadow-sm border ${
+                  useInstanced
+                    ? "bg-teal-700/90 border-teal-500 text-white hover:bg-teal-600/90"
+                    : "bg-white/90 border-border text-foreground hover:bg-muted/80"
+                }`}
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 flex-shrink-0">
+                  <rect x="1" y="5" width="4" height="4" rx="0.5" />
+                  <rect x="6" y="5" width="4" height="4" rx="0.5" />
+                  <rect x="11" y="5" width="4" height="4" rx="0.5" />
+                  <rect x="1" y="10" width="4" height="4" rx="0.5" />
+                  <rect x="6" y="10" width="4" height="4" rx="0.5" />
+                  <rect x="11" y="10" width="4" height="4" rx="0.5" />
+                </svg>
+                {useInstanced ? "Instanced (fast)" : "Classic (slow)"}
               </button>
             </div>
 

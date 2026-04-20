@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
@@ -250,6 +250,191 @@ function VoxelGrid({
       {meshes}
 
       {/* Hover tooltip */}
+      {hovered && (
+        <Html
+          position={[hovered.px, hovered.py + 0.15, hovered.pz]}
+          center
+          distanceFactor={12}
+          zIndexRange={[100, 100]}
+          style={{ pointerEvents: "none" }}
+        >
+          <div style={{
+            background: "rgba(255,255,255,0.93)",
+            border: "1px solid #ccc",
+            borderRadius: 4,
+            padding: "3px 7px",
+            fontFamily: "monospace",
+            fontSize: 10,
+            color: "#222",
+            whiteSpace: "nowrap",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+            lineHeight: 1.55,
+          }}>
+            <div style={{ fontWeight: 600 }}>{toPhysical(hovered.val, colorScale)}</div>
+            <div style={{ color: "#666" }}>{depthLabel(hovered.depth)}</div>
+          </div>
+        </Html>
+      )}
+    </>
+  );
+}
+
+// ── Instanced VoxelGrid (GPU-efficient) ──────────────────────────────────────
+// Groups all voxels in the same depth layer into one THREE.InstancedMesh.
+// Result: 8 GPU draw calls total instead of one per voxel — far smoother orbit.
+
+interface LayerBatch {
+  count:     number;
+  positions: number[];   // [x,y,z, x,y,z, …]  count×3
+  rgbs:      number[];   // [r,g,b, r,g,b, …]   count×3
+  opacity:   number;
+  meta:      InstanceMeta[];
+}
+
+interface InstanceMeta {
+  gx: number; gz: number;
+  val: number;
+  px: number; py: number; pz: number;
+}
+
+function buildBatches(
+  data: ReturnType<typeof generateWeekData>,
+  stops: string[],
+  selectedPoint: { x: number; z: number } | null,
+  sliceMode: DashboardState,
+  sliceLevel: number,
+  sliceAxis: "x" | "z",
+): LayerBatch[] {
+  const visibleDepths = sliceMode === "slice-h"
+    ? Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i)
+    : Array.from({ length: DEPTH_LAYERS }, (_, i) => i);
+
+  const batches: LayerBatch[] = Array.from({ length: DEPTH_LAYERS }, (_, d) => ({
+    count: 0,
+    positions: [],
+    rgbs: [],
+    opacity: sliceMode === "slice-v" ? 1.0 : 0.85 - d * 0.02,
+    meta: [],
+  }));
+
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      if (!BAY_MASK[gz]?.[gx]) continue;
+      const seabedM  = getBathymetryDepthM(gx, gz);
+      const maxLayer = deepestVisibleLayer(seabedM);
+      if (maxLayer < 0) continue;
+
+      for (const d of visibleDepths) {
+        if (d > maxLayer) continue;
+        if (sliceMode === "slice-v" && sliceAxis === "x" && gx !== sliceLevel) continue;
+        if (sliceMode === "slice-v" && sliceAxis === "z" && gz !== sliceLevel) continue;
+
+        const val = data[gz]?.[gx]?.[d] ?? 0;
+        const isSelected = selectedPoint?.x === gx && selectedPoint?.z === gz;
+        const [r, g, b] = isSelected ? [1, 0.9, 0.2] : lerpColor(stops, val);
+
+        const px = offsetX + gx * STEP + CELL_W / 2;
+        const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
+        const pz = offsetZ + gz * STEP + CELL_W / 2;
+
+        batches[d].positions.push(px, py, pz);
+        batches[d].rgbs.push(r, g, b);
+        batches[d].meta.push({ gx, gz, val, px, py, pz });
+        batches[d].count++;
+      }
+    }
+  }
+  return batches;
+}
+
+function InstancedDepthLayer({
+  depthIdx, batch, onCellClick, onCellHover, onHover,
+}: {
+  depthIdx: number;
+  batch:    LayerBatch;
+  onCellClick:  (x: number, z: number) => void;
+  onCellHover?: (x: number, z: number) => void;
+  onHover: (h: HoveredVoxel | null) => void;
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const { positions, rgbs, count, opacity } = batch;
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || count === 0) return;
+    const m4  = new THREE.Matrix4();
+    const col = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      m4.setPosition(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+      mesh.setMatrixAt(i, m4);
+      col.setRGB(rgbs[i * 3], rgbs[i * 3 + 1], rgbs[i * 3 + 2]);
+      mesh.setColorAt(i, col);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [positions, rgbs, count]);
+
+  if (count === 0) return null;
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, count]}
+      frustumCulled={false}
+      onClick={(e) => {
+        e.stopPropagation();
+        const iid = e.instanceId;
+        if (iid == null) return;
+        const { gx, gz } = batch.meta[iid];
+        onCellClick(gx, gz);
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        const iid = e.instanceId;
+        if (iid == null) return;
+        const { gx, gz, val, px, py, pz } = batch.meta[iid];
+        onCellHover?.(gx, gz);
+        onHover({ px, py, pz, val, depth: depthIdx });
+      }}
+      onPointerOut={() => onHover(null)}
+    >
+      <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[depthIdx], CELL_W]} />
+      <meshStandardMaterial
+        roughness={0.7}
+        metalness={0.05}
+        transparent={opacity < 1}
+        opacity={opacity}
+      />
+    </instancedMesh>
+  );
+}
+
+function VoxelGridInstanced({
+  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceAxis, onCellClick, onCellHover,
+}: VoxelGridProps) {
+  const data  = useMemo(() => generateWeekData(week), [week]);
+  const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
+
+  const batches = useMemo(
+    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceAxis),
+    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceAxis],
+  );
+
+  const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
+
+  return (
+    <>
+      {batches.map((batch, d) => (
+        <InstancedDepthLayer
+          key={`${d}-${batch.count}`}
+          depthIdx={d}
+          batch={batch}
+          onCellClick={onCellClick}
+          onCellHover={onCellHover}
+          onHover={setHovered}
+        />
+      ))}
+
       {hovered && (
         <Html
           position={[hovered.px, hovered.py + 0.15, hovered.pz]}
@@ -842,6 +1027,7 @@ interface OceanBasin3DProps {
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
+  useInstanced?: boolean;
 }
 
 export default function OceanBasin3D({
@@ -854,7 +1040,19 @@ export default function OceanBasin3D({
   onCellClick,
   onCellHover,
   showAnnotations = true,
+  useInstanced = false,
 }: OceanBasin3DProps) {
+  const voxelProps: VoxelGridProps = {
+    week,
+    colorScale,
+    selectedPoint,
+    sliceMode: dashboardState,
+    sliceLevel,
+    sliceAxis,
+    onCellClick,
+    onCellHover,
+  };
+
   return (
     <Canvas
       camera={{ position: [38, 22, 46], fov: 38 }}
@@ -865,16 +1063,10 @@ export default function OceanBasin3D({
       <directionalLight position={[10, 15, 10]} intensity={0.7} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
 
-      <VoxelGrid
-        week={week}
-        colorScale={colorScale}
-        selectedPoint={selectedPoint}
-        sliceMode={dashboardState}
-        sliceLevel={sliceLevel}
-        sliceAxis={sliceAxis}
-        onCellClick={onCellClick}
-        onCellHover={onCellHover}
-      />
+      {useInstanced
+        ? <VoxelGridInstanced {...voxelProps} />
+        : <VoxelGrid         {...voxelProps} />
+      }
 
       <SeabedMesh
         sliceMode={dashboardState}
