@@ -73,9 +73,17 @@ export default function PlaybackPage() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState(searchParams.get("variable") ?? "nitrogen");
-  const [sliceLevel, setSliceLevel] = useState(3);
-  const [sliceAxis, setSliceAxis] = useState<"x" | "z">("x");
-  const _initTool = searchParams.get("tool") ?? "none";
+  const _initTool  = searchParams.get("tool")  ?? "none";
+  const _initAxis  = searchParams.get("axis");
+  const _initLevel = searchParams.get("level");
+  const [sliceAxis,  setSliceAxis]  = useState<"x" | "z">(
+    (_initAxis === "x" || _initAxis === "z") ? _initAxis : "z"
+  );
+  const [sliceLevel, setSliceLevel] = useState(() => {
+    if (_initLevel !== null) return Number(_initLevel);
+    if (_initTool === "slice-v") return Math.floor((GRID_D - 1) / 2);
+    return 3;
+  });
   const [sliceTool,   setSliceTool]   = useState<SliceTool>(  (["none","slice-h","slice-v"].includes(_initTool)    ? _initTool : "none") as SliceTool);
   const [inspectTool, setInspectTool] = useState<InspectTool>((["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool);
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
@@ -96,9 +104,17 @@ export default function PlaybackPage() {
       const activeTool = sliceTool !== "none" ? sliceTool : inspectTool !== "none" ? inspectTool : null;
       if (activeTool) next.set("tool", activeTool);
       else next.delete("tool");
+      // Vertical slice: encode axis + position so the URL fully reproduces the view
+      if (sliceTool === "slice-v") {
+        next.set("axis", sliceAxis);
+        next.set("level", String(sliceLevel));
+      } else {
+        next.delete("axis");
+        next.delete("level");
+      }
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceMax = sliceTool === "slice-h" ? 7
@@ -545,7 +561,14 @@ export default function PlaybackPage() {
                       <button
                         key={tool.id}
                         className={`tool-btn ${isActive ? "tool-btn-active" : ""}`}
-                        onClick={() => setSliceTool(isActive ? "none" : tool.id)}
+                        onClick={() => {
+                          if (isActive) { setSliceTool("none"); return; }
+                          setSliceTool(tool.id as SliceTool);
+                          if (tool.id === "slice-v") {
+                            setSliceAxis("z");
+                            setSliceLevel(Math.floor((GRID_D - 1) / 2));
+                          }
+                        }}
                       >
                         <Icon size={14} className="flex-shrink-0" />
                         <div className="text-left">
@@ -654,8 +677,8 @@ export default function PlaybackPage() {
                       </div>
                       <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
                         {([
-                          { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E" },
                           { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S" },
+                          { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E" },
                         ]).map(({ axis, label, sub }) => (
                           <button
                             key={axis}
