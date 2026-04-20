@@ -249,13 +249,13 @@ const SPINE_RIVER2_WEST = densifyEW([
 ]);
 
 // Sub-basin 4 (Togura): west river, cz_28=13 (gz=52), same bay entry as sub2.
-// Diverges northwest upstream.
+// Diverges northward upstream — stronger northward arc.
 const SPINE_RIVER4_WEST = densifyEW([
   { gx:  5, cz: 13 }, // gap-fill (gx=20, gz=52)
-  { gx:  3, cz: 14 }, { gx:  1, cz: 15 },
-  { gx: -1, cz: 16 }, { gx: -3, cz: 17 },
-  { gx: -5, cz: 17 }, { gx: -7, cz: 17 },
-  { gx: -9, cz: 16 }, { gx:-11, cz: 15 },
+  { gx:  3, cz: 15 }, { gx:  1, cz: 17 },
+  { gx: -1, cz: 19 }, { gx: -3, cz: 21 },
+  { gx: -5, cz: 22 }, { gx: -7, cz: 22 },
+  { gx: -9, cz: 21 }, { gx:-11, cz: 20 },
 ]);
 
 // Sub-basin 6 (Iriya): west river, cz_28=6 (gz=24), gap-fill at gx_28=5 (gx=20).
@@ -279,13 +279,13 @@ const SPINE_RIVER8_NORTH = densifyNS([
 ]);
 
 // Sub-basin 9 (Oura): west river, cz_28=13 (gz=52), same bay entry as sub2/4.
-// Diverges strongly northward upstream.
+// Strongest northward arc — points decisively north as it extends upstream.
 const SPINE_RIVER9_WEST = densifyEW([
   { gx:  5, cz: 13 }, // gap-fill (gx=20, gz=52)
-  { gx:  3, cz: 15 }, { gx:  1, cz: 17 },
-  { gx: -1, cz: 19 }, { gx: -3, cz: 20 },
-  { gx: -5, cz: 21 }, { gx: -7, cz: 21 },
-  { gx: -9, cz: 21 }, { gx:-11, cz: 20 },
+  { gx:  3, cz: 17 }, { gx:  1, cz: 21 },
+  { gx: -1, cz: 23 }, { gx: -3, cz: 25 },
+  { gx: -5, cz: 26 }, { gx: -7, cz: 26 },
+  { gx: -9, cz: 25 }, { gx:-11, cz: 24 },
 ]);
 
 // Sub-basin 10 (Hachiman): south river, gap-fill at gz_28=6 (gz=24), cx_28=8 (gx=32).
