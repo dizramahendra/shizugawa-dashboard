@@ -916,6 +916,8 @@ const COMPASS_STYLE: React.CSSProperties = {
 
 // Renders a label that scales with camera distance, clamped to [minScale, maxScale].
 // Uses imperative DOM mutation inside useFrame — no React re-render per frame.
+// scaleMode "inverse": bigger when close (default, for data labels)
+// scaleMode "direct":  bigger when far / zoomed out (for compass letters)
 function ScaledLabel({
   position,
   children,
@@ -924,6 +926,7 @@ function ScaledLabel({
   baseDistance = 18,
   minScale = 0.55,
   maxScale = 2.2,
+  scaleMode = "inverse",
 }: {
   position: [number, number, number];
   children: React.ReactNode;
@@ -932,6 +935,7 @@ function ScaledLabel({
   baseDistance?: number;
   minScale?: number;
   maxScale?: number;
+  scaleMode?: "inverse" | "direct";
 }) {
   const { camera } = useThree();
   const wrapRef  = useRef<HTMLDivElement>(null);
@@ -940,7 +944,9 @@ function ScaledLabel({
   useFrame(() => {
     if (!wrapRef.current) return;
     const dist = camera.position.distanceTo(posVec.current);
-    const raw  = baseDistance / Math.max(dist, 0.01);
+    const raw  = scaleMode === "direct"
+      ? dist / Math.max(baseDistance, 0.01)          // grows with distance
+      : baseDistance / Math.max(dist, 0.01);          // shrinks with distance
     const s    = Math.max(minScale, Math.min(maxScale, raw));
     wrapRef.current.style.transform = `scale(${s.toFixed(3)})`;
   });
@@ -954,20 +960,21 @@ function ScaledLabel({
   );
 }
 
-// Always-visible N/W/S/E compass labels
+// Always-visible N/W/S/E compass labels — scale UP as camera pulls back
 function CompassLabels() {
+  const props = { scaleMode: "direct" as const, baseDistance: 38, minScale: 0.7, maxScale: 3.2 };
   return (
     <>
-      <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center zIndexRange={[0,0]}>
+      <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center zIndexRange={[0,0]} {...props}>
         <div style={COMPASS_STYLE}>N</div>
       </ScaledLabel>
-      <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_SOUTH_Z]} center zIndexRange={[0,0]}>
+      <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_SOUTH_Z]} center zIndexRange={[0,0]} {...props}>
         <div style={COMPASS_STYLE}>S</div>
       </ScaledLabel>
-      <ScaledLabel position={[BOX_EAST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]}>
+      <ScaledLabel position={[BOX_EAST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]} {...props}>
         <div style={COMPASS_STYLE}>E</div>
       </ScaledLabel>
-      <ScaledLabel position={[BOX_WEST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]}>
+      <ScaledLabel position={[BOX_WEST_X, BOX_TOP + 0.6, 0]} center zIndexRange={[0,0]} {...props}>
         <div style={COMPASS_STYLE}>W</div>
       </ScaledLabel>
     </>
