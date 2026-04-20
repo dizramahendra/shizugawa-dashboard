@@ -283,7 +283,7 @@ const SPINE_RIVER8_NORTH = densifyNS([
 // Steepest northward rise: cz climbs 13→20→27 over just 4 gx_28 units.
 const SPINE_RIVER9_WEST = densifyEW([
   { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52)
-  { gx:  4, cz: 20 }, { gx:  2, cz: 27 },
+  { gx:  4, cz: 20 },
 ]);
 
 // Sub-basin 10 (Hachiman): south river, gap-fill at gz_28=6 (gz=24), cx_28=8 (gx=32).
