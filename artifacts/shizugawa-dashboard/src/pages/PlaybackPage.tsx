@@ -85,8 +85,20 @@ export default function PlaybackPage() {
     return 3;
   });
   const [sliceTool,   setSliceTool]   = useState<SliceTool>(  (["none","slice-h","slice-v"].includes(_initTool)    ? _initTool : "none") as SliceTool);
-  const [inspectTool, setInspectTool] = useState<InspectTool>((["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool);
-  const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
+  const _initPx = searchParams.get("px");
+  const _initPz = searchParams.get("pz");
+  // If px/pz are in the URL but no inspect tool, default to point-select
+  const _initInspect = (["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool;
+  const [inspectTool, setInspectTool] = useState<InspectTool>(
+    _initInspect === "none" && _initPx !== null && _initPz !== null ? "point-select" : _initInspect
+  );
+  const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(() => {
+    if (_initPx !== null && _initPz !== null) {
+      const x = Number(_initPx), z = Number(_initPz);
+      if (Number.isFinite(x) && Number.isFinite(z)) return { x, z };
+    }
+    return null;
+  });
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
   const [showUI, setShowUI] = useState(true);
   const [cameraPreset, setCameraPreset] = useState("top");
@@ -99,11 +111,16 @@ export default function PlaybackPage() {
   useEffect(() => {
     setSearchParams(p => {
       const next = new URLSearchParams(p);
+
+      // Variable
       if (selectedVariable && selectedVariable !== "nitrogen") next.set("variable", selectedVariable);
       else next.delete("variable");
+
+      // Active tool (slice or inspect)
       const activeTool = sliceTool !== "none" ? sliceTool : inspectTool !== "none" ? inspectTool : null;
       if (activeTool) next.set("tool", activeTool);
       else next.delete("tool");
+
       // Vertical slice: encode axis + position so the URL fully reproduces the view
       if (sliceTool === "slice-v") {
         next.set("axis", sliceAxis);
@@ -112,9 +129,19 @@ export default function PlaybackPage() {
         next.delete("axis");
         next.delete("level");
       }
+
+      // Selected point (pixel click / point inspection / depth profile)
+      if (selectedPoint) {
+        next.set("px", String(selectedPoint.x));
+        next.set("pz", String(selectedPoint.z));
+      } else {
+        next.delete("px");
+        next.delete("pz");
+      }
+
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel, selectedPoint]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceMax = sliceTool === "slice-h" ? 7
