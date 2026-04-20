@@ -176,10 +176,14 @@ export default function BasinSelectionPage() {
   const location = useLocation();
   const fromCS = (location.state as { fromCS?: boolean } | null)?.fromCS ?? false;
 
+  const _initParams = new URLSearchParams(location.search);
+  const _initRiver    = _initParams.get("river");
+  const _initCorridor = _initParams.get("corridor");
+
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
-  const [selectedRiver, setSelectedRiver] = useState<string | null>(null);
-  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(null);
+  const [selectedRiver, setSelectedRiver] = useState<string | null>(_initRiver);
+  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(_initCorridor);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
   const [tiltedIn, setTiltedIn] = useState(!fromCS);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
