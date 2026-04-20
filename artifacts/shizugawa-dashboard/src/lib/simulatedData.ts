@@ -278,12 +278,12 @@ const SPINE_RIVER8_NORTH = densifyNS([
   { gz: 24, cx: 20 }, { gz: 25, cx: 19 },
 ]);
 
-// Sub-basin 9 (Oura): west river, shifted east to gx_28=6 (gx=24), half of sub4 length.
-// Spans gx 6 → -2 (8 gx_28 units = half of sub4's 16 units). Steepest northward arc.
+// Sub-basin 9 (Oura): west river, shifted east to gx_28=6 (gx=24).
+// Shortened to 3 control points (gx 6→2, 4 units = half of previous 8).
+// Steepest northward rise: cz climbs 13→20→27 over just 4 gx_28 units.
 const SPINE_RIVER9_WEST = densifyEW([
   { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52)
-  { gx:  4, cz: 17 }, { gx:  2, cz: 21 },
-  { gx:  0, cz: 23 }, { gx: -2, cz: 25 },
+  { gx:  4, cz: 20 }, { gx:  2, cz: 27 },
 ]);
 
 // Sub-basin 10 (Hachiman): south river, gap-fill at gz_28=6 (gz=24), cx_28=8 (gx=32).
