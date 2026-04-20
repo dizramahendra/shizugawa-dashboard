@@ -551,6 +551,15 @@ export default function PlaybackPage() {
                     );
                   })}
                 </div>
+                {/* Prompt shown when an inspect tool is active but no voxel has been picked yet */}
+                {inspectTool !== "none" && !selectedPoint && (
+                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-primary/8 border border-primary/20 px-2.5 py-2">
+                    <Crosshair size={11} className="text-primary flex-shrink-0" />
+                    <span className="text-[10px] text-primary leading-tight">
+                      Click any voxel in the 3D view to inspect
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
