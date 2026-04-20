@@ -305,7 +305,7 @@ export const RIVER_CELLS: RiverCell[] = [
   // Sub-basin 4 (Togura):  west river; mouth at gx=32 gz=48
   ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 32, 48,  "sub4"),
   // Sub-basin 9 (Oura):  west river; mouth at gx=32 gz=50
-  ...buildRiverWest(SPINE_RIVER9_WEST, 2, 1, 32, 50,  "sub9"),
+  ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 32, 50,  "sub9"),
   // Sub-basin 6 (Iriya): west river; mouth at gx=32 gz=22
   ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "sub6"),
   // Sub-basin 8 (Karakuwa): north river; mouth at gx=90 gz=70 (inside north arm)
