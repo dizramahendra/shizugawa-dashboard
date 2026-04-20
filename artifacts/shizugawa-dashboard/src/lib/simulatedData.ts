@@ -269,19 +269,19 @@ const SPINE_RIVER6_WEST = densifyEW([
 ]);
 
 // Sub-basin 8 (Karakuwa): north river, gap-fill at gz_28=17 (gz=68), cx_28=22 (gx=88).
-// Shape (per reference image): river descends straight south from the NE, then bends
-// sharply west before entering the bay's north arm — an L/J shape in pixel art.
-// Reading spine south→north (bay entry first, source last):
-//   gz 17→21: bends from cx=22 → cx=26 (the westward turn, traced backwards)
-//   gz 21→26: straight south at cx=26 (the long descending south section)
+// Shape: enters bay from the north arm, meanders/squiggles as it extends north —
+// zigzagging ±1 cx unit around the centre line, matching the red reference line.
 const SPINE_RIVER8_NORTH = densifyNS([
   { gz: 17, cx: 22 }, // gap-fill inside north arm (gz=68, gx=88)
   { gz: 18, cx: 22 },
-  { gz: 19, cx: 23 }, { gz: 20, cx: 25 },
-  { gz: 21, cx: 26 }, // west→east bend completes; straight south begins
-  { gz: 22, cx: 26 }, { gz: 23, cx: 26 },
-  { gz: 24, cx: 26 }, { gz: 25, cx: 26 },
-  { gz: 26, cx: 26 }, // source — far north/east
+  { gz: 19, cx: 23 }, // zag east
+  { gz: 20, cx: 23 },
+  { gz: 21, cx: 22 }, // back centre
+  { gz: 22, cx: 21 }, // zig west
+  { gz: 23, cx: 22 }, // back centre
+  { gz: 24, cx: 23 }, // zag east
+  { gz: 25, cx: 23 },
+  { gz: 26, cx: 22 }, // source
 ]);
 
 // Sub-basin 9 (Oura): west river, shifted east to gx_28=6 (gx=24).
