@@ -34,10 +34,10 @@ export const TOTAL_WEEKS = 52;
 // ── Bay outline polygon ───────────────────────────────────────────────────────
 // Shizugawa Bay coastline in normalised [0,1]×[0,1] space.
 // x: west(0)→east(1), z: south(0)→north(1).
-// Vertices are derived from the original 28×24 cell-edge boundaries so the
-// polygon faithfully represents the bay outline.  Each of the 56×48 cells is
-// point-tested individually (no 2×2 block upsampling), giving coastline steps
-// half the size of the previous approach.
+// Redesigned to match the reference image blue-line boundary:
+//  • Main body: west wall at x=2/28 from z=0 to z=21 (connects rivers 6,2,4,9)
+//  • North inlet: centred at x=13/28 (x=10–16) from z=21 to z=24 (river 8)
+//  • Old far-right narrow channel removed; east wall similar to original.
 function pointInPolygon(px: number, pz: number, poly: [number, number][]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -51,28 +51,25 @@ function pointInPolygon(px: number, pz: number, poly: [number, number][]): boole
 // Vertices in (gx_edge/28, gz_edge/24) normalised coords.
 // Clockwise from the narrow south entrance, tracing the outer coastline.
 const BAY_POLYGON: [number, number][] = [
-  // Narrow south entrance (gz≈1 in 28×24 space)
-  [ 5/28,  1/24], [16/28,  1/24],
-  // Step east — main bay widens going north
-  [16/28,  2/24], [26/28,  2/24],
-  // NE coast going north
-  [27/28,  5/24], [28/28,  8/24],
-  // East coast broad section (some rows reach gx=27)
-  [27/28, 11/24], [28/28, 13/24],
-  [28/28, 16/24], [27/28, 17/24],
-  // Eastern wall of northern channel
-  [28/28, 19/24], [28/28, 21/24],
-  [26/28, 24/24],
-  // North end of narrow channel
-  [22/28, 24/24], [22/28, 23/24],
-  // West wall of northern channel going south
-  [18/28, 22/24], [18/28, 17/24],
-  // Junction — step west to main bay west coast
-  [10/28, 17/24], [ 2/28, 17/24],
-  // West coast going south
-  [ 2/28,  3/24], [ 4/28,  2/24],
-  // Back to south entrance
-  [ 5/28,  1/24],
+  // South entrance — narrow channel for river 10 (gx_28 ≈ 3–8)
+  [ 3/28,  0/24], [ 8/28,  0/24],
+  // SE corner — main body widens eastward
+  [16/28,  1/24], [24/28,  2/24],
+  // East boundary — slightly irregular coast going north
+  [27/28,  5/24], [28/28,  9/24],
+  [27/28, 13/24], [28/28, 17/24],
+  [27/28, 20/24],
+  // NE plateau — east side of river-8 inlet
+  [26/28, 21/24], [16/28, 21/24],
+  // River-8 inlet: north wall then west wall going south
+  [16/28, 24/24], [10/28, 24/24],
+  [10/28, 21/24],
+  // NW corner — west wall runs all the way south
+  // covers rivers: sub9 (z≈20), sub4 (z≈17), sub2 (z≈14), sub6 (z≈4)
+  [ 2/28, 21/24],
+  [ 2/28,  2/24],
+  // SW corner — back to south entrance
+  [ 3/28,  0/24],
 ];
 
 // BAY_MASK at full 56×48 resolution — every cell individually point-tested.
@@ -291,14 +288,16 @@ export const RIVER_CELLS: RiverCell[] = [
   // 6 active sub-basin rivers; spines authored in 28×24 space, densified ×4.
   // Sub-basin 2 (Shizugawa): west river at gz≈56 (gz_28=14)
   ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 0, 56,       "sub2"),
-  // Sub-basin 4 (Togura):    west river at gz≈80 (gz_28=20)
-  ...buildRiverWest(SPINE_RIVER4_WEST, 3, 1, 0, 80,       "sub4"),
+  // Sub-basin 9 (Oura):      west river at gz≈80 (gz_28=20) — NORTH of sub4
+  // Uses SPINE_RIVER4_WEST (northward-drifting path, matches yellow-line for "9")
+  ...buildRiverWest(SPINE_RIVER4_WEST, 3, 1, 0, 80,       "sub9"),
   // Sub-basin 6 (Iriya):     west river at gz≈16 (gz_28=4)
   ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 0, 16,       "sub6"),
   // Sub-basin 8 (Karakuwa):  north river at gx≈52 (gx_28=13)
   ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 52, GRID_D - 1, "sub8"),
-  // Sub-basin 9 (Oura):      west river at gz≈68 (gz_28=17)
-  ...buildRiverWest(SPINE_RIVER9_WEST, 2, 1, 0, 68,       "sub9"),
+  // Sub-basin 4 (Togura):    west river at gz≈68 (gz_28=17) — SOUTH of sub9
+  // Uses SPINE_RIVER9_WEST (shorter straight path, matches yellow-line for "4")
+  ...buildRiverWest(SPINE_RIVER9_WEST, 2, 1, 0, 68,       "sub4"),
   // Sub-basin 10 (Hachiman): south river at gx≈20 (gx_28=5)
   ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 20, 0,        "sub10"),
 ];
