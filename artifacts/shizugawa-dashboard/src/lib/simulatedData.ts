@@ -230,13 +230,13 @@ function densifyEW(
 // River assignment summary (scaled bay: gx_112=3–107, gz_96=9–86):
 // Sub-basin 2/4/9  → WEST:  cz_28=13 (gz=52), gx gap-fill at 5 (gx=20)
 // Sub-basin 6      → WEST:  cz_28=6  (gz=24), gx gap-fill at 5 (gx=20)
-// Sub-basin 8      → NORTH: gz_28=17 (gz=68), cx_28=22 (gx=88), extends north
+// Sub-basin 8      → NORTH: gz_28=20 (gz=80), cx_28=20 (gx=80), extends NW
 // Sub-basin 10     → SOUTH: gz_28=6  (gz=24), cx_28=8  (gx=32), extends south
 
 // ── River spines — positions derived from SVG path start coords ──────────────
 // Bay polygon scaled 2.1565× uniformly from SVG-traced shape.
 // West wall at gz=52 is gx≈9 (gx_28=2.3); gap-fills start at gx_28=5 (gx=20).
-// North arm at gz=68 spans gx=87–102; sub8 uses cx_28=22 (gx=88).
+// North arm NW corner at gz=80 ≈ gx=79–80; sub8 enters there (cx_28=20, gx=80).
 
 // Sub-basin 2 (Shizugawa): west river, cz_28=13 (gz=52), gap-fill at gx_28=5 (gx=20).
 // Bay west wall at gz=52 is gx≈9; gx=20 is clearly inside. Extends west-northwest.
@@ -268,20 +268,17 @@ const SPINE_RIVER6_WEST = densifyEW([
   { gx: -9, cz: 3 }, { gx:-11, cz: 3 },
 ]);
 
-// Sub-basin 8 (Karakuwa): north river, gap-fill at gz_28=17 (gz=68), cx_28=22 (gx=88).
-// Shape: enters bay from the north arm, meanders/squiggles as it extends north —
-// zigzagging ±1 cx unit around the centre line, matching the red reference line.
+// Sub-basin 8 (Karakuwa): north river — spine traced from SVG RIVER_PATHS[8].
+// Affine transform (SVG 465×586, scale 2.1565×):
+//   nx=(svgX/465−0.4631)×2.1565+0.03, nz=(1−svgY/586−0.2846)×2.1565+0.0919
+//   gx=nx×112, gz=nz×96; to 28-space: cx_28=gx÷4, gz_28=gz÷4.
+// Mouth (359.463, 216.606) → gx=80, gz=80 → gz_28=20, cx_28=20.
+// Path goes NW: (350,209)→gx=73,gz=83; (332,201)→gx=64,gz=86; (324,176)→gx=60,gz=94.
 const SPINE_RIVER8_NORTH = densifyNS([
-  { gz: 17, cx: 22 }, // gap-fill inside north arm (gz=68, gx=88)
-  { gz: 18, cx: 22 },
-  { gz: 19, cx: 23 }, // zag east
-  { gz: 20, cx: 23 },
-  { gz: 21, cx: 22 }, // back centre
-  { gz: 22, cx: 21 }, // zig west
-  { gz: 23, cx: 22 }, // back centre
-  { gz: 24, cx: 23 }, // zag east
-  { gz: 25, cx: 23 },
-  { gz: 26, cx: 22 }, // source
+  { gz: 20, cx: 20 }, // gap-fill (gz=80, gx=80) — NW corner of north arm
+  { gz: 21, cx: 18 }, // (gz=84, gx=72)
+  { gz: 22, cx: 16 }, // (gz=88, gx=64)
+  { gz: 23, cx: 15 }, // source (gz=92, gx=60)
 ]);
 
 // Sub-basin 9 (Oura): west river, shifted east to gx_28=6 (gx=24).
@@ -314,8 +311,8 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 32, 50,  "sub9"),
   // Sub-basin 6 (Iriya): west river; mouth at gx=32 gz=22
   ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "sub6"),
-  // Sub-basin 8 (Karakuwa): north river; mouth at gx=90 gz=70 (inside north arm)
-  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 90, 70,  "sub8"),
+  // Sub-basin 8 (Karakuwa): north river; mouth at gx=80 gz=80 (NW corner of north arm)
+  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 80, 80,  "sub8"),
   // Sub-basin 10 (Hachiman): south river; mouth at gx=32 gz=28 (inside bay)
   ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 32, 28,  "sub10"),
 ];
