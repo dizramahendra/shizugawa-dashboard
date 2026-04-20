@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { Search, Map } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import TopNav from "@/components/TopNav";
@@ -176,10 +176,10 @@ export default function BasinSelectionPage() {
   const location = useLocation();
   const fromCS = (location.state as { fromCS?: boolean } | null)?.fromCS ?? false;
 
-  const _initParams = new URLSearchParams(location.search);
-  const _initRiver    = _initParams.get("river");
-  const _initCorridor = _initParams.get("corridor");
-  const _initVariable = _initParams.get("variable");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const _initRiver    = searchParams.get("river");
+  const _initCorridor = searchParams.get("corridor");
+  const _initVariable = searchParams.get("variable");
 
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
@@ -198,6 +198,20 @@ export default function BasinSelectionPage() {
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pause = useCallback(() => setIsPlaying(false), []);
+
+  // Sync state → URL so the address bar always reflects current view
+  useEffect(() => {
+    setSearchParams(p => {
+      const next = new URLSearchParams(p);
+      if (selectedVariable && selectedVariable !== "nitrogen") next.set("variable", selectedVariable);
+      else next.delete("variable");
+      if (selectedRiver) next.set("river", selectedRiver);
+      else next.delete("river");
+      if (selectedCorridorId) next.set("corridor", selectedCorridorId);
+      else next.delete("corridor");
+      return next;
+    }, { replace: true });
+  }, [selectedVariable, selectedRiver, selectedCorridorId]);
 
   useEffect(() => {
     let tiltTimer: ReturnType<typeof setTimeout> | null = null;

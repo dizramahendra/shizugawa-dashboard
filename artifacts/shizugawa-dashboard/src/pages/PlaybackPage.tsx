@@ -66,7 +66,7 @@ function gridToCoords(x: number, z: number, depthLayer: number) {
 
 export default function PlaybackPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const watershedName = searchParams.get("wname") ?? undefined;
 
   const { year, setYear, weekRange, setWeekRange } = usePlayback();
@@ -88,6 +88,19 @@ export default function PlaybackPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pause = useCallback(() => setIsPlaying(false), []);
+
+  // Sync state → URL
+  useEffect(() => {
+    setSearchParams(p => {
+      const next = new URLSearchParams(p);
+      if (selectedVariable && selectedVariable !== "nitrogen") next.set("variable", selectedVariable);
+      else next.delete("variable");
+      const activeTool = sliceTool !== "none" ? sliceTool : inspectTool !== "none" ? inspectTool : null;
+      if (activeTool) next.set("tool", activeTool);
+      else next.delete("tool");
+      return next;
+    }, { replace: true });
+  }, [selectedVariable, sliceTool, inspectTool]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceMax = sliceTool === "slice-h" ? 7

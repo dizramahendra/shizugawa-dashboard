@@ -114,7 +114,7 @@ import RiverGrid2D from "@/components/RiverGrid2D";
 
 export default function RiverPlaybackPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [riverId, setRiverId] = useState(searchParams.get("river") ?? "shizugawa");
   const watershedName = searchParams.get("wname") ?? undefined;
 
@@ -129,6 +129,18 @@ export default function RiverPlaybackPage() {
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pause = useCallback(() => setIsPlaying(false), []);
+
+  // Sync state → URL
+  useEffect(() => {
+    setSearchParams(p => {
+      const next = new URLSearchParams(p);
+      if (riverId && riverId !== "shizugawa") next.set("river", riverId);
+      else next.delete("river");
+      if (selectedVariable && selectedVariable !== "nitrogen") next.set("variable", selectedVariable);
+      else next.delete("variable");
+      return next;
+    }, { replace: true });
+  }, [riverId, selectedVariable]);
 
   // Clamp week to weekRange when range changes
   useEffect(() => {
