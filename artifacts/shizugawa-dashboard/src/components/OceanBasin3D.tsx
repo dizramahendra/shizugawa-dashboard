@@ -794,7 +794,8 @@ function RiverGrid({
 
   const elements: React.ReactNode[] = [];
 
-  for (const { gx, gz } of RIVER_CELLS) {
+  for (let ri = 0; ri < RIVER_CELLS.length; ri++) {
+    const { gx, gz } = RIVER_CELLS[ri];
     // Slice filtering
     // Horizontal: river water lives at layer 0 — hide it when the slice is below that
     if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
@@ -818,7 +819,7 @@ function RiverGrid({
       const depthOpacity = sliceMode === "slice-v" ? 1.0 : 0.85 - d * 0.02;
       const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
       elements.push(
-        <mesh key={`rv-${gz}-${gx}-${d}`} position={[px, py, pz]}>
+        <mesh key={`rv-${ri}-${d}`} position={[px, py, pz]}>
           <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
           <meshStandardMaterial
             color={new THREE.Color(r, g, b)}

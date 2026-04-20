@@ -23,51 +23,62 @@ export interface SelectedPoint {
   unit: string;
 }
 
-// Grid at 56×48 (2× from original 28×24) — STEP=0.5 in OceanBasin3D keeps the
-// same physical bay dimensions while halving voxel size for a denser look.
+// Grid at 56×48 — STEP=0.5 in OceanBasin3D.
+// gx 0 = west (inner bay head), gx 55 = east (bay mouth)
+// gz 0 = south shore, gz 47 = north shore
 export const GRID_W = 56;
 export const GRID_D = 48;
 export const DEPTH_LAYERS = 8;
 export const TOTAL_WEEKS = 52;
 
-// Original 28×24 mask — expanded to 56×48 via 2×2 block doubling below.
-// gz 0 = south shore, gz 23 = north; gx 0 = west (inner bay head), gx 27 = east (bay mouth)
-const T = true, F = false;
-// BAY_MASK_SRC — derived from OCEAN_BASIN_PATH SVG polygon via ray-casting
-// point-in-polygon + scanline fill + exterior flood-fill (no internal gaps).
-// Coordinate mapping: svgX→gx (215–419 → 0–27), svgY→gz (196–419 → 23–0).
-// gz=23 extended to gx=22–25 to provide a 4-cell channel for the two north rivers.
-const BAY_MASK_SRC: boolean[][] = [
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  0
-  [F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F], // gz  1
-  [F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  2
-  [F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  3
-  [F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  4
-  [F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  5
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  6
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  7
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz  8
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz  9
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F,F], // gz 10
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 11
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T], // gz 12
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T], // gz 13
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 14
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T], // gz 15
-  [F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 16
-  [F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 17
-  [F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,F], // gz 18
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,F], // gz 19
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,T], // gz 20
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,T,F], // gz 21
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,T,T,T,F,F], // gz 22
-  [F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,F,F], // gz 23
+// ── Bay outline polygon ───────────────────────────────────────────────────────
+// Shizugawa Bay coastline in normalised [0,1]×[0,1] space.
+// x: west(0)→east(1), z: south(0)→north(1).
+// Vertices are derived from the original 28×24 cell-edge boundaries so the
+// polygon faithfully represents the bay outline.  Each of the 56×48 cells is
+// point-tested individually (no 2×2 block upsampling), giving coastline steps
+// half the size of the previous approach.
+function pointInPolygon(px: number, pz: number, poly: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if (((zi > pz) !== (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+// Vertices in (gx_edge/28, gz_edge/24) normalised coords.
+// Clockwise from the narrow south entrance, tracing the outer coastline.
+const BAY_POLYGON: [number, number][] = [
+  // Narrow south entrance (gz≈1 in 28×24 space)
+  [ 5/28,  1/24], [16/28,  1/24],
+  // Step east — main bay widens going north
+  [16/28,  2/24], [26/28,  2/24],
+  // NE coast going north
+  [27/28,  5/24], [28/28,  8/24],
+  // East coast broad section (some rows reach gx=27)
+  [27/28, 11/24], [28/28, 13/24],
+  [28/28, 16/24], [27/28, 17/24],
+  // Eastern wall of northern channel
+  [28/28, 19/24], [28/28, 21/24],
+  [26/28, 24/24],
+  // North end of narrow channel
+  [22/28, 24/24], [22/28, 23/24],
+  // West wall of northern channel going south
+  [18/28, 22/24], [18/28, 17/24],
+  // Junction — step west to main bay west coast
+  [10/28, 17/24], [ 2/28, 17/24],
+  // West coast going south
+  [ 2/28,  3/24], [ 4/28,  2/24],
+  // Back to south entrance
+  [ 5/28,  1/24],
 ];
 
-// 56×48 mask — each original cell becomes a 2×2 block of identical cells.
+// BAY_MASK at full 56×48 resolution — every cell individually point-tested.
 export const BAY_MASK: boolean[][] = Array.from({ length: GRID_D }, (_, gz) =>
   Array.from({ length: GRID_W }, (_, gx) =>
-    BAY_MASK_SRC[Math.floor(gz / 2)]?.[Math.floor(gx / 2)] ?? false
+    pointInPolygon((gx + 0.5) / GRID_W, (gz + 0.5) / GRID_D, BAY_POLYGON)
   )
 );
 
