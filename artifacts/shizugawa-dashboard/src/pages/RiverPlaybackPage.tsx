@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import NorthArrow from "@/components/NorthArrow";
 import { ChevronLeft } from "lucide-react";
 import {
   TOTAL_WEEKS,
@@ -291,7 +292,7 @@ export default function RiverPlaybackPage() {
 
         {/* Left: 2D grid + playback */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden relative">
             <RiverGrid2D
               week={week}
               variableId={selectedVariable}
@@ -299,6 +300,8 @@ export default function RiverPlaybackPage() {
               selectedCell={selectedCell}
               onCellClick={(row, col) => setSelectedCell({ row, col })}
             />
+            {/* North arrow — bottom-right of river viewport */}
+            <NorthArrow className="absolute bottom-4 right-4 z-10" />
           </div>
           <PlaybackControls
             week={week}

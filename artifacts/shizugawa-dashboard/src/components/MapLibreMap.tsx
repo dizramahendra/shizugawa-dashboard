@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
 import { generateRiverData, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
+import NorthArrow from "@/components/NorthArrow";
 
 const SVG_W = 465;
 const SVG_H = 586;
@@ -626,6 +627,9 @@ export default function MapLibreMap({
           </div>
         </div>
       )}
+
+      {/* North arrow — bottom-right corner */}
+      <NorthArrow className="absolute bottom-4 right-4 z-10" />
     </div>
   );
 }
