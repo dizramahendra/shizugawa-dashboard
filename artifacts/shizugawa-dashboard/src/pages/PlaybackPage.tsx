@@ -100,7 +100,7 @@ export default function PlaybackPage() {
     return null;
   });
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
-  const [showUI, setShowUI] = useState(true);
+  const [showUI, setShowUI] = useState(searchParams.get("ui") !== "0");
   const [cameraPreset, setCameraPreset] = useState("top");
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -139,9 +139,13 @@ export default function PlaybackPage() {
         next.delete("pz");
       }
 
+      // Hide UI state — only encode when hidden (ui=0); visible is the default
+      if (!showUI) next.set("ui", "0");
+      else next.delete("ui");
+
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel, selectedPoint]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel, selectedPoint, showUI]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceMax = sliceTool === "slice-h" ? 7
