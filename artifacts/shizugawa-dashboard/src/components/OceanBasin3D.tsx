@@ -1064,6 +1064,30 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
   return null;
 }
 
+// ── Camera presets ────────────────────────────────────────────────────────────
+const CAMERA_PRESETS: Record<string, [number, number, number]> = {
+  top:   [0,  72,  5],
+  north: [0,  22, -72],
+  south: [0,  22,  72],
+  east:  [72, 22,   0],
+  west:  [-72, 22,  0],
+};
+
+/** Moves camera + OrbitControls target whenever `preset` changes. Must be inside <Canvas>. */
+function CameraController({ preset, orbitRef }: { preset: string; orbitRef: { current: any } }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    const pos = CAMERA_PRESETS[preset];
+    if (!pos) return;
+    camera.position.set(pos[0], pos[1], pos[2]);
+    if (orbitRef.current) {
+      orbitRef.current.target.set(0, 0, 0);
+      orbitRef.current.update();
+    }
+  }, [preset]);
+  return null;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 interface OceanBasin3DProps {
   week: number;
@@ -1075,6 +1099,7 @@ interface OceanBasin3DProps {
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
+  cameraPreset?: string;
 }
 
 export default function OceanBasin3D({
@@ -1087,7 +1112,10 @@ export default function OceanBasin3D({
   onCellClick,
   onCellHover,
   showAnnotations = true,
+  cameraPreset = "top",
 }: OceanBasin3DProps) {
+  const orbitRef = useRef<any>(null);
+
   const voxelProps: VoxelGridProps = {
     week,
     colorScale,
@@ -1105,6 +1133,7 @@ export default function OceanBasin3D({
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
+      <CameraController preset={cameraPreset} orbitRef={orbitRef} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[10, 15, 10]} intensity={0.7} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
@@ -1147,6 +1176,7 @@ export default function OceanBasin3D({
       </group>
 
       <OrbitControls
+        ref={orbitRef}
         enablePan={true}
         enableZoom={true}
         enableRotate={true}

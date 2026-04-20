@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity } from "lucide-react";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, getBayOceanExchangeIntensity, getSedimentElutionIntensity } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";
@@ -9,7 +9,6 @@ import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
 import PlaybackControls from "@/components/PlaybackControls";
 import DepthGraph from "@/components/DepthGraph";
-import FlowIndicators from "@/components/FlowIndicators";
 
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
@@ -81,9 +80,8 @@ export default function PlaybackPage() {
   const [inspectTool, setInspectTool] = useState<InspectTool>((["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool);
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
-  const [showExchange, setShowExchange] = useState(true);
-  const [showElution, setShowElution] = useState(true);
-  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [showUI, setShowUI] = useState(true);
+  const [cameraPreset, setCameraPreset] = useState("top");
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -260,6 +258,50 @@ export default function PlaybackPage() {
         {/* Calendar date range picker */}
         <WeekRangePicker year={year} weekRange={weekRange} onChange={r => { setWeekRange(r); pause(); }} />
 
+        <div className="w-px h-5 bg-border" />
+
+        {/* Camera view presets */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground font-medium">View</span>
+          <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+            {(["top","N","S","E","W"] as const).map((label) => {
+              const id = label === "top" ? "top" : label.toLowerCase();
+              return (
+                <button
+                  key={id}
+                  onClick={() => setCameraPreset(id)}
+                  title={label === "top" ? "Top-down view" : `View from ${label}`}
+                  className={`px-2 py-1 text-[11px] font-mono rounded-sm transition-colors ${
+                    cameraPreset === id
+                      ? "bg-white text-foreground shadow-sm font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >{label === "top" ? "↑ Top" : label}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* Hide UI toggle */}
+        <button
+          onClick={() => setShowUI(v => !v)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+            showUI
+              ? "bg-white border-border text-foreground hover:bg-muted/60"
+              : "bg-slate-800 border-slate-600 text-white/80 hover:bg-slate-700"
+          }`}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 flex-shrink-0">
+            {showUI
+              ? <><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z"/><circle cx="8" cy="8" r="2"/></>
+              : <><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z"/><line x1="2" y1="2" x2="14" y2="14"/></>
+            }
+          </svg>
+          {showUI ? "Hide UI" : "Show UI"}
+        </button>
+
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {isPlaying ? (
             <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
@@ -286,35 +328,9 @@ export default function PlaybackPage() {
               sliceAxis={sliceAxis}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
-              showAnnotations={showAnnotations}
+              showAnnotations={showUI}
+              cameraPreset={cameraPreset}
             />
-            <FlowIndicators
-              week={week}
-              showExchange={showExchange}
-              showElution={showElution}
-            />
-
-            {/* Viewport controls — top-left corner */}
-            <div className="absolute top-3 left-3 z-20 pointer-events-auto flex items-center gap-2">
-              {/* Annotations toggle */}
-              <button
-                onClick={() => setShowAnnotations(v => !v)}
-                title={showAnnotations ? "Hide axes, grid & box" : "Show axes, grid & box"}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[10px] font-mono transition-all shadow-sm border ${
-                  showAnnotations
-                    ? "bg-white/90 border-border text-foreground hover:bg-muted/80"
-                    : "bg-slate-800/80 border-slate-600 text-white/80 hover:bg-slate-700/90"
-                }`}
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 flex-shrink-0">
-                  <rect x="1" y="1" width="14" height="14" rx="1.5" />
-                  <line x1="1" y1="5.5" x2="15" y2="5.5" />
-                  <line x1="5.5" y1="1" x2="5.5" y2="15" />
-                </svg>
-                {showAnnotations ? "Hide grid & axes" : "Show grid & axes"}
-              </button>
-
-            </div>
 
             {/* Live coordinate HUD — top-right corner */}
             {(() => {
@@ -346,7 +362,7 @@ export default function PlaybackPage() {
             })()}
 
             {/* Bottom-left: legend overlay (same system as Map & River views) */}
-            {(() => {
+            {showUI && (() => {
               const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
               return (
                 <div className="absolute bottom-3 left-3 z-10 pointer-events-none flex flex-col gap-2">
