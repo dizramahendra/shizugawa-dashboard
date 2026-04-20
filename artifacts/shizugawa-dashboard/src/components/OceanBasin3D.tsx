@@ -1068,7 +1068,6 @@ interface OceanBasin3DProps {
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
-  useInstanced?: boolean;
 }
 
 export default function OceanBasin3D({
@@ -1081,7 +1080,6 @@ export default function OceanBasin3D({
   onCellClick,
   onCellHover,
   showAnnotations = true,
-  useInstanced = false,
 }: OceanBasin3DProps) {
   const voxelProps: VoxelGridProps = {
     week,
@@ -1106,10 +1104,7 @@ export default function OceanBasin3D({
 
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>
-        {useInstanced
-          ? <VoxelGridInstanced {...voxelProps} />
-          : <VoxelGrid         {...voxelProps} />
-        }
+        <VoxelGridInstanced {...voxelProps} />
 
         <SeabedMesh
           sliceMode={dashboardState}
