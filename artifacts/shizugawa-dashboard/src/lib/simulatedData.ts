@@ -23,11 +23,11 @@ export interface SelectedPoint {
   unit: string;
 }
 
-// Grid at 56×48 — STEP=0.5 in OceanBasin3D.
-// gx 0 = west (inner bay head), gx 55 = east (bay mouth)
-// gz 0 = south shore, gz 47 = north shore
-export const GRID_W = 56;
-export const GRID_D = 48;
+// Grid at 112×96 — STEP=0.5 in OceanBasin3D.
+// gx 0 = west (inner bay head), gx 111 = east (bay mouth)
+// gz 0 = south shore, gz 95 = north shore
+export const GRID_W = 112;
+export const GRID_D = 96;
 export const DEPTH_LAYERS = 8;
 export const TOTAL_WEEKS = 52;
 
@@ -83,8 +83,8 @@ export const BAY_MASK: boolean[][] = Array.from({ length: GRID_D }, (_, gz) =>
 );
 
 // ── River voxel cells ────────────────────────────────────────────────────────
-// Spines authored in 28×24 space, densified ×2 to match the 56×48 grid.
-// mouthGx / mouthGz are in 56×48 coords (original × 2).
+// Spines authored in 28×24 space, densified ×4 to match the 112×96 grid.
+// mouthGx / mouthGz are in 112×96 coords (original × 4).
 
 export interface RiverCell {
   gx: number;
@@ -150,27 +150,63 @@ function buildRiverEast(
   return cells;
 }
 
+// buildRiverWest: west river — sweeps along gx (gx ≤ 0), spreads in gz.
+// gx values can be 0 or negative (west of the bay boundary).
+function buildRiverWest(
+  spine: Array<{ gx: number; cz: number; w?: number }>,
+  halfWDelta: number,
+  halfWUpstream: number,
+  mouthGx: number,
+  mouthGz: number,
+): RiverCell[] {
+  const cells: RiverCell[] = [];
+  const seen = new Set<string>();
+  const n = spine.length;
+  spine.forEach(({ gx, cz, w }, i) => {
+    const t     = n > 1 ? i / (n - 1) : 0;
+    const halfW = w !== undefined
+      ? w
+      : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
+    for (let dz = -halfW; dz <= halfW; dz++) {
+      const gz = cz + dz;
+      const key = `${gz},${gx}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cells.push({ gx, gz, mouthGx, mouthGz });
+    }
+  });
+  return cells;
+}
+
 // ── Spine densifiers ─────────────────────────────────────────────────────────
-// Authored in 28×24 space; multiply coords ×2 and fill gaps for the 56×48 grid.
-// Optional `w` (half-width override in 28×24 space) is also doubled so the
-// physical width is preserved at STEP=0.5.
+// Authored in 28×24 space; multiply coords ×4 and fill ALL intermediate steps
+// for the 112×96 grid.  Optional `w` (half-width override in 28×24 space) is
+// also ×4 so the physical width is preserved at STEP=0.5.
 
 function densifyNS(
   sparse: Array<{ gz: number; cx: number; w?: number }>,
 ): Array<{ gz: number; cx: number; w?: number }> {
+  const SCALE = 4;
   const out: Array<{ gz: number; cx: number; w?: number }> = [];
   for (let i = 0; i < sparse.length; i++) {
     const { gz, cx, w } = sparse[i];
-    out.push({ gz: gz * 2, cx: cx * 2, ...(w !== undefined ? { w: w * 2 } : {}) });
+    out.push({ gz: gz * SCALE, cx: cx * SCALE, ...(w !== undefined ? { w: w * SCALE } : {}) });
     if (i < sparse.length - 1) {
-      const { gz: gz2, cx: cx2, w: w2 } = sparse[i + 1];
-      const midW = (w !== undefined && w2 !== undefined)
-        ? Math.round((w * 2 + w2 * 2) / 2) : undefined;
-      out.push({
-        gz: gz * 2 + Math.sign(gz2 - gz),
-        cx: Math.round((cx * 2 + cx2 * 2) / 2),
-        ...(midW !== undefined ? { w: midW } : {}),
-      });
+      const next = sparse[i + 1];
+      const dgz = next.gz - gz;
+      const totalSteps = Math.abs(dgz) * SCALE;
+      const dir = Math.sign(dgz);
+      for (let s = 1; s < totalSteps; s++) {
+        const t = s / totalSteps;
+        const midCx = Math.round((cx + (next.cx - cx) * t) * SCALE);
+        const midW = (w !== undefined && next.w !== undefined)
+          ? Math.round((w + (next.w - w) * t) * SCALE) : undefined;
+        out.push({
+          gz: gz * SCALE + dir * s,
+          cx: midCx,
+          ...(midW !== undefined ? { w: midW } : {}),
+        });
+      }
     }
   }
   return out;
@@ -179,25 +215,33 @@ function densifyNS(
 function densifyEW(
   sparse: Array<{ gx: number; cz: number; w?: number }>,
 ): Array<{ gx: number; cz: number; w?: number }> {
+  const SCALE = 4;
   const out: Array<{ gx: number; cz: number; w?: number }> = [];
   for (let i = 0; i < sparse.length; i++) {
     const { gx, cz, w } = sparse[i];
-    out.push({ gx: gx * 2, cz: cz * 2, ...(w !== undefined ? { w: w * 2 } : {}) });
+    out.push({ gx: gx * SCALE, cz: cz * SCALE, ...(w !== undefined ? { w: w * SCALE } : {}) });
     if (i < sparse.length - 1) {
-      const { gx: gx2, cz: cz2, w: w2 } = sparse[i + 1];
-      const midW = (w !== undefined && w2 !== undefined)
-        ? Math.round((w * 2 + w2 * 2) / 2) : undefined;
-      out.push({
-        gx: gx * 2 + Math.sign(gx2 - gx),
-        cz: Math.round((cz * 2 + cz2 * 2) / 2),
-        ...(midW !== undefined ? { w: midW } : {}),
-      });
+      const next = sparse[i + 1];
+      const dgx = next.gx - gx;
+      const totalSteps = Math.abs(dgx) * SCALE;
+      const dir = Math.sign(dgx);
+      for (let s = 1; s < totalSteps; s++) {
+        const t = s / totalSteps;
+        const midCz = Math.round((cz + (next.cz - cz) * t) * SCALE);
+        const midW = (w !== undefined && next.w !== undefined)
+          ? Math.round((w + (next.w - w) * t) * SCALE) : undefined;
+        out.push({
+          gx: gx * SCALE + dir * s,
+          cz: midCz,
+          ...(midW !== undefined ? { w: midW } : {}),
+        });
+      }
     }
   }
   return out;
 }
 
-// ── River spines (authored in 28×24 coords, densified to 56×48) ──────────────
+// ── River spines (authored in 28×24 coords, densified to 112×96) ─────────────
 // Shapes traced from SVG river paths in svgPaths.ts using the affine mapping:
 //   cx  (28×24) ≈ 0.0535 × svgX + 5
 //   Δgz (28×24) ≈ −ΔsvgY / 13.3   (each 13.3 SVG pixels north = +1 gz step)
@@ -206,6 +250,13 @@ function densifyEW(
 // River  3 (karakuwa) → NE:     hugs right edge, slight sinusoid near boundary
 // River 13 (hachiman) → SE:     consistent left drift going south
 // River  7 (okawa)    → EAST:   gentle northward drift going east
+// Sub-basin 2         → WEST:   at gz_28≈14, mostly straight westward
+// Sub-basin 4         → WEST:   at gz_28≈20, slight northward drift
+// Sub-basin 6         → WEST:   at gz_28≈4,  near south shore
+// Sub-basin 8         → NORTH:  at gx_28≈13, secondary north inlet
+// Sub-basin 9         → WEST:   at gz_28≈17, upper-west inlet
+// Sub-basin 10        → SOUTH:  at gx_28≈5,  western south inlet
+// Sub-basin 12        → SOUTH:  at gx_28≈6,  eastern south inlet
 
 // North river — traced from river 24 (oya): straight with a very mild left drift.
 // Gap-fill cx=22 aligns with the north-passage water cells at gz=21–23 in the new mask.
@@ -271,13 +322,88 @@ const SPINE_EAST_RIVER = densifyEW([
   { gx:45, cz:16 }, { gx:46, cz:17 }, { gx:47, cz:17 },
 ]);
 
+// Sub-basin 2 (River 2): West river at gz_28≈14 — mostly straight, slight south drift
+const SPINE_RIVER2_WEST = densifyEW([
+  { gx: 2,  cz: 14 }, // bay gap-fill (inside bay near west shore)
+  { gx: 1,  cz: 14 }, // approaching west shore
+  { gx: 0,  cz: 14 }, // west shore crossing
+  { gx: -1, cz: 14 }, { gx: -2, cz: 14 },
+  { gx: -3, cz: 13 }, { gx: -4, cz: 13 },
+]);
+
+// Sub-basin 4 (River 4): West river at gz_28≈20 — enters upper-west, drifts north
+const SPINE_RIVER4_WEST = densifyEW([
+  { gx: 2,  cz: 20 }, // bay gap-fill
+  { gx: 1,  cz: 20 },
+  { gx: 0,  cz: 20 }, // west shore
+  { gx: -1, cz: 20 }, { gx: -2, cz: 21 },
+  { gx: -3, cz: 21 }, { gx: -4, cz: 21 },
+  { gx: -5, cz: 22 }, { gx: -6, cz: 22 },
+  { gx: -7, cz: 22 },
+]);
+
+// Sub-basin 6 (River 6): West river at gz_28≈4 — near south shore
+const SPINE_RIVER6_WEST = densifyEW([
+  { gx: 2,  cz: 4 }, // bay gap-fill
+  { gx: 1,  cz: 4 },
+  { gx: 0,  cz: 4 }, // west shore
+  { gx: -1, cz: 4 }, { gx: -2, cz: 4 },
+  { gx: -3, cz: 4 }, { gx: -4, cz: 4 },
+]);
+
+// Sub-basin 8 (River 8): North river at gx_28≈13 — secondary north inlet
+const SPINE_RIVER8_NORTH = densifyNS([
+  { gz: 22, cx: 13 }, { gz: 23, cx: 13 }, // bay gap-fill near north shore
+  { gz: 24, cx: 13 },                       // exit
+  { gz: 25, cx: 13 }, { gz: 26, cx: 13 },
+  { gz: 27, cx: 12 }, { gz: 28, cx: 12 },
+]);
+
+// Sub-basin 9 (River 9): West river at gz_28≈17 — upper-west inlet
+const SPINE_RIVER9_WEST = densifyEW([
+  { gx: 2,  cz: 17 }, // bay gap-fill
+  { gx: 1,  cz: 17 },
+  { gx: 0,  cz: 17 }, // west shore
+  { gx: -1, cz: 17 }, { gx: -2, cz: 17 },
+  { gx: -3, cz: 17 },
+]);
+
+// Sub-basin 10 (River 10): South river at gx_28≈5 — western south inlet
+const SPINE_RIVER10_SOUTH = densifyNS([
+  { gz: 2,  cx: 5 }, { gz: 1, cx: 5 }, { gz: 0, cx: 5 }, // bay gap-fill
+  { gz: -1, cx: 5 },                                        // exit
+  { gz: -2, cx: 5 }, { gz: -3, cx: 5 },
+  { gz: -4, cx: 5 }, { gz: -5, cx: 5 },
+]);
+
+// Sub-basin 12 (River 12): South river at gx_28≈6 — eastern south inlet
+const SPINE_RIVER12_SOUTH = densifyNS([
+  { gz: 2,  cx: 6 }, { gz: 1, cx: 6 }, { gz: 0, cx: 6 }, // bay gap-fill
+  { gz: -1, cx: 6 },                                        // exit
+  { gz: -2, cx: 6 }, { gz: -3, cx: 7 },
+  { gz: -4, cx: 7 }, { gz: -5, cx: 7 },
+]);
+
 export const RIVER_CELLS: RiverCell[] = [
-  // halfW values in 56×48 coords (original 28×24 halfW ×2).
-  // `w` overrides per-entry widths where pools/rapids are marked on the spines.
-  ...buildRiver(SPINE_NORTH,          4, 0, 44, GRID_D - 1),
-  ...buildRiver(SPINE_NE,             2, 0, 50, GRID_D - 1),
-  ...buildRiver(SPINE_SE,             4, 0, 30, 0),
-  ...buildRiverEast(SPINE_EAST_RIVER, 4, 0, 55, 26),
+  // halfW values in 112×96 coords; spines authored in 28×24 space, densified ×4.
+  ...buildRiver(SPINE_NORTH,           4, 0, 88, GRID_D - 1),
+  ...buildRiver(SPINE_NE,              2, 0, 100, GRID_D - 1),
+  ...buildRiver(SPINE_SE,              4, 0, 60, 0),
+  ...buildRiverEast(SPINE_EAST_RIVER,  4, 0, 111, 52),
+  // Sub-basin 2: west river at gz≈56 (gz_28=14)
+  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 0, 56),
+  // Sub-basin 4: west river at gz≈80 (gz_28=20)
+  ...buildRiverWest(SPINE_RIVER4_WEST, 3, 1, 0, 80),
+  // Sub-basin 6: west river at gz≈16 (gz_28=4)
+  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 0, 16),
+  // Sub-basin 8: north river at gx≈52 (gx_28=13)
+  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 52, GRID_D - 1),
+  // Sub-basin 9: west river at gz≈68 (gz_28=17)
+  ...buildRiverWest(SPINE_RIVER9_WEST, 2, 1, 0, 68),
+  // Sub-basin 10: south river at gx≈20 (gx_28=5)
+  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 20, 0),
+  // Sub-basin 12: south river at gx≈24 (gx_28=6)
+  ...buildRiver(SPINE_RIVER12_SOUTH,   3, 1, 24, 0),
 ];
 
 function noise(x: number, z: number, t: number, scale: number): number {

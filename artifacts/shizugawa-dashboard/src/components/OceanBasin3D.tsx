@@ -17,7 +17,7 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const STEP   = 0.5;    // scene units per grid cell (56×48 grid, same physical bay size)
+const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
 const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
@@ -118,7 +118,7 @@ function deepestVisibleLayer(seabedM: number): number {
 // ── Shore-distance map ────────────────────────────────────────────────────────
 // Chebyshev distance from each active cell to the nearest non-active neighbour
 // (or grid boundary).  dist=1 → directly adjacent to land → render 1 layer.
-// Computed once at module load (28×24 grid is tiny).
+// Computed once at module load (112×96 grid).
 const SHORE_DIST: Map<string, number> = (() => {
   const map = new Map<string, number>();
   for (let gz = 0; gz < GRID_D; gz++) {
@@ -519,13 +519,15 @@ function SeabedMesh({
         for (let dx = -1; dx <= 0; dx++) {
           const nx = gx + dx, nz = gz + dz;
           if (nx >= 0 && nx < GRID_W && nz >= 0 && nz < GRID_D && BAY_MASK[nz]?.[nx]) {
-            sumY += seabedSceneY(nx, nz);
-            cnt++;
+            const sy = seabedSceneY(nx, nz);
+            if (isFinite(sy)) { sumY += sy; cnt++; }
           }
         }
       }
-      const rawY = cnt > 0 ? sumY / cnt : Y_SURFACE - DEPTH_TOTAL_H;
-      return Math.min(rawY, sliceClipY);  // clip top at the slice plane
+      const fallback = isFinite(Y_SURFACE - DEPTH_TOTAL_H) ? Y_SURFACE - DEPTH_TOTAL_H : -6.85;
+      const rawY = cnt > 0 ? sumY / cnt : fallback;
+      const clip = isFinite(sliceClipY) ? sliceClipY : Infinity;
+      return Math.min(rawY, clip);  // clip top at the slice plane
     }
 
     const positions: number[] = [];
@@ -933,7 +935,7 @@ function CoordTickLabels() {
   const latTicks: React.ReactElement[] = [];
   const depthTicks: React.ReactElement[] = [];
 
-  for (const gx of [0, 7, 14, 21, 27]) {
+  for (const gx of [0, 14, 28, 42, 54]) {
     const lon   = BAY_LON_W + (gx / (GRID_W - 1)) * (BAY_LON_E - BAY_LON_W);
     const scenX = offsetX + gx * STEP + CELL_W / 2;
     lonTicks.push(
@@ -943,7 +945,7 @@ function CoordTickLabels() {
     );
   }
 
-  for (const gz of [0, 5, 10, 15, 20, 23]) {
+  for (const gz of [0, 10, 20, 30, 40, 46]) {
     const lat   = BAY_LAT_S + (gz / (GRID_D - 1)) * (BAY_LAT_N - BAY_LAT_S);
     const scenZ = offsetZ + gz * STEP + CELL_W / 2;
     latTicks.push(
@@ -1064,42 +1066,45 @@ export default function OceanBasin3D({
       <directionalLight position={[10, 15, 10]} intensity={0.7} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
 
-      {useInstanced
-        ? <VoxelGridInstanced {...voxelProps} />
-        : <VoxelGrid         {...voxelProps} />
-      }
+      {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
+      <group scale={[1, 1, -1]}>
+        {useInstanced
+          ? <VoxelGridInstanced {...voxelProps} />
+          : <VoxelGrid         {...voxelProps} />
+        }
 
-      <SeabedMesh
-        sliceMode={dashboardState}
-        sliceLevel={sliceLevel}
-        sliceAxis={sliceAxis}
-      />
+        <SeabedMesh
+          sliceMode={dashboardState}
+          sliceLevel={sliceLevel}
+          sliceAxis={sliceAxis}
+        />
 
-      <RiverGrid
-        week={week}
-        colorScale={colorScale}
-        sliceMode={dashboardState}
-        sliceLevel={sliceLevel}
-        sliceAxis={sliceAxis}
-      />
+        <RiverGrid
+          week={week}
+          colorScale={colorScale}
+          sliceMode={dashboardState}
+          sliceLevel={sliceLevel}
+          sliceAxis={sliceAxis}
+        />
 
-      <RiverSeabedMesh
-        sliceMode={dashboardState}
-        sliceLevel={sliceLevel}
-        sliceAxis={sliceAxis}
-      />
+        <RiverSeabedMesh
+          sliceMode={dashboardState}
+          sliceLevel={sliceLevel}
+          sliceAxis={sliceAxis}
+        />
 
-      {/* Bounding box + grid: toggleable */}
-      {showAnnotations && <BoundingBox />}
-      {showAnnotations && <GridFloor />}
+        {/* Bounding box + grid: toggleable */}
+        {showAnnotations && <BoundingBox />}
+        {showAnnotations && <GridFloor />}
 
-      {/* Compass: always visible */}
-      <CompassLabels />
+        {/* Compass: always visible */}
+        <CompassLabels />
 
-      {/* Coordinate ticks (X/Y/Z values): toggleable */}
-      {showAnnotations && <CoordTickLabels />}
+        {/* Coordinate ticks (X/Y/Z values): toggleable */}
+        {showAnnotations && <CoordTickLabels />}
 
-      <SliceIndicator mode={dashboardState} level={sliceLevel} sliceAxis={sliceAxis} />
+        <SliceIndicator mode={dashboardState} level={sliceLevel} sliceAxis={sliceAxis} />
+      </group>
 
       <OrbitControls
         enablePan={true}

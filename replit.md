@@ -32,10 +32,15 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
   - State 4: Point selection — click any voxel to inspect values
   - State 5: Horizontal/vertical slice modes
   - State 6: Depth graph — concentration vs. depth profile
-  - 4 variables: Total Nitrogen, Phosphorus, Chlorophyll-a, Dissolved Oxygen
+  - 3 variables: Total Nitrogen, Total Phosphorus, Water Flow
+  - 11 rivers: 4 cardinal-direction rivers + 7 sub-basin inlets (west, north, south)
+  - 112×96 voxel grid (densified ×4 from 28×24 authored coords)
+  - 8 depth layers (0–69 m) with smooth bathymetry-driven seabed mesh
+  - Z-flip group scale for geographic orientation (gz=0 south, gz=95 north)
   - 52 weekly timesteps (simulated 1-year dataset)
   - Scientific color scales per variable
   - Playback speed control (0.5×, 1×, 2×, 4×)
+  - Horizontal / vertical slice modes + depth graph
 
 ### `artifacts/api-server` — Express API Server
 

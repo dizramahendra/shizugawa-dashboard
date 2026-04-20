@@ -106,7 +106,8 @@ export default function PlaybackPage() {
       setSliceLevel(Math.round(Math.max(0, Math.min(1, frac)) * (GRID_W - 1)));
     } else {
       const frac = (e.clientY - rect.top) / rect.height;
-      setSliceLevel(Math.round(Math.max(0, Math.min(1, frac)) * (GRID_D - 1)));
+      // After y-flip: top=north=high gz, bottom=south=low gz
+      setSliceLevel((GRID_D - 1) - Math.round(Math.max(0, Math.min(1, frac)) * (GRID_D - 1)));
     }
   }
 
@@ -120,7 +121,7 @@ export default function PlaybackPage() {
             <rect
               key={`mc-${gz}-${gx}`}
               x={gx * MINI_CELL}
-              y={gz * MINI_CELL}
+              y={(GRID_D - 1 - gz) * MINI_CELL}
               width={MINI_CELL}
               height={MINI_CELL}
               fill="#93c5d9"
@@ -433,13 +434,13 @@ export default function PlaybackPage() {
                     ) : (
                       <>
                         <line
-                          x1={0} y1={sliceLevel * MINI_CELL + MINI_CELL / 2}
-                          x2={MINI_W} y2={sliceLevel * MINI_CELL + MINI_CELL / 2}
+                          x1={0} y1={(GRID_D - 1 - sliceLevel) * MINI_CELL + MINI_CELL / 2}
+                          x2={MINI_W} y2={(GRID_D - 1 - sliceLevel) * MINI_CELL + MINI_CELL / 2}
                           stroke="#f59e0b" strokeWidth={6} opacity={0.22}
                         />
                         <line
-                          x1={0} y1={sliceLevel * MINI_CELL + MINI_CELL / 2}
-                          x2={MINI_W} y2={sliceLevel * MINI_CELL + MINI_CELL / 2}
+                          x1={0} y1={(GRID_D - 1 - sliceLevel) * MINI_CELL + MINI_CELL / 2}
+                          x2={MINI_W} y2={(GRID_D - 1 - sliceLevel) * MINI_CELL + MINI_CELL / 2}
                           stroke="#f59e0b" strokeWidth={1.5} opacity={0.95}
                         />
                       </>
