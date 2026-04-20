@@ -1073,7 +1073,7 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
 
 // ── Camera presets ────────────────────────────────────────────────────────────
 const CAMERA_PRESETS: Record<string, [number, number, number]> = {
-  top:   [0,  72,  5],
+  top:   [0,  92,  8],
   north: [0,  22, -72],
   south: [0,  22,  72],
   east:  [72, 22,   0],
@@ -1141,7 +1141,7 @@ export default function OceanBasin3D({
 
   return (
     <Canvas
-      camera={{ position: [0, 72, 6], fov: 38 }}
+      camera={{ position: [0, 92, 8], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
@@ -1193,7 +1193,7 @@ export default function OceanBasin3D({
         enableZoom={true}
         enableRotate={true}
         minDistance={15}
-        maxDistance={95}
+        maxDistance={115}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>
