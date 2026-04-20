@@ -47,40 +47,31 @@ function pointInPolygon(px: number, pz: number, poly: [number, number][]): boole
   return inside;
 }
 
-// Vertices in (gx_edge/28, gz_edge/24) normalised coords.
-// Clockwise from the narrow south entrance, tracing the outer coastline.
-//
-// Changes vs previous version:
-//   1.1  East wall tapers gradually rather than being a flat rectangle
-//   1.2  Narrow northern channel tightened: x=20–27 (was x=18–28)
-//   1.3  Bottom-left west coast pulled in: x=4 for gz=3–8 (was x=2 all the way)
-//   1.4  South floor raised to gz=2 / gz=3 (was gz=1 / gz=2)
-//   1.5  Junction between channel and main body smoothed with a bridge vertex
+// Polygon derived by tracing OCEAN_BASIN_PATH from svgPaths.ts.
+// SVG canvas = 465×586 (SVG_W × SVG_H, matching MapLibreMap constants).
+// Normalisation: nx = svgX / 465,  nz = 1 − svgY / 586  (nz=0 south, nz=1 north).
+// The outer polygon was simplified with Douglas-Peucker ε=3 px (311→73 vertices).
+// Bay occupies gx 52–99, gz 27–62 of the 112×96 grid.
 const BAY_POLYGON: [number, number][] = [
-  // South entrance — raised floor (1.4): gz=2 instead of gz=1
-  [ 6/28,  2/24], [15/28,  2/24],
-  // Step east — south floor at gz=3 (1.4, was gz=2)
-  [15/28,  3/24], [24/28,  3/24],
-  // NE coast going north — gradual taper (1.1, was a hard step)
-  [25/28,  5/24], [26/28,  8/24],
-  // East coast broad section — stepped back slightly (1.1)
-  [26/28, 11/24], [27/28, 13/24],
-  [27/28, 16/24], [26/28, 17/24],
-  // Eastern wall of northern channel — x=27 max (1.2, was x=28)
-  [27/28, 19/24], [27/28, 21/24],
-  [25/28, 24/24],
-  // North end of narrow channel — x=20 (1.2, was x=22)
-  [20/28, 24/24], [20/28, 23/24],
-  // West wall of northern channel — x=20 (1.2, was x=18)
-  [20/28, 22/24], [20/28, 18/24],
-  // Smooth junction bridge vertex (1.5)
-  [14/28, 17/24],
-  // Top of main body west coast
-  [ 2/28, 17/24],
-  // West coast split — bottom-left narrowed (1.3)
-  [ 2/28,  8/24],   // upper section stays at x=2
-  [ 4/28,  3/24],   // lower section pulled in to x=4
-  [ 6/28,  2/24],   // SW corner — close polygon
+  [0.8341, 0.6631], [0.8395, 0.6268], [0.8782, 0.6324], [0.8939, 0.6132],
+  [0.8750, 0.5878], [0.8750, 0.5493], [0.8925, 0.5364], [0.8794, 0.5062],
+  [0.8990, 0.4897], [0.8925, 0.4738], [0.8473, 0.4656], [0.8473, 0.4491],
+  [0.8609, 0.4263], [0.8821, 0.4133], [0.8821, 0.3978], [0.8451, 0.3515],
+  [0.8435, 0.3170], [0.8185, 0.3124], [0.8201, 0.3367], [0.7873, 0.3158],
+  [0.7744, 0.3175], [0.7663, 0.3342], [0.7497, 0.3141], [0.7330, 0.3128],
+  [0.6911, 0.3376], [0.6540, 0.3325], [0.6104, 0.3542], [0.5981, 0.3457],
+  [0.5905, 0.3150], [0.5792, 0.3171], [0.5602, 0.2846], [0.5516, 0.2863],
+  [0.5599, 0.3197], [0.5325, 0.3299], [0.5093, 0.3214], [0.4722, 0.3261],
+  [0.4631, 0.3461], [0.4765, 0.3730], [0.5190, 0.4182], [0.4948, 0.4498],
+  [0.4997, 0.4856], [0.4788, 0.5213], [0.5077, 0.5247], [0.5115, 0.5112],
+  [0.5131, 0.5239], [0.5357, 0.5273], [0.5685, 0.4980], [0.5916, 0.4984],
+  [0.6174, 0.5270], [0.6308, 0.5215], [0.6271, 0.5129], [0.6604, 0.5419],
+  [0.6690, 0.5385], [0.6653, 0.5556], [0.6782, 0.5620], [0.7115, 0.5492],
+  [0.7206, 0.5261], [0.7636, 0.5479], [0.7760, 0.5368], [0.7921, 0.5389],
+  [0.7932, 0.5219], [0.8007, 0.5236], [0.8024, 0.5483], [0.8169, 0.5654],
+  [0.8002, 0.5812], [0.8024, 0.5918], [0.7825, 0.5995], [0.7733, 0.6251],
+  [0.7852, 0.6332], [0.8029, 0.6217], [0.8158, 0.6273], [0.8212, 0.6580],
+  [0.8341, 0.6631],
 ];
 
 // BAY_MASK at full 56×48 resolution — every cell individually point-tested.
@@ -234,90 +225,108 @@ function densifyEW(
 // River  3 (karakuwa) → NE:     hugs right edge, slight sinusoid near boundary
 // River 13 (hachiman) → SE:     consistent left drift going south
 // River  7 (okawa)    → EAST:   gentle northward drift going east
-// Sub-basin 2         → WEST:   at gz_28≈14, mostly straight westward
-// Sub-basin 4         → WEST:   at gz_28≈20, slight northward drift
-// Sub-basin 6         → WEST:   at gz_28≈4,  near south shore
-// Sub-basin 8         → NORTH:  at gx_28≈13, secondary north inlet
-// Sub-basin 9         → WEST:   at gz_28≈17, upper-west inlet
-// Sub-basin 10        → SOUTH:  at gx_28≈5,  western south inlet
+// River assignment summary (bay occupies gx_112=52–99, gz_96=27–62):
+// Sub-basin 2/4/9  → WEST:  cz_28=12 (gz=48), gx gap-fill at 14 (gx=56)
+// Sub-basin 6      → WEST:  cz_28=8  (gz=32), gx gap-fill at 14 (gx=56)
+// Sub-basin 8      → NORTH: gz_28=14 (gz=56), cx_28=23 (gx=92), extends north
+// Sub-basin 10     → SOUTH: gz_28=8  (gz=32), cx_28=16 (gx=64), extends south
 
-// Sub-basin 2 (Shizugawa): West river — gz_28=11 (gz=44), lower on west coast (2.1)
-// Spreads rivers: sub2 at gz=44, sub4 at gz=56, sub9 at gz=68.
+// ── River spines — positions derived from SVG path start coords ──────────────
+// SVG canvas 465×586.  Mouth formula: gx_28 = svgX/465*28, gz_28 = (1-svgY/586)*24.
+// Bay west wall sits at gx_28≈13–14 across gz_28=8–13.
+// Bay top is at gz_28≈15.5, bay bottom at gz_28≈6.8.
+//
+// River mouths (gx_28 / gz_28 → gx_112 / gz_96):
+//   sub2  R2 svgXY=224,280 → gx=13.5 gz=12.5 (112: 54, 50)
+//   sub4  R4 svgXY=234,280 → gx=14.1 gz=12.5 (112: 56, 50)
+//   sub6  R6 svgXY=216,382 → gx=13.0 gz= 8.4 (112: 52, 33)
+//   sub8  R8 svgXY=359,217 → gx=21.6 gz=15.1 (112: 87, 61)
+//   sub9  R9 svgXY=250,276 → gx=15.1 gz=12.7 (112: 60, 51)
+//   sub10 R10 svgXY=256,420 → gx=15.4 gz= 6.8 (112: 62, 27)
+
+// Sub-basin 2 (Shizugawa): west river, cz_28=12 (gz=48), gx gap-fill at 14 (gx=56).
+// At gz=48 the bay west wall is gx=55 so gx=56 is the first inside cell.
+// Extends west-southwest upstream.
 const SPINE_RIVER2_WEST = densifyEW([
-  { gx:  2, cz: 11 }, // bay gap-fill (inside bay near west shore)
-  { gx:  1, cz: 11 }, // approaching west shore
-  { gx:  0, cz: 11 }, // west shore crossing
-  { gx: -1, cz: 11 }, { gx: -2, cz: 11 },
-  { gx: -3, cz: 10 }, { gx: -4, cz: 10 },
-  { gx: -5, cz: 10 }, { gx: -6, cz:  9 },
-  { gx: -7, cz:  9 }, { gx: -8, cz:  8 },
+  { gx: 14, cz: 12 }, // gap-fill just inside bay (gx=56, gz=48)
+  { gx: 12, cz: 12 }, { gx: 10, cz: 12 },
+  { gx:  8, cz: 11 }, { gx:  6, cz: 11 },
+  { gx:  4, cz: 10 }, { gx:  2, cz: 10 },
+  { gx:  0, cz:  9 }, { gx: -2, cz:  9 },
+  { gx: -4, cz:  8 }, { gx: -6, cz:  8 },
+  { gx: -8, cz:  7 },
 ]);
 
-// Sub-basin 4 (Togura): West river — gz_28=14 (gz=56), mid west coast (2.1, was gz_28=15)
+// Sub-basin 4 (Togura): west river, cz_28=12 (gz=48), same bay entry as sub2.
+// Diverges northwest upstream — mirror of sub2 but curves toward north.
 const SPINE_RIVER4_WEST = densifyEW([
-  { gx:  2, cz: 14 }, // bay gap-fill at gz=56
-  { gx:  1, cz: 14 }, // approaching west shore
-  { gx:  0, cz: 14 }, // west shore crossing
-  { gx: -1, cz: 14 }, { gx: -2, cz: 15 },
-  { gx: -3, cz: 15 }, { gx: -4, cz: 16 },
-  { gx: -5, cz: 16 }, { gx: -6, cz: 16 },
+  { gx: 14, cz: 12 }, // gap-fill (gx=56, gz=48)
+  { gx: 12, cz: 13 }, { gx: 10, cz: 14 },
+  { gx:  8, cz: 15 }, { gx:  6, cz: 16 },
+  { gx:  4, cz: 16 }, { gx:  2, cz: 16 },
+  { gx:  0, cz: 16 }, { gx: -2, cz: 16 },
+  { gx: -4, cz: 15 }, { gx: -6, cz: 14 },
 ]);
 
-// Sub-basin 6 (Iriya): West river — gz_28=6 (gz=24), higher on west coast (2.5, was gz_28=4)
-// Gap-fill starts at gx=5 since new west wall is at x=4 for gz=3–8 (1.3).
+// Sub-basin 6 (Iriya): west river, cz_28=8 (gz=32), gx gap-fill at 14 (gx=56).
+// At gz=32 the bay west wall is gx=52, so gx=56 is inside. Extends southwest.
 const SPINE_RIVER6_WEST = densifyEW([
-  { gx:  5, cz: 6 }, // bay gap-fill (inside new polygon: x≥4 at gz_28=6)
-  { gx:  4, cz: 6 }, { gx:  3, cz: 6 },
-  { gx:  2, cz: 6 }, { gx:  1, cz: 6 },
-  { gx:  0, cz: 6 }, { gx: -1, cz: 6 },
-  { gx: -2, cz: 6 }, { gx: -3, cz: 5 },
-  { gx: -4, cz: 5 }, { gx: -5, cz: 5 },
+  { gx: 14, cz: 8 }, // gap-fill (gx=56, gz=32)
+  { gx: 12, cz: 8 }, { gx: 10, cz: 7 },
+  { gx:  8, cz: 7 }, { gx:  6, cz: 7 },
+  { gx:  4, cz: 6 }, { gx:  2, cz: 6 },
+  { gx:  0, cz: 5 }, { gx: -2, cz: 5 },
+  { gx: -4, cz: 4 }, { gx: -6, cz: 4 },
 ]);
 
-// Sub-basin 8 (Karakuwa): North river — gap-fill at cx_28=19 (cx=76), centred in channel (2.3)
-// Runs more straight north (less westward curve than before).
+// Sub-basin 8 (Karakuwa): north river, gap-fill at gz_28=14 (gz=56) inside north arm,
+// cx_28=23 (gx=92). Bay north arm gz=56–62 has gx=87–99; gx=92 is well inside.
+// Extends north above the bay.
 const SPINE_RIVER8_NORTH = densifyNS([
-  { gz: 18, cx: 19 }, { gz: 19, cx: 19 }, // bay gap-fill inside narrow channel (2.3)
-  { gz: 20, cx: 19 }, { gz: 21, cx: 18 }, // transition northward out of bay
-  { gz: 22, cx: 17 }, { gz: 23, cx: 16 },
-  { gz: 24, cx: 15 }, { gz: 25, cx: 15 },
-  { gz: 26, cx: 14 }, { gz: 27, cx: 14 },
+  { gz: 14, cx: 23 }, // gap-fill (gz=56, gx=92) — inside north arm
+  { gz: 15, cx: 23 }, { gz: 16, cx: 23 },
+  { gz: 17, cx: 22 }, { gz: 18, cx: 22 },
+  { gz: 19, cx: 22 }, { gz: 20, cx: 21 },
+  { gz: 21, cx: 21 }, { gz: 22, cx: 20 },
 ]);
 
-// Sub-basin 9 (Oura): West river — gz_28=17 (gz=68), upper west coast (2.1, 2.2)
-// Straighter spine — less northward drift, more due-west.
+// Sub-basin 9 (Oura): west river, cz_28=12 (gz=48), gx gap-fill at 14 (gx=56).
+// Same bay entry as sub2/4. Diverges more northward upstream.
 const SPINE_RIVER9_WEST = densifyEW([
-  { gx:  2, cz: 17 }, // bay gap-fill at gz=68 (2.2, was gz=64)
-  { gx:  1, cz: 17 }, // approaching west shore
-  { gx:  0, cz: 17 }, // west shore crossing
-  { gx: -1, cz: 17 }, { gx: -2, cz: 18 },
-  { gx: -3, cz: 18 }, { gx: -4, cz: 18 },
-  { gx: -5, cz: 19 }, { gx: -6, cz: 19 },
-  { gx: -7, cz: 19 }, { gx: -8, cz: 20 },
+  { gx: 14, cz: 12 }, // gap-fill (gx=56, gz=48)
+  { gx: 12, cz: 13 }, { gx: 10, cz: 14 },
+  { gx:  8, cz: 16 }, { gx:  6, cz: 18 },
+  { gx:  4, cz: 19 }, { gx:  2, cz: 20 },
+  { gx:  0, cz: 20 }, { gx: -2, cz: 20 },
+  { gx: -4, cz: 20 }, { gx: -6, cz: 19 },
 ]);
 
-// Sub-basin 10 (Hachiman): South river — gx_28=12 (gx=48), centred on south shore (2.4, was gx=5/20)
+// Sub-basin 10 (Hachiman): south river, gap-fill at gz_28=8 (gz=32), cx_28=16 (gx=64).
+// At gz=32 the bay spans gx=52–94, so gx=64 is well inside. Extends south below bay.
 const SPINE_RIVER10_SOUTH = densifyNS([
-  { gz: 2,  cx: 12 }, { gz: 1, cx: 12 }, { gz: 0, cx: 12 }, // bay gap-fill
-  { gz: -1, cx: 12 },                                          // exit
-  { gz: -2, cx: 12 }, { gz: -3, cx: 12 },
-  { gz: -4, cx: 12 }, { gz: -5, cx: 12 },
+  { gz:  8, cx: 16 }, // gap-fill (gz=32, gx=64) — inside bay south
+  { gz:  7, cx: 16 }, { gz:  6, cx: 16 },
+  { gz:  5, cx: 16 }, { gz:  4, cx: 16 },
+  { gz:  3, cx: 16 }, { gz:  2, cx: 16 },
+  { gz:  1, cx: 16 }, { gz:  0, cx: 16 },
+  { gz: -1, cx: 16 }, { gz: -2, cx: 16 },
 ]);
 
 export const RIVER_CELLS: RiverCell[] = [
   // 6 active sub-basin rivers; spines authored in 28×24 space, densified ×4.
-  // Sub-basin 2 (Shizugawa): west river at gz=44 (gz_28=11) — lower west coast
-  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 8, 44,        "sub2"),
-  // Sub-basin 4 (Togura):  west river at gz=56 (gz_28=14) — mid west coast
-  ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 8, 56,        "sub4"),
-  // Sub-basin 9 (Oura):  west river at gz=68 (gz_28=17) — upper west coast
-  ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 8, 68,        "sub9"),
-  // Sub-basin 6 (Iriya): west river at gz=24 (gz_28=6) — lower-mid west coast
-  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 16, 24,       "sub6"),
-  // Sub-basin 8 (Karakuwa): north river, gap-fill at cx=76 (cx_28=19) inside channel
-  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 76, GRID_D - 1, "sub8"),
-  // Sub-basin 10 (Hachiman): south river at gx=48 (gx_28=12) — centre-south shore
-  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 48, 0,         "sub10"),
+  // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
+  // Sub-basin 2 (Shizugawa): west river; mouth sampling at gx=65 gz=45 (inside bay)
+  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 65, 45,  "sub2"),
+  // Sub-basin 4 (Togura):  west river; mouth at gx=65 gz=45
+  ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 65, 45,  "sub4"),
+  // Sub-basin 9 (Oura):  west river; mouth at gx=65 gz=47
+  ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 65, 47,  "sub9"),
+  // Sub-basin 6 (Iriya): west river; mouth at gx=65 gz=33
+  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 65, 33,  "sub6"),
+  // Sub-basin 8 (Karakuwa): north river; mouth at gx=92 gz=58 (inside north arm)
+  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 92, 58,  "sub8"),
+  // Sub-basin 10 (Hachiman): south river; mouth at gx=64 gz=35 (inside bay)
+  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 64, 35,  "sub10"),
 ];
 
 // River metadata for hover labels in the 3D view.
