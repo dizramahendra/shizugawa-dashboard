@@ -1073,18 +1073,23 @@ const CAMERA_PRESETS: Record<string, [number, number, number]> = {
   west:  [-72, 22,  0],
 };
 
-/** Moves camera + OrbitControls target whenever `preset` changes. Must be inside <Canvas>. */
+/** Moves camera + OrbitControls target whenever `preset` changes. Must be inside <Canvas>.
+ *  Uses useFrame instead of useEffect so it waits until OrbitControls has mounted (ref is set). */
 function CameraController({ preset, orbitRef }: { preset: string; orbitRef: { current: any } }) {
   const { camera } = useThree();
-  useEffect(() => {
+  const appliedRef = useRef<string>("");
+
+  useFrame(() => {
+    if (appliedRef.current === preset) return;   // already applied — skip every frame
     const pos = CAMERA_PRESETS[preset];
     if (!pos) return;
+    if (!orbitRef.current) return;               // OrbitControls not mounted yet — try next frame
+    appliedRef.current = preset;
     camera.position.set(pos[0], pos[1], pos[2]);
-    if (orbitRef.current) {
-      orbitRef.current.target.set(0, 0, 0);
-      orbitRef.current.update();
-    }
-  }, [preset]);
+    orbitRef.current.target.set(0, 0, 0);
+    orbitRef.current.update();
+  });
+
   return null;
 }
 
