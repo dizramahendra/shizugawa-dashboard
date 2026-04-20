@@ -73,11 +73,12 @@ export default function PlaybackPage() {
   const [week, setWeek] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const [selectedVariable, setSelectedVariable] = useState("nitrogen");
+  const [selectedVariable, setSelectedVariable] = useState(searchParams.get("variable") ?? "nitrogen");
   const [sliceLevel, setSliceLevel] = useState(3);
   const [sliceAxis, setSliceAxis] = useState<"x" | "z">("x");
-  const [sliceTool,   setSliceTool]   = useState<SliceTool>("none");
-  const [inspectTool, setInspectTool] = useState<InspectTool>("none");
+  const _initTool = searchParams.get("tool") ?? "none";
+  const [sliceTool,   setSliceTool]   = useState<SliceTool>(  (["none","slice-h","slice-v"].includes(_initTool)    ? _initTool : "none") as SliceTool);
+  const [inspectTool, setInspectTool] = useState<InspectTool>((["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool);
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
   const [showExchange, setShowExchange] = useState(true);

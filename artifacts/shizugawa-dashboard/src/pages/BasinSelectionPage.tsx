@@ -179,6 +179,7 @@ export default function BasinSelectionPage() {
   const _initParams = new URLSearchParams(location.search);
   const _initRiver    = _initParams.get("river");
   const _initCorridor = _initParams.get("corridor");
+  const _initVariable = _initParams.get("variable");
 
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
@@ -191,7 +192,7 @@ export default function BasinSelectionPage() {
   const [week, setWeek] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [selectedVariable, setSelectedVariable] = useState("nitrogen");
+  const [selectedVariable, setSelectedVariable] = useState(_initVariable ?? "nitrogen");
   const [startWeek, setStartWeek] = useState(0);
   const [endWeek, setEndWeek] = useState(TOTAL_WEEKS - 1);
 

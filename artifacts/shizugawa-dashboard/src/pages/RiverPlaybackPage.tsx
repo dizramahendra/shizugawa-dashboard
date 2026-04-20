@@ -124,7 +124,7 @@ export default function RiverPlaybackPage() {
   const [week, setWeek] = useState(weekRange[0]);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const [selectedVariable, setSelectedVariable] = useState("nitrogen");
+  const [selectedVariable, setSelectedVariable] = useState(searchParams.get("variable") ?? "nitrogen");
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
