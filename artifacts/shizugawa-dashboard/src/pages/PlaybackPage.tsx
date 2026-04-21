@@ -716,54 +716,60 @@ export default function PlaybackPage() {
                   {sliceTool === "slice-h" ? "Horizontal Slice" : "Vertical Slice"}
                 </div>
 
-                {/* ── Vertical slice: step-by-step ── */}
+                {/* ── Vertical slice controls ── */}
                 {sliceTool === "slice-v" && (
                   <>
-                    {/* Step 1: cut type */}
+                    {/* Step 1: all 6 cut buttons together */}
                     <div>
                       <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                        Step 1 · Cut type
+                        Step 1 · Cut direction
                       </div>
-                      <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
-                        {([
-                          { id: "one-side"   as const, label: "One side",   sub: "half-volume" },
-                          { id: "both-sides" as const, label: "Both sides", sub: "thin slab"   },
-                        ]).map(({ id, label, sub }) => (
-                          <button
-                            key={id}
-                            onClick={() => setSliceCutType(id)}
-                            className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
-                              sliceCutType === id
-                                ? "bg-white text-foreground shadow-sm font-semibold"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            <span>{label}</span>
-                            <span className="text-[8px] opacity-60">{sub}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
 
-                    {/* Step 2: direction or axis */}
-                    <div>
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                        Step 2 · {sliceCutType === "one-side" ? "View from" : "Cut axis"}
+                      {/* ── Both-sides (symmetric) ── 2 axis buttons */}
+                      <div className="text-[8px] text-muted-foreground/70 mb-1 tracking-wide">Both sides · thin slab</div>
+                      <div className="flex bg-muted rounded-md p-0.5 gap-0.5 mb-2">
+                        {([
+                          { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S", dir: "north" as const },
+                          { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E", dir: "east"  as const },
+                        ]).map(({ axis, label, sub, dir: defaultDir }) => {
+                          const active = sliceCutType === "both-sides" && (sliceDirIsX ? axis === "x" : axis === "z");
+                          return (
+                            <button
+                              key={axis}
+                              onClick={() => {
+                                setSliceCutType("both-sides");
+                                setSliceDir(defaultDir);
+                                setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2));
+                              }}
+                              className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
+                                active
+                                  ? "bg-white text-foreground shadow-sm font-semibold"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              <span>{label}</span>
+                              <span className="text-[8px] opacity-60">{sub}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-                      {sliceCutType === "one-side" ? (
-                        /* 2×2 compass grid — one-side mode */
-                        <div className="grid grid-cols-2 gap-0.5">
-                          {([
-                            { dir: "north" as const, label: "↑ From North", sub: "looking south" },
-                            { dir: "south" as const, label: "↓ From South", sub: "looking north" },
-                            { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
-                            { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
-                          ]).map(({ dir, label, sub }) => (
+
+                      {/* ── One-side (directional) ── 2×2 compass grid */}
+                      <div className="text-[8px] text-muted-foreground/70 mb-1 tracking-wide">One side · half-volume</div>
+                      <div className="grid grid-cols-2 gap-0.5">
+                        {([
+                          { dir: "north" as const, label: "↑ From North", sub: "looking south" },
+                          { dir: "south" as const, label: "↓ From South", sub: "looking north" },
+                          { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
+                          { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
+                        ]).map(({ dir, label, sub }) => {
+                          const active = sliceCutType === "one-side" && sliceDir === dir;
+                          return (
                             <button
                               key={dir}
-                              onClick={() => handleDirChange(dir)}
+                              onClick={() => { setSliceCutType("one-side"); handleDirChange(dir); }}
                               className={`py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 border ${
-                                sliceDir === dir
+                                active
                                   ? "bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm"
                                   : "bg-muted border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
                               }`}
@@ -771,36 +777,12 @@ export default function PlaybackPage() {
                               <span>{label}</span>
                               <span className="text-[8px] opacity-60">{sub}</span>
                             </button>
-                          ))}
-                        </div>
-                      ) : (
-                        /* 2-button N-S / E-W selector — both-sides mode */
-                        <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
-                          {([
-                            { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S", dir: "north" as const },
-                            { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E", dir: "east"  as const },
-                          ]).map(({ axis, label, sub, dir: defaultDir }) => {
-                            const active = sliceDirIsX ? axis === "x" : axis === "z";
-                            return (
-                              <button
-                                key={axis}
-                                onClick={() => { setSliceDir(defaultDir); setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2)); }}
-                                className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
-                                  active
-                                    ? "bg-white text-foreground shadow-sm font-semibold"
-                                    : "text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                <span>{label}</span>
-                                <span className="text-[8px] opacity-60">{sub}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    {/* Cut plane visibility */}
+                    {/* Cut plane toggle */}
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setShowCutPlane(v => !v)}
@@ -815,7 +797,7 @@ export default function PlaybackPage() {
                     <div className="bg-amber-50 border border-amber-100 rounded-md px-2.5 py-2 flex items-start gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5 flex-shrink-0" />
                       <div className="text-[10px] text-amber-700 leading-snug">
-                        <span className="font-semibold">Step 3 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
+                        <span className="font-semibold">Step 2 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
                       </div>
                     </div>
                   </>
@@ -824,7 +806,7 @@ export default function PlaybackPage() {
                 {/* Step 3 (both modes): slider */}
                 <div>
                   <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                    {sliceTool === "slice-v" ? "Step 4 · Fine-tune" : "Depth layer"}
+                    {sliceTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
                   </div>
                   <input
                     type="range"
