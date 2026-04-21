@@ -1051,6 +1051,9 @@ interface SliceIndicatorProps {
 }
 
 function SliceIndicator({ mode, level, sliceDir }: SliceIndicatorProps) {
+  // Thickness of the bold frame border (world units)
+  const FRAME = 0.32;
+
   if (mode === "slice-h") {
     const y = Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2;
     return (
@@ -1060,27 +1063,79 @@ function SliceIndicator({ mode, level, sliceDir }: SliceIndicatorProps) {
       </mesh>
     );
   }
+
   if (mode === "slice-v" && sliceDirAxis(sliceDir) === "x") {
     const x = offsetX + level * STEP + STEP / 2;
-    // Outline only — invisible fill so voxel colours show through unobstructed
+    const pw = GRID_D * STEP;   // plane width  (spans north–south after rotation)
+    const ph = BOX_H;           // plane height (spans bottom–top)
     return (
-      <mesh position={[x, BOX_CY, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[GRID_D * STEP, BOX_H]} />
-        <meshStandardMaterial transparent opacity={0} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
-        <Edges color="#f59e0b" threshold={1} />
-      </mesh>
+      <group position={[x, BOX_CY, 0]} rotation={[0, Math.PI / 2, 0]}>
+        {/* Semi-transparent amber fill — shows the cut face */}
+        <mesh>
+          <planeGeometry args={[pw, ph]} />
+          <meshStandardMaterial color="#f59e0b" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        {/* Bold perimeter frame — 4 solid box bars */}
+        {/* Top */}
+        <mesh position={[0, ph / 2, 0]}>
+          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+        {/* Bottom */}
+        <mesh position={[0, -ph / 2, 0]}>
+          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+        {/* Left */}
+        <mesh position={[-pw / 2, 0, 0]}>
+          <boxGeometry args={[FRAME, ph, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+        {/* Right */}
+        <mesh position={[pw / 2, 0, 0]}>
+          <boxGeometry args={[FRAME, ph, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+      </group>
     );
   }
+
   if (mode === "slice-v" && sliceDirAxis(sliceDir) === "z") {
     const z = offsetZ + level * STEP + STEP / 2;
+    const pw = GRID_W * STEP;   // plane width  (spans west–east)
+    const ph = BOX_H;           // plane height (spans bottom–top)
     return (
-      <mesh position={[0, BOX_CY, z]}>
-        <planeGeometry args={[GRID_W * STEP, BOX_H]} />
-        <meshStandardMaterial transparent opacity={0} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
-        <Edges color="#f59e0b" threshold={1} />
-      </mesh>
+      <group position={[0, BOX_CY, z]}>
+        {/* Semi-transparent amber fill */}
+        <mesh>
+          <planeGeometry args={[pw, ph]} />
+          <meshStandardMaterial color="#f59e0b" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        {/* Bold perimeter frame */}
+        {/* Top */}
+        <mesh position={[0, ph / 2, 0]}>
+          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+        {/* Bottom */}
+        <mesh position={[0, -ph / 2, 0]}>
+          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+        {/* Left */}
+        <mesh position={[-pw / 2, 0, 0]}>
+          <boxGeometry args={[FRAME, ph, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+        {/* Right */}
+        <mesh position={[pw / 2, 0, 0]}>
+          <boxGeometry args={[FRAME, ph, FRAME]} />
+          <meshStandardMaterial color="#f59e0b" />
+        </mesh>
+      </group>
     );
   }
+
   return null;
 }
 
