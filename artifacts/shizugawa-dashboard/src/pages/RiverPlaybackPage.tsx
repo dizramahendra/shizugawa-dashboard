@@ -470,9 +470,13 @@ export default function RiverPlaybackPage() {
 
             {/* 3b. River/Corridor Mean — spatial average across all reach cells */}
             <div className="px-4 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="panel-section-title">{composite ? "Corridor Mean" : "River Mean"}</span>
-                <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+              <div className="mb-2">
+                <div className="panel-section-title">{composite ? "Corridor Mean" : "River Mean"}</div>
+                <div className="text-[9px] text-muted-foreground mt-0.5">
+                  {composite
+                    ? `Spatial mean · ${composite.segments.map(s => s.name).join(" + ")}`
+                    : "Spatial mean · all reaches in river"}
+                </div>
               </div>
               <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
                 <div>
@@ -480,11 +484,6 @@ export default function RiverPlaybackPage() {
                   <div className="text-xl font-mono font-bold text-blue-600 leading-none">
                     {reachMean ?? "—"}
                     <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">
-                    {composite
-                      ? `Spatial mean · ${composite.segments.map(s => s.name).join(" + ")}`
-                      : "Spatial mean · all reaches in river"}
                   </div>
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">

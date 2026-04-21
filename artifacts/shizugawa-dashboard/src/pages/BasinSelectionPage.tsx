@@ -512,9 +512,9 @@ export default function BasinSelectionPage() {
                 </div>
 
                 {/* Per-segment values */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className="panel-section-title">Sub-basin Values</span>
-                  <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+                <div className="mb-2">
+                  <div className="panel-section-title">Sub-basin Values</div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">Per river segment · current week</div>
                 </div>
                 {(() => {
                   const UPPER_PALETTES = [
@@ -642,9 +642,9 @@ export default function BasinSelectionPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between mb-2">
-                  <span className="panel-section-title">River Mean</span>
-                  <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+                <div className="mb-2">
+                  <div className="panel-section-title">River Mean</div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">Spatial mean · all reaches in river</div>
                 </div>
                 <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
                   <div>
@@ -653,7 +653,6 @@ export default function BasinSelectionPage() {
                       {reachMean ?? "—"}
                       <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reaches in river</div>
                   </div>
                   <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
                     <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>

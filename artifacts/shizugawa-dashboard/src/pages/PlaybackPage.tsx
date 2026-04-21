@@ -565,9 +565,9 @@ export default function PlaybackPage() {
 
             {/* Basin Mean */}
             <div className="px-4 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="panel-section-title">Basin Mean</span>
-                <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+              <div className="mb-2">
+                <div className="panel-section-title">Basin Mean</div>
+                <div className="text-[9px] text-muted-foreground mt-0.5">Depth-integrated · all water columns</div>
               </div>
               <div className="rounded-md border border-primary/20 bg-primary/5 p-3 flex items-center justify-between gap-3">
                 <div>
@@ -576,7 +576,6 @@ export default function PlaybackPage() {
                     {basinMean ?? "—"}
                     <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Depth-integrated · all water columns</div>
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-primary/30 flex-shrink-0">
                   <ellipse cx="12" cy="12" rx="10" ry="4" stroke="currentColor" strokeWidth="1.5"/>
