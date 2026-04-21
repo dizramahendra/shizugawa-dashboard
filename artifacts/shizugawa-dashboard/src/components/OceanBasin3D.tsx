@@ -566,11 +566,6 @@ function SeabedMesh({
         const y01 = cornerY(gx,     gz + 1);
         const y11 = cornerY(gx + 1, gz + 1);
 
-        // Per-cell soil bottom: at most SOIL_VIS_DEPTH below this cell's seabed top.
-        // Clamped at BOX_BOT so deep-ocean cells still touch the box floor.
-        const cellSoilTop = seabedSceneY(gx, gz);
-        const cellBot = Math.max(cellSoilTop - SOIL_VIS_DEPTH, BOX_BOT);
-
         // ── Top face (terrain surface, faces upward) ──────────────────────────
         const t00 = addVert(x0, y00, z0);
         const t10 = addVert(x1, y10, z0);
@@ -578,37 +573,37 @@ function SeabedMesh({
         const t11 = addVert(x1, y11, z1);
         indices.push(t00, t11, t10,  t00, t01, t11);
 
-        // ── Bottom face (flat at cellBot, faces downward) ─────────────────────
-        const b00 = addVert(x0, cellBot, z0);
-        const b10 = addVert(x1, cellBot, z0);
-        const b01 = addVert(x0, cellBot, z1);
-        const b11 = addVert(x1, cellBot, z1);
+        // ── Bottom face (flat at BOX_BOT, faces downward) ─────────────────────
+        const b00 = addVert(x0, BOX_BOT, z0);
+        const b10 = addVert(x1, BOX_BOT, z0);
+        const b01 = addVert(x0, BOX_BOT, z1);
+        const b11 = addVert(x1, BOX_BOT, z1);
         indices.push(b00, b10, b11,  b00, b11, b01);
 
         // ── Side walls — only on boundaries (neighbour not renderable) ────────
 
         // West face (-X): x=x0, z0→z1
         if (!shouldRender(gx - 1, gz)) {
-          const a = addVert(x0, y00, z0); const b = addVert(x0, cellBot, z0);
-          const c = addVert(x0, cellBot, z1); const d = addVert(x0, y01, z1);
+          const a = addVert(x0, y00, z0); const b = addVert(x0, BOX_BOT, z0);
+          const c = addVert(x0, BOX_BOT, z1); const d = addVert(x0, y01, z1);
           indices.push(a, b, c,  a, c, d);
         }
         // East face (+X): x=x1, z0→z1
         if (!shouldRender(gx + 1, gz)) {
-          const a = addVert(x1, y10, z0); const b = addVert(x1, cellBot, z0);
-          const c = addVert(x1, cellBot, z1); const d = addVert(x1, y11, z1);
+          const a = addVert(x1, y10, z0); const b = addVert(x1, BOX_BOT, z0);
+          const c = addVert(x1, BOX_BOT, z1); const d = addVert(x1, y11, z1);
           indices.push(a, c, b,  a, d, c);
         }
         // North face (-Z): z=z0, x0→x1
         if (!shouldRender(gx, gz - 1)) {
-          const a = addVert(x0, y00, z0); const b = addVert(x0, cellBot, z0);
-          const c = addVert(x1, cellBot, z0); const d = addVert(x1, y10, z0);
+          const a = addVert(x0, y00, z0); const b = addVert(x0, BOX_BOT, z0);
+          const c = addVert(x1, BOX_BOT, z0); const d = addVert(x1, y10, z0);
           indices.push(a, c, b,  a, d, c);
         }
         // South face (+Z): z=z1, x0→x1
         if (!shouldRender(gx, gz + 1)) {
-          const a = addVert(x0, y01, z1); const b = addVert(x0, cellBot, z1);
-          const c = addVert(x1, cellBot, z1); const d = addVert(x1, y11, z1);
+          const a = addVert(x0, y01, z1); const b = addVert(x0, BOX_BOT, z1);
+          const c = addVert(x1, BOX_BOT, z1); const d = addVert(x1, y11, z1);
           indices.push(a, b, c,  a, c, d);
         }
       }
