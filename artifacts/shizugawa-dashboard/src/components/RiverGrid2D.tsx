@@ -377,10 +377,15 @@ export default function RiverGrid2D({
                   >
                     {inCh && (
                       <div
-                        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5
+                        className="absolute px-1.5 py-0.5
                                    bg-foreground/85 text-white text-[9px] font-mono rounded whitespace-nowrap
                                    opacity-0 group-hover:opacity-100 pointer-events-none z-30 transition-opacity"
-                        style={{ transform: `translate(-50%, 0) scale(${1 / xform.scale})`, transformOrigin: "bottom center" }}
+                        style={{
+                          bottom: "100%",
+                          left: "100%",
+                          transform: `scale(${1 / xform.scale})`,
+                          transformOrigin: "bottom left",
+                        }}
                       >
                         {conc} {variable.unit}
                       </div>

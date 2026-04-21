@@ -254,10 +254,8 @@ function VoxelGrid({
       {hovered && (
         <Html
           position={[hovered.px, hovered.py + 0.15, hovered.pz]}
-          center
-          distanceFactor={12}
           zIndexRange={[100, 100]}
-          style={{ pointerEvents: "none" }}
+          style={{ pointerEvents: "none", transform: "translate(10px, calc(-100% - 6px))" }}
         >
           <div style={{
             background: "rgba(255,255,255,0.93)",
@@ -446,10 +444,8 @@ function VoxelGridInstanced({
       {hovered && (
         <Html
           position={[hovered.px, hovered.py + 0.15, hovered.pz]}
-          center
-          distanceFactor={12}
           zIndexRange={[100, 100]}
-          style={{ pointerEvents: "none" }}
+          style={{ pointerEvents: "none", transform: "translate(10px, calc(-100% - 6px))" }}
         >
           <div style={{
             background: "rgba(255,255,255,0.93)",
@@ -861,7 +857,11 @@ function RiverGrid({
     <>
       {elements}
       {meta && (
-        <Html position={hoverPos} center zIndexRange={[200, 0]}>
+        <Html
+          position={hoverPos}
+          zIndexRange={[200, 0]}
+          style={{ transform: "translate(10px, calc(-100% - 6px))" }}
+        >
           <div style={{
             background: "rgba(15,23,42,0.88)",
             border: "1px solid rgba(148,163,184,0.35)",
