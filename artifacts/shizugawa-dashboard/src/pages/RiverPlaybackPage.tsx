@@ -468,9 +468,9 @@ export default function RiverPlaybackPage() {
               </div>
             </div>
 
-            {/* 3b. Reach Mean — spatial average across all reach cells */}
+            {/* 3b. River/Corridor Mean — spatial average across all reach cells */}
             <div className="px-4 py-4">
-              <div className="panel-section-title mb-2">Reach Mean</div>
+              <div className="panel-section-title mb-2">{composite ? "Corridor Mean" : "River Mean"}</div>
               {composite && (
                 <div className="text-[9px] text-muted-foreground mb-1.5">
                   Corridor average · {composite.segments.map(s => s.name).join(" + ")}
@@ -484,7 +484,7 @@ export default function RiverPlaybackPage() {
                     <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1">
-                    {composite ? "Spatial mean · all corridor reaches" : "Spatial mean · all reach positions"}
+                    {composite ? "Spatial mean · all rivers in corridor" : "Spatial mean · all reaches in river"}
                   </div>
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
@@ -498,7 +498,7 @@ export default function RiverPlaybackPage() {
             <div className="px-4 py-4">
               <div className="panel-section-title mb-2">Annual Trend</div>
               <div className="text-[9px] text-muted-foreground mb-2 font-mono">
-                Reach mean · {variable.label} ({variable.unit}) · {year}
+                {composite ? "Corridor mean" : "River mean"} · {variable.label} ({variable.unit}) · {year}
               </div>
               <ReachMeanChart
                 series={allWeekMeans}
