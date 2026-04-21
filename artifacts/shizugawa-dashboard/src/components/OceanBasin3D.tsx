@@ -1045,7 +1045,7 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
     return (
       <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[GRID_W * STEP, GRID_D * STEP]} />
-        <meshStandardMaterial color="#4a90d9" opacity={0.08} transparent side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#4a90d9" opacity={0.08} transparent depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
     );
   }
