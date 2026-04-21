@@ -69,7 +69,7 @@ const COLOR_SCALES: Record<string, string[]> = {
 const PHYS: Record<string, { min: number; max: number; unit: string; dec: number }> = {
   nitrogen:   { min: 0.2,  max: 3.0,  unit: "mg/L", dec: 2 },
   phosphorus: { min: 10,   max: 130,  unit: "μg/L", dec: 1 },
-  flow:       { min: 0,    max: 80,   unit: "cm/s",  dec: 1 },
+  flow:       { min: 0,    max: 750,  unit: "t/ha",  dec: 0 },
 };
 
 function toPhysical(val: number, scale: string): string {

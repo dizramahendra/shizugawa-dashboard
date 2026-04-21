@@ -17,8 +17,8 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   },
   flow: {
     stops: ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
-    low: "0 cm/s",
-    high: "80 cm/s",
+    low: "0 t/ha",
+    high: "750 t/ha",
   },
   all: {
     stops: ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
@@ -27,11 +27,22 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   },
 };
 
+// Classified break-point legend for flow (6 classes per brief)
+const FLOW_BREAKS: { range: string; color: string }[] = [
+  { range: "0 – 25",     color: "#0f0527" },
+  { range: "25 – 50",    color: "#3a0f7a" },
+  { range: "50 – 75",    color: "#7c3ad8" },
+  { range: "75 – 100",   color: "#9d61e8" },
+  { range: "100 – 125",  color: "#d4b6f7" },
+  { range: "125 – 750",  color: "#f7f0fe" },
+];
+
 const DEPTH_LABELS = ["0–5m", "5–15m", "15–30m", "30–50m", ">50m"];
 
 export default function ColorLegend({ variableId, variableLabel, unit }: ColorLegendProps) {
   const scale = SCALES[variableId] ?? SCALES.nitrogen;
   const gradient = `linear-gradient(to right, ${scale.stops.join(", ")})`;
+  const isFlow = variableId === "flow";
 
   return (
     <div className="space-y-3">
@@ -40,18 +51,33 @@ export default function ColorLegend({ variableId, variableLabel, unit }: ColorLe
         <div className="text-xs text-muted-foreground">{unit}</div>
       </div>
 
-      {/* Color ramp */}
-      <div className="space-y-1.5">
-        <div className="h-3.5 rounded border border-border/50" style={{ background: gradient }} />
-        <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-          <span>{scale.low}</span>
-          <span>{scale.high}</span>
+      {isFlow ? (
+        /* Classified swatch legend for Water Flow */
+        <div className="space-y-1">
+          {FLOW_BREAKS.map(({ range, color }) => (
+            <div key={range} className="flex items-center gap-2">
+              <div
+                className="h-3 w-6 rounded-sm border border-border/40 flex-shrink-0"
+                style={{ backgroundColor: color }}
+              />
+              <span className="text-[10px] font-mono text-muted-foreground">{range}</span>
+            </div>
+          ))}
         </div>
-        <div className="flex justify-between text-[8px] text-muted-foreground/60 uppercase tracking-wide">
-          <span>Low</span>
-          <span>High</span>
+      ) : (
+        /* Continuous gradient legend for N / P */
+        <div className="space-y-1.5">
+          <div className="h-3.5 rounded border border-border/50" style={{ background: gradient }} />
+          <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
+            <span>{scale.low}</span>
+            <span>{scale.high}</span>
+          </div>
+          <div className="flex justify-between text-[8px] text-muted-foreground/60 uppercase tracking-wide">
+            <span>Low</span>
+            <span>High</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Depth key */}
       <div className="space-y-1.5 pt-2 border-t border-border/40">
