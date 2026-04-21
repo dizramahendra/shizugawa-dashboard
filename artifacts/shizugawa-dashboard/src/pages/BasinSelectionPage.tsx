@@ -512,8 +512,10 @@ export default function BasinSelectionPage() {
                 </div>
 
                 {/* Per-segment values */}
-                <div className="panel-section-title mb-2">Sub-basin Values</div>
-                <div className="text-[9px] text-muted-foreground mb-2">{variable.label} · {variable.unit} · current week</div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="panel-section-title">Sub-basin Values</span>
+                  <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+                </div>
                 {(() => {
                   const UPPER_PALETTES = [
                     { border: "#93c5fd", bg: "#eff6ff", labelColor: "#2563eb", valColor: "#1d4ed8" },
@@ -640,15 +642,15 @@ export default function BasinSelectionPage() {
                   </div>
                 </div>
 
+                <div className="panel-section-title mb-2">River Mean</div>
                 <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Reach Mean</div>
-                    <div className="text-[10px] text-muted-foreground">{variable.label}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
                     <div className="text-xl font-mono font-bold text-blue-600 leading-none">
                       {reachMean ?? "—"}
                       <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reach cells</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Spatial mean · all reaches in river</div>
                   </div>
                   <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
                     <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
@@ -661,7 +663,7 @@ export default function BasinSelectionPage() {
                   <div className="mt-3 border border-border rounded-md p-2.5 bg-white">
                     <div className="panel-section-title mb-1.5">Annual Time Series</div>
                     <div className="text-[9px] text-muted-foreground mb-2">
-                      {variable.label} · {variable.unit} · reach mean
+                      {variable.label} · {variable.unit} · river mean
                     </div>
                     <MultiLineChart
                       series={[{ name: selectedRiverObj?.name ?? "", color: CHART_COLORS[selectedVariable] ?? "#3b6fa0", data: riverTimeSeries }]}
