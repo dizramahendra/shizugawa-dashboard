@@ -79,6 +79,10 @@ export default function PlaybackPage() {
   const [sliceDir, setSliceDir] = useState<"north" | "south" | "east" | "west">(
     (["north","south","east","west"].includes(_initDir ?? "")) ? (_initDir as "north"|"south"|"east"|"west") : "north"
   );
+  const [sliceCutType, setSliceCutType] = useState<"one-side" | "both-sides">(
+    searchParams.get("cut") === "both" ? "both-sides" : "one-side"
+  );
+  const [showCutPlane, setShowCutPlane] = useState(searchParams.get("plane") !== "0");
   const [sliceLevel, setSliceLevel] = useState(() => {
     if (_initLevel !== null) return Number(_initLevel);
     if (_initTool === "slice-v") return Math.floor((GRID_D - 1) / 2);
@@ -124,13 +128,16 @@ export default function PlaybackPage() {
       if (activeTool) next.set("tool", activeTool);
       else next.delete("tool");
 
-      // Vertical slice: encode direction + position so the URL fully reproduces the view
+      // Vertical slice: encode direction + cut type + position + cut-plane visibility
       if (sliceTool === "slice-v") {
-        if (sliceDir !== "north") next.set("dir", sliceDir);
-        else next.delete("dir");
+        if (sliceDir !== "north") next.set("dir", sliceDir); else next.delete("dir");
+        if (sliceCutType === "both-sides") next.set("cut", "both"); else next.delete("cut");
+        if (!showCutPlane) next.set("plane", "0"); else next.delete("plane");
         next.set("level", String(sliceLevel));
       } else {
         next.delete("dir");
+        next.delete("cut");
+        next.delete("plane");
         next.delete("level");
       }
 
@@ -153,7 +160,7 @@ export default function PlaybackPage() {
 
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceLevel, selectedPoint, showUI, cameraPreset]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceCutType, showCutPlane, sliceLevel, selectedPoint, showUI, cameraPreset]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceDirIsX = sliceDir === "east" || sliceDir === "west";
@@ -380,6 +387,8 @@ export default function PlaybackPage() {
               selectedPoint={selectedPoint}
               sliceLevel={sliceLevel}
               sliceDir={sliceDir}
+              sliceCutType={sliceCutType}
+              showCutPlane={showCutPlane}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
               showAnnotations={showUI}
@@ -710,26 +719,23 @@ export default function PlaybackPage() {
                 {/* ── Vertical slice: step-by-step ── */}
                 {sliceTool === "slice-v" && (
                   <>
-                    {/* Step 1: viewing direction (4 compass buttons) */}
+                    {/* Step 1: cut type */}
                     <div>
                       <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                        Step 1 · View from
+                        Step 1 · Cut type
                       </div>
-                      {/* 2×2 compass grid */}
-                      <div className="grid grid-cols-2 gap-0.5">
+                      <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
                         {([
-                          { dir: "north" as const, label: "↑ From North", sub: "looking south" },
-                          { dir: "south" as const, label: "↓ From South", sub: "looking north" },
-                          { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
-                          { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
-                        ]).map(({ dir, label, sub }) => (
+                          { id: "one-side"   as const, label: "One side",   sub: "half-volume" },
+                          { id: "both-sides" as const, label: "Both sides", sub: "thin slab"   },
+                        ]).map(({ id, label, sub }) => (
                           <button
-                            key={dir}
-                            onClick={() => handleDirChange(dir)}
-                            className={`py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 border ${
-                              sliceDir === dir
-                                ? "bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm"
-                                : "bg-muted border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                            key={id}
+                            onClick={() => setSliceCutType(id)}
+                            className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
+                              sliceCutType === id
+                                ? "bg-white text-foreground shadow-sm font-semibold"
+                                : "text-muted-foreground hover:text-foreground"
                             }`}
                           >
                             <span>{label}</span>
@@ -739,11 +745,77 @@ export default function PlaybackPage() {
                       </div>
                     </div>
 
-                    {/* Step 2: draw hint */}
+                    {/* Step 2: direction or axis */}
+                    <div>
+                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
+                        Step 2 · {sliceCutType === "one-side" ? "View from" : "Cut axis"}
+                      </div>
+                      {sliceCutType === "one-side" ? (
+                        /* 2×2 compass grid — one-side mode */
+                        <div className="grid grid-cols-2 gap-0.5">
+                          {([
+                            { dir: "north" as const, label: "↑ From North", sub: "looking south" },
+                            { dir: "south" as const, label: "↓ From South", sub: "looking north" },
+                            { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
+                            { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
+                          ]).map(({ dir, label, sub }) => (
+                            <button
+                              key={dir}
+                              onClick={() => handleDirChange(dir)}
+                              className={`py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 border ${
+                                sliceDir === dir
+                                  ? "bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm"
+                                  : "bg-muted border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                              }`}
+                            >
+                              <span>{label}</span>
+                              <span className="text-[8px] opacity-60">{sub}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        /* 2-button N-S / E-W selector — both-sides mode */
+                        <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+                          {([
+                            { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S", dir: "north" as const },
+                            { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E", dir: "east"  as const },
+                          ]).map(({ axis, label, sub, dir: defaultDir }) => {
+                            const active = sliceDirIsX ? axis === "x" : axis === "z";
+                            return (
+                              <button
+                                key={axis}
+                                onClick={() => { setSliceDir(defaultDir); setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2)); }}
+                                className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
+                                  active
+                                    ? "bg-white text-foreground shadow-sm font-semibold"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                <span>{label}</span>
+                                <span className="text-[8px] opacity-60">{sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cut plane visibility */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowCutPlane(v => !v)}
+                        className={`w-7 h-4 rounded-full transition-colors relative flex-shrink-0 ${showCutPlane ? "bg-amber-400" : "bg-muted-foreground/30"}`}
+                      >
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${showCutPlane ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                      </button>
+                      <span className="text-[10px] text-muted-foreground">Show cut plane</span>
+                    </div>
+
+                    {/* Draw hint */}
                     <div className="bg-amber-50 border border-amber-100 rounded-md px-2.5 py-2 flex items-start gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5 flex-shrink-0" />
                       <div className="text-[10px] text-amber-700 leading-snug">
-                        <span className="font-semibold">Step 2 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
+                        <span className="font-semibold">Step 3 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
                       </div>
                     </div>
                   </>
@@ -752,7 +824,7 @@ export default function PlaybackPage() {
                 {/* Step 3 (both modes): slider */}
                 <div>
                   <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                    {sliceTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
+                    {sliceTool === "slice-v" ? "Step 4 · Fine-tune" : "Depth layer"}
                   </div>
                   <input
                     type="range"

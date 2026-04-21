@@ -74,6 +74,20 @@ function sliceDirAxis(dir: SliceDir): "x" | "z" {
   return (dir === "east" || dir === "west") ? "x" : "z";
 }
 
+type SliceCutType = "one-side" | "both-sides";
+
+/**
+ * Returns true if the voxel at (gx, gz) should survive the active vertical slice.
+ * one-side  → half-volume  (keep everything on the viewer side of the cut plane)
+ * both-sides → thin slab   (keep only the single row/column at the cut position)
+ */
+function isVoxelVisible(gx: number, gz: number, dir: SliceDir, level: number, cutType: SliceCutType): boolean {
+  if (cutType === "both-sides") {
+    return sliceDirAxis(dir) === "x" ? gx === level : gz === level;
+  }
+  return isInSliceV(gx, gz, dir, level);
+}
+
 // ── Color scales (hex) ────────────────────────────────────────────────────────
 const COLOR_SCALES: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
@@ -180,6 +194,7 @@ interface VoxelGridProps {
   sliceMode: DashboardState;
   sliceLevel: number;
   sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
 }
@@ -191,6 +206,7 @@ function VoxelGrid({
   sliceMode,
   sliceLevel,
   sliceDir,
+  sliceCutType,
   onCellClick,
   onCellHover,
 }: VoxelGridProps) {
@@ -219,7 +235,7 @@ function VoxelGrid({
       // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
         if (d > maxLayer) continue;                          // below bathymetric seabed
-        if (sliceMode === "slice-v" && !isInSliceV(gx, gz, sliceDir, sliceLevel)) continue;
+        if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const [r, g, b] = lerpColor(stops, val);
@@ -322,6 +338,7 @@ function buildBatches(
   sliceMode: DashboardState,
   sliceLevel: number,
   sliceDir: SliceDir,
+  sliceCutType: SliceCutType,
 ): LayerBatch[] {
   const visibleDepths = sliceMode === "slice-h"
     ? Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i)
@@ -344,7 +361,7 @@ function buildBatches(
 
       for (const d of visibleDepths) {
         if (d > maxLayer) continue;
-        if (sliceMode === "slice-v" && !isInSliceV(gx, gz, sliceDir, sliceLevel)) continue;
+        if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const isSelected = selectedPoint?.x === gx && selectedPoint?.z === gz;
@@ -434,14 +451,14 @@ function InstancedDepthLayer({
 }
 
 function VoxelGridInstanced({
-  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, onCellClick, onCellHover,
+  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, onCellClick, onCellHover,
 }: VoxelGridProps) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
   const batches = useMemo(
-    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir),
-    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir],
+    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType),
+    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType],
   );
 
   const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
@@ -502,10 +519,12 @@ function SeabedMesh({
   sliceMode,
   sliceLevel,
   sliceDir,
+  sliceCutType,
 }: {
   sliceMode: DashboardState;
   sliceLevel: number;
   sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
 }) {
   const geometry = useMemo(() => {
     // In slice-h mode, everything above this Y is hidden (top of the selected layer)
@@ -517,7 +536,7 @@ function SeabedMesh({
     function shouldRender(gx: number, gz: number): boolean {
       if (!BAY_MASK[gz]?.[gx]) return false;
       if (sliceMode === "slice-v") {
-        return isInSliceV(gx, gz, sliceDir, sliceLevel);
+        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
       }
       return true;
     }
@@ -631,7 +650,7 @@ function SeabedMesh({
     geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
-  }, [sliceMode, sliceLevel, sliceDir]);
+  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
 
   if (!geometry) return null;
   return (
@@ -658,10 +677,12 @@ function RiverSeabedMesh({
   sliceMode,
   sliceLevel,
   sliceDir,
+  sliceCutType,
 }: {
   sliceMode: DashboardState;
   sliceLevel: number;
   sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
 }) {
   const geometry = useMemo(() => {
     // River water only exists at layer 0; return empty geometry for deeper horizontal slices
@@ -684,7 +705,7 @@ function RiverSeabedMesh({
     function shouldRender(gx: number, gz: number): boolean {
       if (!riverSet.has(`${gz},${gx}`)) return false;
       if (sliceMode === "slice-v") {
-        return isInSliceV(gx, gz, sliceDir, sliceLevel);
+        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
       }
       return true;
     }
@@ -765,7 +786,7 @@ function RiverSeabedMesh({
     geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
-  }, [sliceMode, sliceLevel, sliceDir]);
+  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
 
   if (!geometry) return null;
   return (
@@ -790,12 +811,14 @@ function RiverGrid({
   sliceMode,
   sliceLevel,
   sliceDir,
+  sliceCutType,
 }: {
   week: number;
   colorScale: string;
   sliceMode: DashboardState;
   sliceLevel: number;
   sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
 }) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
@@ -825,8 +848,8 @@ function RiverGrid({
     // Slice filtering
     // Horizontal: river water lives at layer 0 — hide it when the slice is below that
     if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
-    // Vertical: keep only the cells on the visible side of the slice plane
-    if (sliceMode === "slice-v" && !isInSliceV(gx, gz, sliceDir, sliceLevel)) continue;
+    // Vertical: keep only the cells matching the current cut type + direction
+    if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
     const isHov = hoveredId === riverId;
     // Slightly brighten hovered river cells
@@ -1048,91 +1071,38 @@ interface SliceIndicatorProps {
   mode: DashboardState;
   level: number;
   sliceDir: SliceDir;
+  showCutPlane: boolean;
 }
 
-function SliceIndicator({ mode, level, sliceDir }: SliceIndicatorProps) {
-  // Thickness of the bold frame border (world units)
-  const FRAME = 0.32;
-
+function SliceIndicator({ mode, level, sliceDir, showCutPlane }: SliceIndicatorProps) {
   if (mode === "slice-h") {
-    const y = Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2;
     return (
-      <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[GRID_W * STEP, GRID_D * STEP]} />
         <meshStandardMaterial color="#4a90d9" opacity={0.08} transparent depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
     );
   }
 
+  if (!showCutPlane) return null;
+
   if (mode === "slice-v" && sliceDirAxis(sliceDir) === "x") {
     const x = offsetX + level * STEP + STEP / 2;
-    const pw = GRID_D * STEP;   // plane width  (spans north–south after rotation)
-    const ph = BOX_H;           // plane height (spans bottom–top)
     return (
-      <group position={[x, BOX_CY, 0]} rotation={[0, Math.PI / 2, 0]}>
-        {/* Semi-transparent amber fill — shows the cut face */}
-        <mesh>
-          <planeGeometry args={[pw, ph]} />
-          <meshStandardMaterial color="#f59e0b" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-        {/* Bold perimeter frame — 4 solid box bars */}
-        {/* Top */}
-        <mesh position={[0, ph / 2, 0]}>
-          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        {/* Bottom */}
-        <mesh position={[0, -ph / 2, 0]}>
-          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        {/* Left */}
-        <mesh position={[-pw / 2, 0, 0]}>
-          <boxGeometry args={[FRAME, ph, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        {/* Right */}
-        <mesh position={[pw / 2, 0, 0]}>
-          <boxGeometry args={[FRAME, ph, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-      </group>
+      <mesh position={[x, BOX_CY, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[GRID_D * STEP, BOX_H]} />
+        <meshStandardMaterial color="#f59e0b" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
     );
   }
 
   if (mode === "slice-v" && sliceDirAxis(sliceDir) === "z") {
     const z = offsetZ + level * STEP + STEP / 2;
-    const pw = GRID_W * STEP;   // plane width  (spans west–east)
-    const ph = BOX_H;           // plane height (spans bottom–top)
     return (
-      <group position={[0, BOX_CY, z]}>
-        {/* Semi-transparent amber fill */}
-        <mesh>
-          <planeGeometry args={[pw, ph]} />
-          <meshStandardMaterial color="#f59e0b" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-        {/* Bold perimeter frame */}
-        {/* Top */}
-        <mesh position={[0, ph / 2, 0]}>
-          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        {/* Bottom */}
-        <mesh position={[0, -ph / 2, 0]}>
-          <boxGeometry args={[pw + FRAME, FRAME, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        {/* Left */}
-        <mesh position={[-pw / 2, 0, 0]}>
-          <boxGeometry args={[FRAME, ph, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        {/* Right */}
-        <mesh position={[pw / 2, 0, 0]}>
-          <boxGeometry args={[FRAME, ph, FRAME]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-      </group>
+      <mesh position={[0, BOX_CY, z]}>
+        <planeGeometry args={[GRID_W * STEP, BOX_H]} />
+        <meshStandardMaterial color="#f59e0b" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
     );
   }
 
@@ -1176,6 +1146,8 @@ interface OceanBasin3DProps {
   selectedPoint: { x: number; z: number } | null;
   sliceLevel: number;
   sliceDir: SliceDir;
+  sliceCutType?: SliceCutType;
+  showCutPlane?: boolean;
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
@@ -1189,6 +1161,8 @@ export default function OceanBasin3D({
   selectedPoint,
   sliceLevel,
   sliceDir,
+  sliceCutType = "one-side",
+  showCutPlane = true,
   onCellClick,
   onCellHover,
   showAnnotations = true,
@@ -1203,6 +1177,7 @@ export default function OceanBasin3D({
     sliceMode: dashboardState,
     sliceLevel,
     sliceDir,
+    sliceCutType,
     onCellClick,
     onCellHover,
   };
@@ -1226,6 +1201,7 @@ export default function OceanBasin3D({
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
           sliceDir={sliceDir}
+          sliceCutType={sliceCutType}
         />
 
         <RiverGrid
@@ -1234,12 +1210,14 @@ export default function OceanBasin3D({
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
           sliceDir={sliceDir}
+          sliceCutType={sliceCutType}
         />
 
         <RiverSeabedMesh
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
           sliceDir={sliceDir}
+          sliceCutType={sliceCutType}
         />
 
         {/* Bounding box + grid: toggleable */}
@@ -1252,7 +1230,7 @@ export default function OceanBasin3D({
         {/* Coordinate ticks (X/Y/Z values): toggleable */}
         {showAnnotations && <CoordTickLabels />}
 
-        <SliceIndicator mode={dashboardState} level={sliceLevel} sliceDir={sliceDir} />
+        <SliceIndicator mode={dashboardState} level={sliceLevel} sliceDir={sliceDir} showCutPlane={showCutPlane} />
       </group>
 
       <OrbitControls
