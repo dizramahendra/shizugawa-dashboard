@@ -23,12 +23,13 @@ import WeekRangePicker from "@/components/WeekRangePicker";
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function ReachMeanChart({
-  series, currentWeek, unit, color,
+  series, currentWeek, unit, color, gradientId = "areaGrad",
 }: {
   series: number[];
   currentWeek: number;
   unit: string;
   color: string;
+  gradientId?: string;
 }) {
   const W = 228, H = 72, PAD_L = 28, PAD_R = 6, PAD_T = 6, PAD_B = 20;
   const innerW = W - PAD_L - PAD_R;
@@ -63,7 +64,7 @@ function ReachMeanChart({
   return (
     <svg width={W} height={H} className="overflow-visible">
       <defs>
-        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.18" />
           <stop offset="100%" stopColor={color} stopOpacity="0.02" />
         </linearGradient>
@@ -80,7 +81,7 @@ function ReachMeanChart({
       ))}
 
       {/* Area fill */}
-      <polygon points={areaPoints} fill="url(#areaGrad)" />
+      <polygon points={areaPoints} fill={`url(#${gradientId})`} />
 
       {/* Line */}
       <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
@@ -217,6 +218,20 @@ export default function RiverPlaybackPage() {
       return c > 0 ? valueToConcentration(s / c, selectedVariable) : 0;
     });
   }, [riverId, selectedVariable, year, composite]);
+
+  // 52-week time series for the selected reach (single grid position)
+  const selectedReachSeries = useMemo(() => {
+    if (!selectedCell) return null;
+    return Array.from({ length: TOTAL_WEEKS }, (_, w) => {
+      const grid = composite
+        ? generateCompositeRiverData(w, riverId, year)
+        : generateRiverData(w, riverId, year);
+      return valueToConcentration(
+        grid[selectedCell.row]?.[selectedCell.col] ?? 0,
+        selectedVariable
+      );
+    });
+  }, [selectedCell, riverId, selectedVariable, year, composite]);
 
   const CHART_COLORS: Record<string, string> = {
     nitrogen: "#3b6fa0", phosphorus: "#4a7fb5", flow: "#26c6da",
@@ -469,7 +484,7 @@ export default function RiverPlaybackPage() {
                     <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1">
-                    {composite ? "Spatial mean · all corridor cells" : "Spatial mean · all reach cells"}
+                    {composite ? "Spatial mean · all corridor reaches" : "Spatial mean · all reach positions"}
                   </div>
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-300 flex-shrink-0">
@@ -493,10 +508,10 @@ export default function RiverPlaybackPage() {
               />
             </div>
 
-            {/* 4. Selected cell */}
+            {/* 4. Selected reach */}
             {selectedCell && (
               <div className="px-4 py-4">
-                <div className="panel-section-title mb-2">Selected Cell</div>
+                <div className="panel-section-title mb-2">Selected Reach</div>
                 <div className="bg-muted/40 rounded-md p-3 space-y-2">
                   <div className="grid grid-cols-2 gap-2 text-center">
                     {[["Row", selectedCell.row + 1], ["Col", selectedCell.col + 1]].map(([l, v]) => (
@@ -508,13 +523,29 @@ export default function RiverPlaybackPage() {
                   </div>
                   {cellValue !== null && (
                     <div className="pt-2 border-t border-border/40">
-                      <div className="text-xs text-muted-foreground">{variable.label}</div>
+                      <div className="text-xs text-muted-foreground">{variable.label} · current week</div>
                       <div className="text-lg font-mono font-bold text-blue-600 mt-0.5">
                         {cellValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
                       </div>
                     </div>
                   )}
                 </div>
+
+                {/* Time-series chart for this reach */}
+                {selectedReachSeries && (
+                  <div className="mt-3">
+                    <div className="text-[9px] text-muted-foreground mb-1.5 font-mono">
+                      Annual trend · {variable.label} ({variable.unit}) · row {selectedCell.row + 1}, col {selectedCell.col + 1}
+                    </div>
+                    <ReachMeanChart
+                      series={selectedReachSeries}
+                      currentWeek={week}
+                      unit={variable.unit}
+                      color={CHART_COLORS[selectedVariable] ?? "#3b6fa0"}
+                      gradientId="reachGrad"
+                    />
+                  </div>
+                )}
               </div>
             )}
 
