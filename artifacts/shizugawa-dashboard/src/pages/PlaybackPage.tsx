@@ -440,7 +440,7 @@ export default function PlaybackPage() {
                     </div>
                   </div>
                   <div className="bg-white/80 border border-border rounded-md px-2.5 py-1.5 shadow-sm">
-                    <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click surface cell to inspect column</div>
+                    <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click water column to inspect depth</div>
                   </div>
                 </div>
               );
@@ -573,7 +573,7 @@ export default function PlaybackPage() {
                     {basinMean ?? "—"}
                     <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Depth-integrated · all active cells</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">Depth-integrated · all water columns</div>
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-primary/30 flex-shrink-0">
                   <ellipse cx="12" cy="12" rx="10" ry="4" stroke="currentColor" strokeWidth="1.5"/>
