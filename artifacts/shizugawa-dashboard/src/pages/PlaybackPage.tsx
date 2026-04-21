@@ -101,7 +101,10 @@ export default function PlaybackPage() {
   });
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
   const [showUI, setShowUI] = useState(searchParams.get("ui") !== "0");
-  const [cameraPreset, setCameraPreset] = useState("top");
+  const _initView = searchParams.get("view");
+  const [cameraPreset, setCameraPreset] = useState(
+    (["top","n","s","e","w"].includes(_initView ?? "")) ? (_initView as string) : "top"
+  );
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -143,9 +146,13 @@ export default function PlaybackPage() {
       if (!showUI) next.set("ui", "0");
       else next.delete("ui");
 
+      // Camera view preset — only encode when not default top view
+      if (cameraPreset && cameraPreset !== "top") next.set("view", cameraPreset);
+      else next.delete("view");
+
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel, selectedPoint, showUI]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel, selectedPoint, showUI, cameraPreset]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceMax = sliceTool === "slice-h" ? 7

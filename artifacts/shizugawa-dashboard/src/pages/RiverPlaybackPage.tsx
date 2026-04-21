@@ -126,7 +126,15 @@ export default function RiverPlaybackPage() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState(searchParams.get("variable") ?? "nitrogen");
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
+  const _initRow = searchParams.get("row");
+  const _initCol = searchParams.get("col");
+  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(() => {
+    if (_initRow !== null && _initCol !== null) {
+      const row = Number(_initRow), col = Number(_initCol);
+      if (Number.isFinite(row) && Number.isFinite(col)) return { row, col };
+    }
+    return null;
+  });
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pause = useCallback(() => setIsPlaying(false), []);
@@ -139,9 +147,16 @@ export default function RiverPlaybackPage() {
       else next.delete("river");
       if (selectedVariable && selectedVariable !== "nitrogen") next.set("variable", selectedVariable);
       else next.delete("variable");
+      if (selectedCell) {
+        next.set("row", String(selectedCell.row));
+        next.set("col", String(selectedCell.col));
+      } else {
+        next.delete("row");
+        next.delete("col");
+      }
       return next;
     }, { replace: true });
-  }, [riverId, selectedVariable]);
+  }, [riverId, selectedVariable, selectedCell]);
 
   // Clamp week to weekRange when range changes
   useEffect(() => {

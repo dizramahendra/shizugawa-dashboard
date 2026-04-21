@@ -182,7 +182,7 @@ export default function BasinSelectionPage() {
   const _initVariable = searchParams.get("variable");
 
   const [search, setSearch] = useState("");
-  const [selectedWatershed, setSelectedWatershed] = useState<string | null>(null);
+  const [selectedWatershed, setSelectedWatershed] = useState<string | null>(searchParams.get("ws"));
   const [selectedRiver, setSelectedRiver] = useState<string | null>(_initRiver);
   const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(_initCorridor);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
@@ -209,9 +209,11 @@ export default function BasinSelectionPage() {
       else next.delete("river");
       if (selectedCorridorId) next.set("corridor", selectedCorridorId);
       else next.delete("corridor");
+      if (selectedWatershed) next.set("ws", selectedWatershed);
+      else next.delete("ws");
       return next;
     }, { replace: true });
-  }, [selectedVariable, selectedRiver, selectedCorridorId]);
+  }, [selectedVariable, selectedRiver, selectedCorridorId, selectedWatershed]);
 
   useEffect(() => {
     let tiltTimer: ReturnType<typeof setTimeout> | null = null;
