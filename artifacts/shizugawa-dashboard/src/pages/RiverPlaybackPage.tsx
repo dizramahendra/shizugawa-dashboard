@@ -470,7 +470,10 @@ export default function RiverPlaybackPage() {
 
             {/* 3b. River/Corridor Mean — spatial average across all reach cells */}
             <div className="px-4 py-4">
-              <div className="panel-section-title mb-2">{composite ? "Corridor Mean" : "River Mean"}</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="panel-section-title">{composite ? "Corridor Mean" : "River Mean"}</span>
+                <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+              </div>
               <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>

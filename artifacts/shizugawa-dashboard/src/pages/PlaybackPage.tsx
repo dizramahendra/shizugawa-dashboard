@@ -565,7 +565,10 @@ export default function PlaybackPage() {
 
             {/* Basin Mean */}
             <div className="px-4 py-4">
-              <div className="panel-section-title mb-2">Basin Mean</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="panel-section-title">Basin Mean</span>
+                <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+              </div>
               <div className="rounded-md border border-primary/20 bg-primary/5 p-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>

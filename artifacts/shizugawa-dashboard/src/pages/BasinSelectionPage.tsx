@@ -642,7 +642,10 @@ export default function BasinSelectionPage() {
                   </div>
                 </div>
 
-                <div className="panel-section-title mb-2">River Mean</div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="panel-section-title">River Mean</span>
+                  <span className="text-[9px] text-muted-foreground font-mono">{variable.label} · {variable.unit}</span>
+                </div>
                 <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
