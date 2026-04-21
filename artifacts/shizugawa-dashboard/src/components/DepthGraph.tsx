@@ -15,7 +15,7 @@ const DEPTH_MID_M  = [2.5, 10, 22.5, 40, 62.5, 87.5, 112.5, 137.5];
 
 const N_VAR    = { id: "nitrogen",   label: "N",    color: "#c084fc", varMin: 0.2, varMax: 3.0,  unit: "mg/L",  decimals: 1 };
 const P_VAR    = { id: "phosphorus", label: "P",    color: "#fb923c", varMin: 0.010, varMax: 0.130, unit: "mg/L", decimals: 3 };
-const FLOW_VAR = { id: "flow",       label: "Flow", color: "#26c6da", varMin: 0,   varMax: 80,  unit: "cm/s",  decimals: 0 };
+const FLOW_VAR = { id: "flow",       label: "Flow", color: "#26c6da", varMin: 0,   varMax: 750, unit: "t/ha",  decimals: 0 };
 
 const SVG_W = 200;
 const PL = 34;
