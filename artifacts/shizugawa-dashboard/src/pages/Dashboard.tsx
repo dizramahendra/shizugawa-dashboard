@@ -178,7 +178,7 @@ export default function Dashboard() {
                 dashboardState={dashboardState}
                 selectedPoint={selectedPoint}
                 sliceLevel={sliceLevel}
-                sliceAxis="x"
+                sliceDir="east"
                 onCellClick={handleCellClick}
               />
             )}

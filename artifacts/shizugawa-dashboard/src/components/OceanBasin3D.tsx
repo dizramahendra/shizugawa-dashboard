@@ -57,6 +57,23 @@ const BOX_WEST_X    = -BOX_HALF_W;
 const BOX_EAST_X    =  BOX_HALF_W;
 const DEPTH_LABEL_X = BOX_WEST_X - 0.9;
 
+// ── Vertical-slice direction helpers ─────────────────────────────────────────
+type SliceDir = "north" | "south" | "east" | "west";
+
+/** Returns true if the voxel at (gx, gz) should be visible for the given directional cut. */
+function isInSliceV(gx: number, gz: number, dir: SliceDir, level: number): boolean {
+  if (dir === "north") return gz <= level;   // keep south side (remove north of cut)
+  if (dir === "south") return gz >= level;   // keep north side (remove south of cut)
+  if (dir === "east")  return gx <= level;   // keep west side  (remove east  of cut)
+  if (dir === "west")  return gx >= level;   // keep east side  (remove west  of cut)
+  return true;
+}
+
+/** Returns the scene axis driven by this slice direction. */
+function sliceDirAxis(dir: SliceDir): "x" | "z" {
+  return (dir === "east" || dir === "west") ? "x" : "z";
+}
+
 // ── Color scales (hex) ────────────────────────────────────────────────────────
 const COLOR_SCALES: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
@@ -162,7 +179,7 @@ interface VoxelGridProps {
   selectedPoint: { x: number; z: number } | null;
   sliceMode: DashboardState;
   sliceLevel: number;
-  sliceAxis: "x" | "z";
+  sliceDir: SliceDir;
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
 }
@@ -173,7 +190,7 @@ function VoxelGrid({
   selectedPoint,
   sliceMode,
   sliceLevel,
-  sliceAxis,
+  sliceDir,
   onCellClick,
   onCellHover,
 }: VoxelGridProps) {
@@ -202,8 +219,7 @@ function VoxelGrid({
       // ── Water voxels ────────────────────────────────────────────────────────
       for (const d of visibleDepths) {
         if (d > maxLayer) continue;                          // below bathymetric seabed
-        if (sliceMode === "slice-v" && sliceAxis === "x" && gx !== sliceLevel) continue;
-        if (sliceMode === "slice-v" && sliceAxis === "z" && gz !== sliceLevel) continue;
+        if (sliceMode === "slice-v" && !isInSliceV(gx, gz, sliceDir, sliceLevel)) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const [r, g, b] = lerpColor(stops, val);
@@ -217,8 +233,7 @@ function VoxelGrid({
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
         const pz = offsetZ + gz * STEP + CELL_W / 2;
 
-        // slice-v shows one voxel deep — solid fills like a cut surface
-        const depthOpacity = sliceMode === "slice-v" ? 1.0 : 0.85 - d * 0.02;
+        const depthOpacity = 0.85 - d * 0.02;
 
         meshes.push(
           <mesh
@@ -306,7 +321,7 @@ function buildBatches(
   selectedPoint: { x: number; z: number } | null,
   sliceMode: DashboardState,
   sliceLevel: number,
-  sliceAxis: "x" | "z",
+  sliceDir: SliceDir,
 ): LayerBatch[] {
   const visibleDepths = sliceMode === "slice-h"
     ? Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i)
@@ -316,7 +331,7 @@ function buildBatches(
     count: 0,
     positions: [],
     rgbs: [],
-    opacity: sliceMode === "slice-v" ? 1.0 : 0.85 - d * 0.02,
+    opacity: 0.85 - d * 0.02,
     meta: [],
   }));
 
@@ -329,8 +344,7 @@ function buildBatches(
 
       for (const d of visibleDepths) {
         if (d > maxLayer) continue;
-        if (sliceMode === "slice-v" && sliceAxis === "x" && gx !== sliceLevel) continue;
-        if (sliceMode === "slice-v" && sliceAxis === "z" && gz !== sliceLevel) continue;
+        if (sliceMode === "slice-v" && !isInSliceV(gx, gz, sliceDir, sliceLevel)) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const isSelected = selectedPoint?.x === gx && selectedPoint?.z === gz;
@@ -420,14 +434,14 @@ function InstancedDepthLayer({
 }
 
 function VoxelGridInstanced({
-  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceAxis, onCellClick, onCellHover,
+  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, onCellClick, onCellHover,
 }: VoxelGridProps) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
   const batches = useMemo(
-    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceAxis),
-    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceAxis],
+    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir),
+    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir],
   );
 
   const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
@@ -487,11 +501,11 @@ function VoxelGridInstanced({
 function SeabedMesh({
   sliceMode,
   sliceLevel,
-  sliceAxis,
+  sliceDir,
 }: {
   sliceMode: DashboardState;
   sliceLevel: number;
-  sliceAxis: "x" | "z";
+  sliceDir: SliceDir;
 }) {
   const geometry = useMemo(() => {
     // In slice-h mode, everything above this Y is hidden (top of the selected layer)
@@ -503,7 +517,7 @@ function SeabedMesh({
     function shouldRender(gx: number, gz: number): boolean {
       if (!BAY_MASK[gz]?.[gx]) return false;
       if (sliceMode === "slice-v") {
-        return sliceAxis === "x" ? gx === sliceLevel : gz === sliceLevel;
+        return isInSliceV(gx, gz, sliceDir, sliceLevel);
       }
       return true;
     }
@@ -617,7 +631,7 @@ function SeabedMesh({
     geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
-  }, [sliceMode, sliceLevel, sliceAxis]);
+  }, [sliceMode, sliceLevel, sliceDir]);
 
   if (!geometry) return null;
   return (
@@ -643,11 +657,11 @@ function SeabedMesh({
 function RiverSeabedMesh({
   sliceMode,
   sliceLevel,
-  sliceAxis,
+  sliceDir,
 }: {
   sliceMode: DashboardState;
   sliceLevel: number;
-  sliceAxis: "x" | "z";
+  sliceDir: SliceDir;
 }) {
   const geometry = useMemo(() => {
     // River water only exists at layer 0; return empty geometry for deeper horizontal slices
@@ -670,7 +684,7 @@ function RiverSeabedMesh({
     function shouldRender(gx: number, gz: number): boolean {
       if (!riverSet.has(`${gz},${gx}`)) return false;
       if (sliceMode === "slice-v") {
-        return sliceAxis === "x" ? gx === sliceLevel : gz === sliceLevel;
+        return isInSliceV(gx, gz, sliceDir, sliceLevel);
       }
       return true;
     }
@@ -751,7 +765,7 @@ function RiverSeabedMesh({
     geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
-  }, [sliceMode, sliceLevel, sliceAxis]);
+  }, [sliceMode, sliceLevel, sliceDir]);
 
   if (!geometry) return null;
   return (
@@ -775,13 +789,13 @@ function RiverGrid({
   colorScale,
   sliceMode,
   sliceLevel,
-  sliceAxis,
+  sliceDir,
 }: {
   week: number;
   colorScale: string;
   sliceMode: DashboardState;
   sliceLevel: number;
-  sliceAxis: "x" | "z";
+  sliceDir: SliceDir;
 }) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
@@ -811,11 +825,8 @@ function RiverGrid({
     // Slice filtering
     // Horizontal: river water lives at layer 0 — hide it when the slice is below that
     if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
-    // Vertical: keep only the cell column/row at the slice position
-    if (sliceMode === "slice-v") {
-      if (sliceAxis === "x" && gx !== sliceLevel) continue;
-      if (sliceAxis === "z" && gz !== sliceLevel) continue;
-    }
+    // Vertical: keep only the cells on the visible side of the slice plane
+    if (sliceMode === "slice-v" && !isInSliceV(gx, gz, sliceDir, sliceLevel)) continue;
 
     const isHov = hoveredId === riverId;
     // Slightly brighten hovered river cells
@@ -828,7 +839,7 @@ function RiverGrid({
     const py = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0] / 2;
 
     // River cells render exactly one surface water layer
-    const depthOpacity = sliceMode === "slice-v" ? 1.0 : 0.85;
+    const depthOpacity = 0.85;
     elements.push(
       <mesh
         key={`rv-${ri}`}
@@ -1036,10 +1047,10 @@ function GridFloor() {
 interface SliceIndicatorProps {
   mode: DashboardState;
   level: number;
-  sliceAxis: "x" | "z";
+  sliceDir: SliceDir;
 }
 
-function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
+function SliceIndicator({ mode, level, sliceDir }: SliceIndicatorProps) {
   if (mode === "slice-h") {
     const y = Y_SURFACE - DEPTH_TOPS[level] - DEPTH_HEIGHTS[level] / 2;
     return (
@@ -1049,7 +1060,7 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
       </mesh>
     );
   }
-  if (mode === "slice-v" && sliceAxis === "x") {
+  if (mode === "slice-v" && sliceDirAxis(sliceDir) === "x") {
     const x = offsetX + level * STEP + STEP / 2;
     // Outline only — invisible fill so voxel colours show through unobstructed
     return (
@@ -1060,7 +1071,7 @@ function SliceIndicator({ mode, level, sliceAxis }: SliceIndicatorProps) {
       </mesh>
     );
   }
-  if (mode === "slice-v" && sliceAxis === "z") {
+  if (mode === "slice-v" && sliceDirAxis(sliceDir) === "z") {
     const z = offsetZ + level * STEP + STEP / 2;
     return (
       <mesh position={[0, BOX_CY, z]}>
@@ -1109,7 +1120,7 @@ interface OceanBasin3DProps {
   dashboardState: DashboardState;
   selectedPoint: { x: number; z: number } | null;
   sliceLevel: number;
-  sliceAxis: "x" | "z";
+  sliceDir: SliceDir;
   onCellClick: (x: number, z: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
@@ -1122,7 +1133,7 @@ export default function OceanBasin3D({
   dashboardState,
   selectedPoint,
   sliceLevel,
-  sliceAxis,
+  sliceDir,
   onCellClick,
   onCellHover,
   showAnnotations = true,
@@ -1136,7 +1147,7 @@ export default function OceanBasin3D({
     selectedPoint,
     sliceMode: dashboardState,
     sliceLevel,
-    sliceAxis,
+    sliceDir,
     onCellClick,
     onCellHover,
   };
@@ -1159,7 +1170,7 @@ export default function OceanBasin3D({
         <SeabedMesh
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
-          sliceAxis={sliceAxis}
+          sliceDir={sliceDir}
         />
 
         <RiverGrid
@@ -1167,13 +1178,13 @@ export default function OceanBasin3D({
           colorScale={colorScale}
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
-          sliceAxis={sliceAxis}
+          sliceDir={sliceDir}
         />
 
         <RiverSeabedMesh
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
-          sliceAxis={sliceAxis}
+          sliceDir={sliceDir}
         />
 
         {/* Bounding box + grid: toggleable */}
@@ -1186,7 +1197,7 @@ export default function OceanBasin3D({
         {/* Coordinate ticks (X/Y/Z values): toggleable */}
         {showAnnotations && <CoordTickLabels />}
 
-        <SliceIndicator mode={dashboardState} level={sliceLevel} sliceAxis={sliceAxis} />
+        <SliceIndicator mode={dashboardState} level={sliceLevel} sliceDir={sliceDir} />
       </group>
 
       <OrbitControls

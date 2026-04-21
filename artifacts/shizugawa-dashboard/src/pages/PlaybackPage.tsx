@@ -74,10 +74,10 @@ export default function PlaybackPage() {
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState(searchParams.get("variable") ?? "nitrogen");
   const _initTool  = searchParams.get("tool")  ?? "none";
-  const _initAxis  = searchParams.get("axis");
+  const _initDir   = searchParams.get("dir");
   const _initLevel = searchParams.get("level");
-  const [sliceAxis,  setSliceAxis]  = useState<"x" | "z">(
-    (_initAxis === "x" || _initAxis === "z") ? _initAxis : "z"
+  const [sliceDir, setSliceDir] = useState<"north" | "south" | "east" | "west">(
+    (["north","south","east","west"].includes(_initDir ?? "")) ? (_initDir as "north"|"south"|"east"|"west") : "north"
   );
   const [sliceLevel, setSliceLevel] = useState(() => {
     if (_initLevel !== null) return Number(_initLevel);
@@ -124,12 +124,13 @@ export default function PlaybackPage() {
       if (activeTool) next.set("tool", activeTool);
       else next.delete("tool");
 
-      // Vertical slice: encode axis + position so the URL fully reproduces the view
+      // Vertical slice: encode direction + position so the URL fully reproduces the view
       if (sliceTool === "slice-v") {
-        next.set("axis", sliceAxis);
+        if (sliceDir !== "north") next.set("dir", sliceDir);
+        else next.delete("dir");
         next.set("level", String(sliceLevel));
       } else {
-        next.delete("axis");
+        next.delete("dir");
         next.delete("level");
       }
 
@@ -152,21 +153,23 @@ export default function PlaybackPage() {
 
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceAxis, sliceLevel, selectedPoint, showUI, cameraPreset]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceLevel, selectedPoint, showUI, cameraPreset]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
+  const sliceDirIsX = sliceDir === "east" || sliceDir === "west";
   const sliceMax = sliceTool === "slice-h" ? 7
-    : sliceAxis === "x" ? GRID_W - 1
+    : sliceDirIsX ? GRID_W - 1
     : GRID_D - 1;
 
-  function handleSliceAxisChange(axis: "x" | "z") {
-    setSliceAxis(axis);
-    setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2));
+  function handleDirChange(dir: "north" | "south" | "east" | "west") {
+    const isX = dir === "east" || dir === "west";
+    setSliceDir(dir);
+    setSliceLevel(isX ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2));
   }
 
   function handleMiniPointer(e: React.PointerEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
-    if (sliceAxis === "x") {
+    if (sliceDirIsX) {
       const frac = (e.clientX - rect.left) / rect.width;
       setSliceLevel(Math.round(Math.max(0, Math.min(1, frac)) * (GRID_W - 1)));
     } else {
@@ -376,7 +379,7 @@ export default function PlaybackPage() {
               dashboardState={dashboardState}
               selectedPoint={selectedPoint}
               sliceLevel={sliceLevel}
-              sliceAxis={sliceAxis}
+              sliceDir={sliceDir}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
               showAnnotations={showUI}
@@ -454,7 +457,7 @@ export default function PlaybackPage() {
                   <div className="px-2.5 py-1.5 bg-slate-50 border-b border-border flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                     <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
-                      {sliceAxis === "x" ? "N–S Slice" : "E–W Slice"} · drag to reposition
+                      From {sliceDir.charAt(0).toUpperCase() + sliceDir.slice(1)} · drag to reposition
                     </span>
                   </div>
                   {/* Bay top-down SVG */}
@@ -462,7 +465,7 @@ export default function PlaybackPage() {
                     width={MINI_W}
                     height={MINI_H}
                     viewBox={`0 0 ${MINI_W} ${MINI_H}`}
-                    style={{ display: "block", cursor: sliceAxis === "x" ? "col-resize" : "row-resize" }}
+                    style={{ display: "block", cursor: sliceDirIsX ? "col-resize" : "row-resize" }}
                     onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); handleMiniPointer(e); }}
                     onPointerMove={(e) => { if (e.buttons > 0) handleMiniPointer(e); }}
                     onPointerUp={() => {}}
@@ -475,7 +478,7 @@ export default function PlaybackPage() {
                     <text x={5} y={MINI_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#64748b" fontWeight="600">W</text>
                     <text x={MINI_W - 5} y={MINI_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#64748b" fontWeight="600">E</text>
                     {/* Slice line */}
-                    {sliceAxis === "x" ? (
+                    {sliceDirIsX ? (
                       <>
                         {/* Glow */}
                         <line
@@ -602,7 +605,7 @@ export default function PlaybackPage() {
                           if (isActive) { setSliceTool("none"); return; }
                           setSliceTool(tool.id as SliceTool);
                           if (tool.id === "slice-v") {
-                            setSliceAxis("z");
+                            setSliceDir("north");
                             setSliceLevel(Math.floor((GRID_D - 1) / 2));
                           }
                         }}
@@ -707,23 +710,26 @@ export default function PlaybackPage() {
                 {/* ── Vertical slice: step-by-step ── */}
                 {sliceTool === "slice-v" && (
                   <>
-                    {/* Step 1: cut direction */}
+                    {/* Step 1: viewing direction (4 compass buttons) */}
                     <div>
                       <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                        Step 1 · Cut direction
+                        Step 1 · View from
                       </div>
-                      <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+                      {/* 2×2 compass grid */}
+                      <div className="grid grid-cols-2 gap-0.5">
                         {([
-                          { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S" },
-                          { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E" },
-                        ]).map(({ axis, label, sub }) => (
+                          { dir: "north" as const, label: "↑ From North", sub: "looking south" },
+                          { dir: "south" as const, label: "↓ From South", sub: "looking north" },
+                          { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
+                          { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
+                        ]).map(({ dir, label, sub }) => (
                           <button
-                            key={axis}
-                            onClick={() => handleSliceAxisChange(axis)}
-                            className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
-                              sliceAxis === axis
-                                ? "bg-white text-foreground shadow-sm font-semibold"
-                                : "text-muted-foreground hover:text-foreground"
+                            key={dir}
+                            onClick={() => handleDirChange(dir)}
+                            className={`py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 border ${
+                              sliceDir === dir
+                                ? "bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm"
+                                : "bg-muted border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
                             }`}
                           >
                             <span>{label}</span>
@@ -759,7 +765,7 @@ export default function PlaybackPage() {
                   <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
                     {sliceTool === "slice-h"
                       ? `Layer ${sliceLevel + 1} of 8 · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
-                      : sliceAxis === "x"
+                      : sliceDirIsX
                         ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
                         : `Row ${sliceLevel + 1} of ${GRID_D} · ${(38.582 + (sliceLevel / (GRID_D - 1)) * 0.069).toFixed(4)}°N`}
                   </div>
