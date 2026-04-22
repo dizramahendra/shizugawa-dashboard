@@ -58,6 +58,14 @@ const RIVER_PATHS: {
   },
 ];
 
+/** Mockup soil zones for the Shizugawa watershed (representative Tohoku coastal soils) */
+const SOIL_TYPES = [
+  { id: "andosol",  name: "Andosol",  desc: "Volcanic ash · low N/P retention", color: "#d97706" },
+  { id: "cambisol", name: "Cambisol", desc: "Forest brown · moderate retention", color: "#a16207" },
+  { id: "gleysol",  name: "Gleysol",  desc: "Paddy · high N retention",          color: "#475569" },
+  { id: "lithosol", name: "Lithosol", desc: "Rocky coast · high erosion",        color: "#84cc16" },
+];
+
 export default function BasinOverview({
   onSelectOcean,
   onSelectRiver,
@@ -67,6 +75,7 @@ export default function BasinOverview({
   const [hoveredOcean, setHoveredOcean] = useState(false);
   const [hoveredRiver, setHoveredRiver] = useState<string | null>(null);
   const [hoveredWatershed, setHoveredWatershed] = useState<string | null>(null);
+  const [showSoilLayer, setShowSoilLayer] = useState(false);
 
   const cellW = 100 / GRID_W;
   const cellH = 100 / GRID_D;
@@ -132,6 +141,44 @@ export default function BasinOverview({
         </div>
       </div>
 
+      {/* Layers panel */}
+      <div className="absolute top-16 right-4 bg-white rounded-md shadow-sm border border-border z-10 w-40">
+        <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium px-2.5 pt-1.5 pb-1 border-b border-border/50">
+          Layers
+        </div>
+        <button
+          onClick={() => setShowSoilLayer(v => !v)}
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-muted/40 cursor-pointer transition-colors"
+          data-testid="toggle-soil-layer"
+        >
+          <span className={`w-7 h-4 rounded-full transition-colors relative flex-shrink-0 ${showSoilLayer ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${showSoilLayer ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </span>
+          <span className="text-[10px] text-foreground font-medium">Soil Type</span>
+          {showSoilLayer && <span className="ml-auto text-[8px] text-amber-600 font-mono uppercase">on</span>}
+        </button>
+      </div>
+
+      {/* Soil legend (only when layer is on) */}
+      {showSoilLayer && (
+        <div className="absolute bottom-4 left-4 bg-white rounded-md shadow-sm border border-border px-2.5 py-2 z-10 w-44">
+          <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+            Soil Type · mockup
+          </div>
+          <div className="flex flex-col gap-1">
+            {SOIL_TYPES.map(s => (
+              <div key={s.id} className="flex items-start gap-1.5">
+                <div className="w-3 h-3 rounded-sm flex-shrink-0 mt-0.5 border border-black/10" style={{ backgroundColor: s.color, opacity: 0.7 }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-semibold text-foreground leading-tight">{s.name}</div>
+                  <div className="text-[8px] text-muted-foreground leading-tight">{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Scale bar */}
       <div className="absolute bottom-4 right-4 bg-white rounded-md shadow-sm border border-border px-2 py-1.5 flex flex-col gap-1 z-10">
         <div className="flex items-center">
@@ -166,6 +213,34 @@ export default function BasinOverview({
           {/* Bay water fill */}
           <path d="M130,95 L220,62 L300,62 L395,90 L450,135 L470,190 L460,250 L410,300 L330,315 L260,308 L190,300 L140,268 L110,220 L108,160 Z"
             fill="#b8d4e4" opacity="0.55" />
+
+          {/* ── Soil layer (mockup) — clipped to land masses ── */}
+          {showSoilLayer && (
+            <>
+              <defs>
+                <clipPath id="land-clip">
+                  <path d="M0,0 L220,0 L220,80 L160,105 L130,150 L0,150 Z" />
+                  <path d="M300,0 L520,0 L520,180 L455,150 L395,110 L320,80 Z" />
+                  <path d="M0,310 L0,400 L520,400 L520,310 L390,285 L330,305 L260,300 L170,305 Z" />
+                </clipPath>
+              </defs>
+              <g clipPath="url(#land-clip)" opacity="0.62">
+                {/* Top-left land: Andosol (north) → Cambisol (south) */}
+                <path d="M0,0 L220,0 L220,55 L0,75 Z" fill="#d97706" />
+                <path d="M0,75 L220,55 L220,80 L160,105 L130,150 L0,150 Z" fill="#a16207" />
+                {/* Top-right land: Andosol (north) → Lithosol (south) */}
+                <path d="M300,0 L520,0 L520,75 L300,55 Z" fill="#d97706" />
+                <path d="M300,55 L520,75 L520,180 L455,150 L395,110 L320,80 Z" fill="#84cc16" />
+                {/* Bottom land: Gleysol (west, paddy) → Cambisol (east) */}
+                <path d="M0,310 L260,300 L260,400 L0,400 Z" fill="#475569" />
+                <path d="M260,300 L390,285 L520,310 L520,400 L260,400 Z" fill="#a16207" />
+              </g>
+              {/* Soft border so soil reads as a layer, not just a fill */}
+              <g clipPath="url(#land-clip)" opacity="0.35" pointerEvents="none">
+                <path d="M0,75 L220,55 M0,75 L520,75 M260,300 L260,400" stroke="#fff" strokeWidth="1.5" fill="none" strokeDasharray="3,3" />
+              </g>
+            </>
+          )}
 
           {/* ── Watershed bounding boxes (below rivers, above water) ── */}
           {WATERSHEDS.map((ws: Watershed) => {
