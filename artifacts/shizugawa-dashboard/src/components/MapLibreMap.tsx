@@ -19,28 +19,17 @@ const MODEL_RIVER: Record<number, string> = {
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
 // ── Soil databases (watershed context layer) ─────────────────────────────────
-// Soil distribution is rendered by assigning each sub-basin a dominant soil
-// (basinAssignments) and then drawing the basin polygon filled with the soil
-// pattern. River corridors get an extra alluvial/wetland buffer overlay
-// (floodplainSoilId). Colors follow the standard USDA / FAO-WRB cartographic
-// palettes; hatch patterns follow standard USDA cartographic conventions
-// (dots = sandy, diagonal = clay, wavy = alluvial, dense-dots = volcanic,
-// horizontal = wetland, cross-hatch = thin/skeletal).
-type SoilPattern = "dots" | "diagonal" | "horizontal" | "wavy" | "dense-dots" | "cross-hatch";
-type SoilZone = {
-  id: string;
-  name: string;
-  color: string;       // base fill (FAO-WRB / USDA-derived)
-  hatch: string;       // overlay hatch / stipple color
-  pattern: SoilPattern;
-};
+// The soil layer is rendered as a randomized pixel scatter over the entire
+// land area (clipped to the union of sub-basin polygons). Each pixel cell
+// gets a soil color picked deterministically by a seeded PRNG, so the
+// distribution is reproducible across renders but visually random — matching
+// the Figma reference style. Colors are flat single hues, no hatch overlay.
+type SoilZone = { id: string; name: string; color: string };
 type SoilDB = {
   id: "usda" | "japan";
   label: string;
   source: string;
   zones: SoilZone[];
-  basinAssignments: Record<number, string>; // basin id → soil zone id
-  floodplainSoilId: string;                  // soil drawn as river-corridor buffer
 };
 
 const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
@@ -49,143 +38,32 @@ const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
     label: "USDA Soil Taxonomy",
     source: "USDA NRCS · STATSGO2",
     zones: [
-      { id: "merrimac",    name: "Merrimac (sandy outwash · Spodosol)", color: "#d4b483", hatch: "#7a4f1c", pattern: "dots"     },
-      { id: "covington",   name: "Covington (silty clay · Inceptisol)", color: "#a08254", hatch: "#5a3d1f", pattern: "diagonal" },
-      { id: "fluvaquents", name: "Fluvaquents (alluvial · Entisol)",    color: "#7e9b8f", hatch: "#3a5648", pattern: "wavy"     },
+      { id: "merrimac",    name: "Merrimac",    color: "#a855f7" },
+      { id: "fluvaquents", name: "Fluvaquents", color: "#5eead4" },
+      { id: "covington",   name: "Covington",   color: "#a3e635" },
     ],
-    basinAssignments: {
-      // Northern uplands — sandy outwash on glacial / weathered granite
-      25: "merrimac", 3: "merrimac", 20: "merrimac", 24: "merrimac", 23: "merrimac",
-      21: "merrimac", 19: "merrimac", 18: "merrimac", 22: "merrimac", 15: "merrimac",
-      // Mid-elevation interior valleys — silty clay
-      17: "covington", 5: "covington", 1: "covington", 16: "covington",
-      14: "covington", 13: "covington",
-      // Bay-adjacent / lower watershed — alluvial floodplain
-      2: "fluvaquents", 4: "fluvaquents", 6: "fluvaquents", 8: "fluvaquents",
-      9: "fluvaquents", 10: "fluvaquents", 12: "fluvaquents",
-    },
-    floodplainSoilId: "fluvaquents",
   },
   japan: {
     id: "japan",
     label: "Japan FAO-WRB",
     source: "NIAES · Soil Map of Japan",
     zones: [
-      { id: "lithosol", name: "Lithosol (thin mountain soil)",     color: "#d6c8b0", hatch: "#7d6f4e", pattern: "cross-hatch" },
-      { id: "andosol",  name: "Andosol (volcanic upland)",         color: "#8a5a3b", hatch: "#2a1408", pattern: "dense-dots"  },
-      { id: "cambisol", name: "Cambisol (forest brown earth)",     color: "#e0b572", hatch: "#7a4d1c", pattern: "diagonal"    },
-      { id: "gleysol",  name: "Gleysol (waterlogged paddy)",       color: "#7fa6b8", hatch: "#2d4a5c", pattern: "horizontal"  },
+      { id: "lithosol", name: "Lithosol", color: "#84cc16" },
+      { id: "andosol",  name: "Andosol",  color: "#d97706" },
+      { id: "cambisol", name: "Cambisol", color: "#a16207" },
+      { id: "gleysol",  name: "Gleysol",  color: "#475569" },
     ],
-    basinAssignments: {
-      // High mountain ridges — thin / skeletal
-      25: "lithosol", 3: "lithosol", 20: "lithosol", 24: "lithosol", 23: "lithosol",
-      // Mid-north volcanic uplands
-      21: "andosol", 19: "andosol", 18: "andosol", 17: "andosol", 22: "andosol",
-      // Central / south interior forest
-      5: "cambisol", 1: "cambisol", 16: "cambisol", 15: "cambisol",
-      14: "cambisol", 13: "cambisol",
-      // Bay-adjacent / lowland (paddy / waterlogged)
-      2: "gleysol", 4: "gleysol", 6: "gleysol", 8: "gleysol",
-      9: "gleysol", 10: "gleysol", 12: "gleysol",
-    },
-    floodplainSoilId: "gleysol",
   },
 };
 
-// ── Pixel-art pattern maps ───────────────────────────────────────────────────
-// Each pattern is a 6×6 grid of single-pixel cells. Characters are:
-//   '.' = base color, '+' = mid (base↔hatch lerp), '#' = hatch color.
-// The result is a crisp pixelated/dithered fill instead of vector hatching.
-const PIXEL_MAPS: Record<SoilPattern, string[]> = {
-  dots: [
-    "......",
-    "..#...",
-    "......",
-    "+....+",
-    "...#..",
-    "......",
-  ],
-  diagonal: [
-    "#.....",
-    "+#....",
-    "..#+..",
-    "...#..",
-    "....#+",
-    "+....#",
-  ],
-  horizontal: [
-    "......",
-    "######",
-    "+.+.+.",
-    "......",
-    "######",
-    ".+.+.+",
-  ],
-  wavy: [
-    "......",
-    ".##...",
-    "+..##+",
-    "....+.",
-    "##+...",
-    "...##.",
-  ],
-  "dense-dots": [
-    "#.#.#.",
-    ".+.+.+",
-    "#.#.#.",
-    ".+.+.+",
-    "#.#.#.",
-    ".+.+.+",
-  ],
-  "cross-hatch": [
-    "#....#",
-    "+#..#+",
-    "..##..",
-    "..##..",
-    "+#..#+",
-    "#....#",
-  ],
-};
+// Soil-layer pixel grid ───────────────────────────────────────────────────────
+const SOIL_PIXEL_SIZE = 6; // SVG units per pixel cell
 
-function mixHex(a: string, b: string, t: number): string {
-  const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
-  const pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
-  const m = pa.map((v, i) => Math.round(v * (1 - t) + pb[i] * t));
-  return "#" + m.map((v) => v.toString(16).padStart(2, "0")).join("");
-}
-
-// SVG <pattern> body for one soil — color baked in for direct Figma copy-paste.
-// Renders a pixelated 6×6 tile so the fill reads as 8-bit pixel art.
-function SoilPatternDef({ zone }: { zone: SoilZone }) {
-  const map = PIXEL_MAPS[zone.pattern];
-  const mid = mixHex(zone.color, zone.hatch, 0.5);
-  return (
-    <pattern
-      id={`soilpat-${zone.id}`}
-      patternUnits="userSpaceOnUse"
-      width={6}
-      height={6}
-    >
-      <rect width={6} height={6} fill={zone.color} shapeRendering="crispEdges" />
-      {map.flatMap((row, y) =>
-        row.split("").map((ch, x) => {
-          if (ch === ".") return null;
-          const fill = ch === "#" ? zone.hatch : mid;
-          return (
-            <rect
-              key={`px-${zone.id}-${x}-${y}`}
-              x={x}
-              y={y}
-              width={1}
-              height={1}
-              fill={fill}
-              shapeRendering="crispEdges"
-            />
-          );
-        })
-      )}
-    </pattern>
-  );
+function soilHash(x: number, y: number, seed: number): number {
+  // Tiny deterministic hash → [0, 1)
+  let h = (x * 374761393 + y * 668265263 + seed * 982451653) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
 const COLOR_STOPS: Record<string, string[]> = {
@@ -507,9 +385,23 @@ export default function MapLibreMap({
             style={{ filter: "saturate(0)" }}
           />
 
-          {/* Soil layer — sub-basin-snapped polygons + river-corridor buffer */}
+          {/* Soil layer — random pixel scatter, clipped to land */}
           {showSoilLayer && (() => {
-            const floodplain = activeSoilDB.zones.find(z => z.id === activeSoilDB.floodplainSoilId)!;
+            const cols = Math.ceil(SVG_W / SOIL_PIXEL_SIZE);
+            const rows = Math.ceil(SVG_H / SOIL_PIXEL_SIZE);
+            const zones = activeSoilDB.zones;
+            const seed = soilDatabase === "usda" ? 1 : 2;
+            const cells: Array<{ x: number; y: number; fill: string }> = [];
+            for (let r = 0; r < rows; r++) {
+              for (let c = 0; c < cols; c++) {
+                const idx = Math.floor(soilHash(c, r, seed) * zones.length);
+                cells.push({
+                  x: c * SOIL_PIXEL_SIZE,
+                  y: r * SOIL_PIXEL_SIZE,
+                  fill: zones[idx].color,
+                });
+              }
+            }
             return (
               <>
                 <defs>
@@ -518,67 +410,19 @@ export default function MapLibreMap({
                       <path key={`soilclip-${idStr}`} d={d} />
                     ))}
                   </clipPath>
-                  {activeSoilDB.zones.map((z) => (
-                    <SoilPatternDef key={`pat-${z.id}`} zone={z} />
-                  ))}
                 </defs>
-
-                <g style={{ pointerEvents: "none" }}>
-                  {/* Sub-basin fills with hatched soil pattern */}
-                  {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
-                    const id = Number(idStr);
-                    const soilId = activeSoilDB.basinAssignments[id];
-                    if (!soilId) return null;
-                    return (
-                      <path
-                        key={`soil-${id}`}
-                        d={d}
-                        fill={`url(#soilpat-${soilId})`}
-                        fillOpacity={0.78}
-                        stroke={activeSoilDB.zones.find(z => z.id === soilId)?.hatch}
-                        strokeWidth={0.4}
-                        strokeOpacity={0.5}
-                      />
-                    );
-                  })}
-
-                  {/* River-corridor buffer — alluvial / waterlogged strip along streams.
-                      Clipped to land so it never bleeds into the bay. */}
-                  <g clipPath="url(#soil-land-clip)">
-                    {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
-                      const id = Number(idStr);
-                      const isMain = MAIN_STEMS.has(id);
-                      return (
-                        <path
-                          key={`flood-${id}`}
-                          d={d}
-                          fill="none"
-                          stroke={floodplain.color}
-                          strokeWidth={isMain ? 7 : 4}
-                          strokeOpacity={0.7}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      );
-                    })}
-                    {/* Hatch overlay along rivers, same pattern as floodplain soil */}
-                    {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
-                      const id = Number(idStr);
-                      const isMain = MAIN_STEMS.has(id);
-                      return (
-                        <path
-                          key={`floodhatch-${id}`}
-                          d={d}
-                          fill="none"
-                          stroke={`url(#soilpat-${floodplain.id})`}
-                          strokeWidth={isMain ? 7 : 4}
-                          strokeOpacity={0.95}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      );
-                    })}
-                  </g>
+                <g clipPath="url(#soil-land-clip)" style={{ pointerEvents: "none" }} opacity={0.75}>
+                  {cells.map((p, i) => (
+                    <rect
+                      key={i}
+                      x={p.x}
+                      y={p.y}
+                      width={SOIL_PIXEL_SIZE}
+                      height={SOIL_PIXEL_SIZE}
+                      fill={p.fill}
+                      shapeRendering="crispEdges"
+                    />
+                  ))}
                 </g>
               </>
             );
@@ -921,27 +765,17 @@ export default function MapLibreMap({
                 {activeSoilDB.source}
               </div>
 
-              {/* Legend swatches — each shows the actual hatch pattern */}
+              {/* Legend swatches — flat color squares */}
               <div className="flex flex-col gap-0.5">
                 {activeSoilDB.zones.map((z) => (
                   <div key={z.id} className="flex items-center gap-1.5">
-                    <svg width={14} height={14} className="flex-shrink-0 rounded-sm border border-black/15">
-                      <defs>
-                        <SoilPatternDef zone={z} />
-                      </defs>
-                      <rect width={14} height={14} fill={`url(#soilpat-${z.id})`} />
-                    </svg>
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-black/10"
+                      style={{ background: z.color }}
+                    />
                     <span className="text-[9px] text-slate-600 leading-tight truncate" title={z.name}>
                       {z.name}
                     </span>
-                    {z.id === activeSoilDB.floodplainSoilId && (
-                      <span
-                        className="text-[7px] text-slate-400 ml-auto flex-shrink-0"
-                        title="Also overlaid as a buffer along river corridors"
-                      >
-                        +rivers
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
