@@ -25,18 +25,31 @@ const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 type SoilZone = { id: string; name: string; color: string; d: string };
 type SoilDB   = { id: "usda" | "japan"; label: string; source: string; zones: SoilZone[] };
 
-// Three horizontal bands across the watershed land mass (top → bottom)
-const Z_BAND_TOP = `M0,0     L${SVG_W},0     L${SVG_W},200   L0,200   Z`;
-const Z_BAND_MID = `M0,200   L${SVG_W},200   L${SVG_W},400   L0,400   Z`;
-const Z_BAND_BOT = `M0,400   L${SVG_W},400   L${SVG_W},${SVG_H} L0,${SVG_H} Z`;
+// USDA — three organic bands separated by wavy mid-elevation contours.
+// Boundary 1 (~y=180): glacial-outwash uplands → silty-clay valley.
+// Boundary 2 (~y=395): silty-clay valley → alluvial floodplain near the bay.
+// Adjacent zones share boundary curves so they tile without gaps.
+const Z_USDA_MERRIMAC =
+  "M 0 0 L 465 0 L 465 175 Q 420 165 380 200 Q 340 215 295 185 Q 250 165 210 200 Q 165 230 120 195 Q 75 175 35 200 Q 15 195 0 180 Z";
+const Z_USDA_COVINGTON =
+  "M 0 180 Q 15 195 35 200 Q 75 175 120 195 Q 165 230 210 200 Q 250 165 295 185 Q 340 215 380 200 Q 420 165 465 175 L 465 395 Q 420 405 380 380 Q 335 360 290 390 Q 245 415 200 385 Q 155 360 110 390 Q 65 415 25 395 Q 10 390 0 400 Z";
+const Z_USDA_FLUVAQUENTS =
+  "M 0 400 Q 10 390 25 395 Q 65 415 110 390 Q 155 360 200 385 Q 245 415 290 390 Q 335 360 380 380 Q 420 405 465 395 L 465 586 L 0 586 Z";
 
-// Four quadrants split at (SVG_W/2, SVG_H/2) for the Japan FAO-WRB classes
-const CX = SVG_W / 2;
-const CY = SVG_H / 2;
-const Z_NW = `M0,0  L${CX},0  L${CX},${CY} L0,${CY} Z`;
-const Z_NE = `M${CX},0 L${SVG_W},0 L${SVG_W},${CY} L${CX},${CY} Z`;
-const Z_SW = `M0,${CY} L${CX},${CY} L${CX},${SVG_H} L0,${SVG_H} Z`;
-const Z_SE = `M${CX},${CY} L${SVG_W},${CY} L${SVG_W},${SVG_H} L${CX},${SVG_H} Z`;
+// Japan FAO-WRB — four geographic zones partitioned by two vertical mountain
+// fronts (V1 west, V2 east) and one mid-elevation contour (H1 ~y=275):
+//   • Lithosol = western mountain spine (left of V1)
+//   • Andosol  = northern volcanic uplands (between V1/V2, above H1)
+//   • Cambisol = southern forest mid-elevation (between V1/V2, below H1)
+//   • Gleysol  = eastern coastal lowlands hugging the bay (right of V2)
+const Z_JP_LITHOSOL =
+  "M 0 0 L 110 0 Q 135 100 115 200 Q 140 250 120 270 Q 140 300 110 400 Q 130 500 115 586 L 0 586 Z";
+const Z_JP_ANDOSOL =
+  "M 110 0 L 350 0 Q 380 100 340 200 Q 370 250 355 280 Q 320 295 250 270 Q 180 295 120 270 Q 140 250 115 200 Q 135 100 110 0 Z";
+const Z_JP_CAMBISOL =
+  "M 120 270 Q 180 295 250 270 Q 320 295 355 280 Q 370 300 340 400 Q 380 500 390 586 L 115 586 Q 130 500 110 400 Q 140 300 120 270 Z";
+const Z_JP_GLEYSOL =
+  "M 350 0 L 465 0 L 465 586 L 390 586 Q 380 500 340 400 Q 370 300 355 280 Q 370 250 340 200 Q 380 100 350 0 Z";
 
 const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
   usda: {
@@ -44,9 +57,9 @@ const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
     label: "USDA Soil Taxonomy",
     source: "USDA NRCS · STATSGO2",
     zones: [
-      { id: "merrimac",    name: "Merrimac (sandy loam, glacial outwash)", color: "#a855f7", d: Z_BAND_TOP },
-      { id: "covington",   name: "Covington (silty clay, lacustrine)",     color: "#a3e635", d: Z_BAND_MID },
-      { id: "fluvaquents", name: "Fluvaquents (alluvial floodplain)",      color: "#5eead4", d: Z_BAND_BOT },
+      { id: "merrimac",    name: "Merrimac (sandy loam, glacial outwash)", color: "#a855f7", d: Z_USDA_MERRIMAC },
+      { id: "covington",   name: "Covington (silty clay, lacustrine)",     color: "#a3e635", d: Z_USDA_COVINGTON },
+      { id: "fluvaquents", name: "Fluvaquents (alluvial floodplain)",      color: "#5eead4", d: Z_USDA_FLUVAQUENTS },
     ],
   },
   japan: {
@@ -54,10 +67,10 @@ const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
     label: "Japan FAO-WRB",
     source: "NIAES · Soil Map of Japan",
     zones: [
-      { id: "andosol",  name: "Andosol (volcanic upland)",         color: "#d97706", d: Z_NW },
-      { id: "lithosol", name: "Lithosol (thin mountain soil)",     color: "#84cc16", d: Z_NE },
-      { id: "gleysol",  name: "Gleysol (waterlogged paddy)",       color: "#475569", d: Z_SW },
-      { id: "cambisol", name: "Cambisol (forest brown earth)",     color: "#a16207", d: Z_SE },
+      { id: "lithosol", name: "Lithosol (thin mountain soil)",     color: "#84cc16", d: Z_JP_LITHOSOL  },
+      { id: "andosol",  name: "Andosol (volcanic upland)",         color: "#d97706", d: Z_JP_ANDOSOL   },
+      { id: "cambisol", name: "Cambisol (forest brown earth)",     color: "#a16207", d: Z_JP_CAMBISOL  },
+      { id: "gleysol",  name: "Gleysol (waterlogged paddy)",       color: "#475569", d: Z_JP_GLEYSOL   },
     ],
   },
 };
