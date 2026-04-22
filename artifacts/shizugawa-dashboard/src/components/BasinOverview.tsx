@@ -58,12 +58,53 @@ const RIVER_PATHS: {
   },
 ];
 
-/** Mockup soil zones for the Shizugawa watershed (representative Tohoku coastal soils) */
-const SOIL_TYPES = [
-  { id: "andosol",  name: "Andosol",  desc: "Volcanic ash · low N/P retention", color: "#d97706" },
-  { id: "cambisol", name: "Cambisol", desc: "Forest brown · moderate retention", color: "#a16207" },
-  { id: "gleysol",  name: "Gleysol",  desc: "Paddy · high N retention",          color: "#475569" },
-  { id: "lithosol", name: "Lithosol", desc: "Rocky coast · high erosion",        color: "#84cc16" },
+/** Mockup soil zones — switchable between USDA (US sample) and FAO-WRB (Japan / NIAES) classifications. */
+type SoilEntry = {
+  id: string;
+  name: string;
+  desc: string;
+  color: string;
+  /** SVG paths assigned to this soil (clipped to land mass) */
+  paths: string[];
+};
+
+type SoilDatabase = {
+  id: "usa" | "japan";
+  label: string;
+  source: string;
+  soils: SoilEntry[];
+};
+
+// Six land-zone polygons (top-left N/S, top-right N/S, bottom W/E) — reused across databases.
+const Z_TL_N = "M0,0 L220,0 L220,55 L0,75 Z";
+const Z_TL_S = "M0,75 L220,55 L220,80 L160,105 L130,150 L0,150 Z";
+const Z_TR_N = "M300,0 L520,0 L520,75 L300,55 Z";
+const Z_TR_S = "M300,55 L520,75 L520,180 L455,150 L395,110 L320,80 Z";
+const Z_BO_W = "M0,310 L260,300 L260,400 L0,400 Z";
+const Z_BO_E = "M260,300 L390,285 L520,310 L520,400 L260,400 Z";
+
+const SOIL_DATABASES: SoilDatabase[] = [
+  {
+    id: "usa",
+    label: "USDA",
+    source: "USDA Soil Survey · sample series",
+    soils: [
+      { id: "merrimac",    name: "Merrimac",    desc: "Sandy loam · well-drained, low retention", color: "#a855f7", paths: [Z_TL_N, Z_TR_N] },
+      { id: "fluvaquents", name: "Fluvaquents", desc: "Floodplain wet · high N retention",        color: "#5eead4", paths: [Z_BO_W] },
+      { id: "covington",   name: "Covington",   desc: "Silty clay · high P binding",              color: "#a3e635", paths: [Z_TL_S, Z_TR_S, Z_BO_E] },
+    ],
+  },
+  {
+    id: "japan",
+    label: "FAO-WRB · NIAES",
+    source: "FAO-WRB / Japan NIAES soil database",
+    soils: [
+      { id: "andosol",  name: "Andosol",  desc: "Volcanic ash · low N/P retention",  color: "#d97706", paths: [Z_TL_N, Z_TR_N] },
+      { id: "cambisol", name: "Cambisol", desc: "Forest brown · moderate retention", color: "#a16207", paths: [Z_TL_S, Z_BO_E] },
+      { id: "gleysol",  name: "Gleysol",  desc: "Paddy · high N retention",          color: "#475569", paths: [Z_BO_W] },
+      { id: "lithosol", name: "Lithosol", desc: "Rocky coast · high erosion",        color: "#84cc16", paths: [Z_TR_S] },
+    ],
+  },
 ];
 
 export default function BasinOverview({
@@ -76,6 +117,8 @@ export default function BasinOverview({
   const [hoveredRiver, setHoveredRiver] = useState<string | null>(null);
   const [hoveredWatershed, setHoveredWatershed] = useState<string | null>(null);
   const [showSoilLayer, setShowSoilLayer] = useState(false);
+  const [soilDatabase, setSoilDatabase] = useState<"usa" | "japan">("usa");
+  const activeSoilDb = SOIL_DATABASES.find(d => d.id === soilDatabase) ?? SOIL_DATABASES[0];
 
   const cellW = 100 / GRID_W;
   const cellH = 100 / GRID_D;
@@ -142,7 +185,7 @@ export default function BasinOverview({
       </div>
 
       {/* Layers panel */}
-      <div className="absolute top-16 right-4 bg-white rounded-md shadow-sm border border-border z-10 w-40">
+      <div className="absolute top-16 right-4 bg-white rounded-md shadow-sm border border-border z-10 w-44">
         <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium px-2.5 pt-1.5 pb-1 border-b border-border/50">
           Layers
         </div>
@@ -157,16 +200,41 @@ export default function BasinOverview({
           <span className="text-[10px] text-foreground font-medium">Soil Type</span>
           {showSoilLayer && <span className="ml-auto text-[8px] text-amber-600 font-mono uppercase">on</span>}
         </button>
+        {/* Database selector — visible only when soil layer is on */}
+        {showSoilLayer && (
+          <div className="px-2.5 pb-2 pt-0.5 border-t border-border/40">
+            <div className="text-[8px] uppercase tracking-wide text-muted-foreground/70 mb-1">Database</div>
+            <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+              {SOIL_DATABASES.map(db => (
+                <button
+                  key={db.id}
+                  onClick={() => setSoilDatabase(db.id)}
+                  className={`flex-1 py-1 px-1.5 rounded-sm text-[9px] transition-colors ${
+                    soilDatabase === db.id
+                      ? "bg-white text-foreground shadow-sm font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid={`soil-db-${db.id}`}
+                >
+                  {db.id === "usa" ? "🇺🇸 USA" : "🇯🇵 Japan"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Soil legend (only when layer is on) */}
       {showSoilLayer && (
-        <div className="absolute bottom-4 left-4 bg-white rounded-md shadow-sm border border-border px-2.5 py-2 z-10 w-44">
-          <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
-            Soil Type · mockup
+        <div className="absolute bottom-4 left-4 bg-white rounded-md shadow-sm border border-border px-2.5 py-2 z-10 w-48">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">
+              Soil Type
+            </div>
+            <div className="text-[8px] font-mono text-muted-foreground/70">{activeSoilDb.label}</div>
           </div>
           <div className="flex flex-col gap-1">
-            {SOIL_TYPES.map(s => (
+            {activeSoilDb.soils.map(s => (
               <div key={s.id} className="flex items-start gap-1.5">
                 <div className="w-3 h-3 rounded-sm flex-shrink-0 mt-0.5 border border-black/10" style={{ backgroundColor: s.color, opacity: 0.7 }} />
                 <div className="flex-1 min-w-0">
@@ -175,6 +243,9 @@ export default function BasinOverview({
                 </div>
               </div>
             ))}
+          </div>
+          <div className="mt-1.5 pt-1.5 border-t border-border/40 text-[7px] text-muted-foreground/70 italic leading-tight">
+            {activeSoilDb.source}
           </div>
         </div>
       )}
@@ -225,17 +296,13 @@ export default function BasinOverview({
                 </clipPath>
               </defs>
               <g clipPath="url(#land-clip)" opacity="0.62">
-                {/* Top-left land: Andosol (north) → Cambisol (south) */}
-                <path d="M0,0 L220,0 L220,55 L0,75 Z" fill="#d97706" />
-                <path d="M0,75 L220,55 L220,80 L160,105 L130,150 L0,150 Z" fill="#a16207" />
-                {/* Top-right land: Andosol (north) → Lithosol (south) */}
-                <path d="M300,0 L520,0 L520,75 L300,55 Z" fill="#d97706" />
-                <path d="M300,55 L520,75 L520,180 L455,150 L395,110 L320,80 Z" fill="#84cc16" />
-                {/* Bottom land: Gleysol (west, paddy) → Cambisol (east) */}
-                <path d="M0,310 L260,300 L260,400 L0,400 Z" fill="#475569" />
-                <path d="M260,300 L390,285 L520,310 L520,400 L260,400 Z" fill="#a16207" />
+                {activeSoilDb.soils.flatMap(soil =>
+                  soil.paths.map((d, i) => (
+                    <path key={`${soil.id}-${i}`} d={d} fill={soil.color} />
+                  ))
+                )}
               </g>
-              {/* Soft border so soil reads as a layer, not just a fill */}
+              {/* Soft dashed boundaries between zones */}
               <g clipPath="url(#land-clip)" opacity="0.35" pointerEvents="none">
                 <path d="M0,75 L220,55 M0,75 L520,75 M260,300 L260,400" stroke="#fff" strokeWidth="1.5" fill="none" strokeDasharray="3,3" />
               </g>

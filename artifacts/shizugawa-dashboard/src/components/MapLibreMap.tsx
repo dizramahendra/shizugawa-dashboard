@@ -18,6 +18,50 @@ const MODEL_RIVER: Record<number, string> = {
 
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
+// ── Soil databases (watershed context layer) ─────────────────────────────────
+// Polygons are in the SVG's native coordinate space (0..SVG_W × 0..SVG_H) and
+// are clipped at render time to the union of SUB_BASIN_PATHS so the soil only
+// shows on land, never on the bay.
+type SoilZone = { id: string; name: string; color: string; d: string };
+type SoilDB   = { id: "usda" | "japan"; label: string; source: string; zones: SoilZone[] };
+
+// Three horizontal bands across the watershed land mass (top → bottom)
+const Z_BAND_TOP = `M0,0     L${SVG_W},0     L${SVG_W},200   L0,200   Z`;
+const Z_BAND_MID = `M0,200   L${SVG_W},200   L${SVG_W},400   L0,400   Z`;
+const Z_BAND_BOT = `M0,400   L${SVG_W},400   L${SVG_W},${SVG_H} L0,${SVG_H} Z`;
+
+// Four quadrants split at (SVG_W/2, SVG_H/2) for the Japan FAO-WRB classes
+const CX = SVG_W / 2;
+const CY = SVG_H / 2;
+const Z_NW = `M0,0  L${CX},0  L${CX},${CY} L0,${CY} Z`;
+const Z_NE = `M${CX},0 L${SVG_W},0 L${SVG_W},${CY} L${CX},${CY} Z`;
+const Z_SW = `M0,${CY} L${CX},${CY} L${CX},${SVG_H} L0,${SVG_H} Z`;
+const Z_SE = `M${CX},${CY} L${SVG_W},${CY} L${SVG_W},${SVG_H} L${CX},${SVG_H} Z`;
+
+const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
+  usda: {
+    id: "usda",
+    label: "USDA Soil Taxonomy",
+    source: "USDA NRCS · STATSGO2",
+    zones: [
+      { id: "merrimac",    name: "Merrimac (sandy loam, glacial outwash)", color: "#a855f7", d: Z_BAND_TOP },
+      { id: "covington",   name: "Covington (silty clay, lacustrine)",     color: "#a3e635", d: Z_BAND_MID },
+      { id: "fluvaquents", name: "Fluvaquents (alluvial floodplain)",      color: "#5eead4", d: Z_BAND_BOT },
+    ],
+  },
+  japan: {
+    id: "japan",
+    label: "Japan FAO-WRB",
+    source: "NIAES · Soil Map of Japan",
+    zones: [
+      { id: "andosol",  name: "Andosol (volcanic upland)",         color: "#d97706", d: Z_NW },
+      { id: "lithosol", name: "Lithosol (thin mountain soil)",     color: "#84cc16", d: Z_NE },
+      { id: "gleysol",  name: "Gleysol (waterlogged paddy)",       color: "#475569", d: Z_SW },
+      { id: "cambisol", name: "Cambisol (forest brown earth)",     color: "#a16207", d: Z_SE },
+    ],
+  },
+};
+
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   phosphorus: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
@@ -251,6 +295,9 @@ export default function MapLibreMap({
   const [hoveredOcean, setHoveredOcean] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [vb, setVb] = useState({ x: 0, y: 0, w: SVG_W, h: SVG_H });
+  const [showSoilLayer, setShowSoilLayer] = useState(false);
+  const [soilDatabase, setSoilDatabase] = useState<"usda" | "japan">("usda");
+  const activeSoilDB = SOIL_DATABASES[soilDatabase];
 
   useEffect(() => {
     if (corridorSegments) {
@@ -333,6 +380,24 @@ export default function MapLibreMap({
             opacity={0.9}
             style={{ filter: "saturate(0)" }}
           />
+
+          {/* Soil layer — clipped to the union of all sub-basin polygons */}
+          {showSoilLayer && (
+            <>
+              <defs>
+                <clipPath id="soil-land-clip" clipPathUnits="userSpaceOnUse">
+                  {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => (
+                    <path key={`soilclip-${idStr}`} d={d} />
+                  ))}
+                </clipPath>
+              </defs>
+              <g clipPath="url(#soil-land-clip)" style={{ pointerEvents: "none" }}>
+                {activeSoilDB.zones.map((z) => (
+                  <path key={z.id} d={z.d} fill={z.color} fillOpacity={0.42} />
+                ))}
+              </g>
+            </>
+          )}
 
           {/* Sub-basin fills — boundary lines only */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
@@ -625,6 +690,68 @@ export default function MapLibreMap({
               Grid
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Layers panel — top-right overlay */}
+      {!corridorSegments && !selectedRiver && (
+        <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm border border-border rounded-md shadow-sm overflow-hidden z-10" style={{ width: 188 }}>
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Layers</span>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <span className="text-[10px] text-slate-600">Soil</span>
+              <input
+                type="checkbox"
+                checked={showSoilLayer}
+                onChange={(e) => setShowSoilLayer(e.target.checked)}
+                className="w-3 h-3 accent-violet-600 cursor-pointer"
+              />
+            </label>
+          </div>
+
+          {showSoilLayer && (
+            <div className="px-2.5 py-1.5">
+              {/* Database switcher */}
+              <div className="flex rounded overflow-hidden border border-border mb-1.5">
+                {(["usda", "japan"] as const).map((dbId) => (
+                  <button
+                    key={dbId}
+                    onClick={() => setSoilDatabase(dbId)}
+                    className={`flex-1 px-2 py-1 text-[9px] font-semibold transition-colors ${
+                      soilDatabase === dbId
+                        ? "bg-violet-600 text-white"
+                        : "bg-white text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    {dbId === "usda" ? "USDA" : "Japan"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Database label + source */}
+              <div className="text-[9px] font-semibold text-slate-700 leading-tight">
+                {activeSoilDB.label}
+              </div>
+              <div className="text-[8px] text-slate-400 leading-tight mb-1.5">
+                {activeSoilDB.source}
+              </div>
+
+              {/* Legend swatches */}
+              <div className="flex flex-col gap-0.5">
+                {activeSoilDB.zones.map((z) => (
+                  <div key={z.id} className="flex items-center gap-1.5">
+                    <span
+                      className="w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-black/10"
+                      style={{ background: z.color, opacity: 0.7 }}
+                    />
+                    <span className="text-[9px] text-slate-600 leading-tight truncate" title={z.name}>
+                      {z.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
