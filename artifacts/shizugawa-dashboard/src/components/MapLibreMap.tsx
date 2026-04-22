@@ -92,8 +92,73 @@ const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
   },
 };
 
+// ── Pixel-art pattern maps ───────────────────────────────────────────────────
+// Each pattern is a 6×6 grid of single-pixel cells. Characters are:
+//   '.' = base color, '+' = mid (base↔hatch lerp), '#' = hatch color.
+// The result is a crisp pixelated/dithered fill instead of vector hatching.
+const PIXEL_MAPS: Record<SoilPattern, string[]> = {
+  dots: [
+    "......",
+    "..#...",
+    "......",
+    "+....+",
+    "...#..",
+    "......",
+  ],
+  diagonal: [
+    "#.....",
+    "+#....",
+    "..#+..",
+    "...#..",
+    "....#+",
+    "+....#",
+  ],
+  horizontal: [
+    "......",
+    "######",
+    "+.+.+.",
+    "......",
+    "######",
+    ".+.+.+",
+  ],
+  wavy: [
+    "......",
+    ".##...",
+    "+..##+",
+    "....+.",
+    "##+...",
+    "...##.",
+  ],
+  "dense-dots": [
+    "#.#.#.",
+    ".+.+.+",
+    "#.#.#.",
+    ".+.+.+",
+    "#.#.#.",
+    ".+.+.+",
+  ],
+  "cross-hatch": [
+    "#....#",
+    "+#..#+",
+    "..##..",
+    "..##..",
+    "+#..#+",
+    "#....#",
+  ],
+};
+
+function mixHex(a: string, b: string, t: number): string {
+  const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
+  const pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
+  const m = pa.map((v, i) => Math.round(v * (1 - t) + pb[i] * t));
+  return "#" + m.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
 // SVG <pattern> body for one soil — color baked in for direct Figma copy-paste.
+// Renders a pixelated 6×6 tile so the fill reads as 8-bit pixel art.
 function SoilPatternDef({ zone }: { zone: SoilZone }) {
+  const map = PIXEL_MAPS[zone.pattern];
+  const mid = mixHex(zone.color, zone.hatch, 0.5);
   return (
     <pattern
       id={`soilpat-${zone.id}`}
@@ -101,36 +166,23 @@ function SoilPatternDef({ zone }: { zone: SoilZone }) {
       width={6}
       height={6}
     >
-      <rect width={6} height={6} fill={zone.color} />
-      {zone.pattern === "dots" && (
-        <circle cx={3} cy={3} r={0.7} fill={zone.hatch} />
-      )}
-      {zone.pattern === "diagonal" && (
-        <path d="M-1 7 L 7 -1 M 2 8 L 8 2" stroke={zone.hatch} strokeWidth={0.5} />
-      )}
-      {zone.pattern === "horizontal" && (
-        <>
-          <line x1={0} y1={2}   x2={6} y2={2}   stroke={zone.hatch} strokeWidth={0.5} />
-          <line x1={0} y1={4.5} x2={6} y2={4.5} stroke={zone.hatch} strokeWidth={0.5} strokeDasharray="1.2 1.2" />
-        </>
-      )}
-      {zone.pattern === "wavy" && (
-        <path d="M0 3 Q1.5 1.5 3 3 T6 3" stroke={zone.hatch} strokeWidth={0.5} fill="none" />
-      )}
-      {zone.pattern === "dense-dots" && (
-        <>
-          <circle cx={1.5} cy={1.5} r={0.5} fill={zone.hatch} />
-          <circle cx={4.5} cy={1.5} r={0.5} fill={zone.hatch} />
-          <circle cx={3}   cy={4}   r={0.5} fill={zone.hatch} />
-          <circle cx={0}   cy={4}   r={0.5} fill={zone.hatch} />
-          <circle cx={6}   cy={4}   r={0.5} fill={zone.hatch} />
-        </>
-      )}
-      {zone.pattern === "cross-hatch" && (
-        <>
-          <line x1={0} y1={0} x2={6} y2={6} stroke={zone.hatch} strokeWidth={0.4} />
-          <line x1={6} y1={0} x2={0} y2={6} stroke={zone.hatch} strokeWidth={0.4} />
-        </>
+      <rect width={6} height={6} fill={zone.color} shapeRendering="crispEdges" />
+      {map.flatMap((row, y) =>
+        row.split("").map((ch, x) => {
+          if (ch === ".") return null;
+          const fill = ch === "#" ? zone.hatch : mid;
+          return (
+            <rect
+              key={`px-${zone.id}-${x}-${y}`}
+              x={x}
+              y={y}
+              width={1}
+              height={1}
+              fill={fill}
+              shapeRendering="crispEdges"
+            />
+          );
+        })
       )}
     </pattern>
   );
