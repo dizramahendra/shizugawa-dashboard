@@ -19,37 +19,29 @@ const MODEL_RIVER: Record<number, string> = {
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
 // ── Soil databases (watershed context layer) ─────────────────────────────────
-// Polygons are in the SVG's native coordinate space (0..SVG_W × 0..SVG_H) and
-// are clipped at render time to the union of SUB_BASIN_PATHS so the soil only
-// shows on land, never on the bay.
-type SoilZone = { id: string; name: string; color: string; d: string };
-type SoilDB   = { id: "usda" | "japan"; label: string; source: string; zones: SoilZone[] };
-
-// USDA — three organic bands separated by wavy mid-elevation contours.
-// Boundary 1 (~y=180): glacial-outwash uplands → silty-clay valley.
-// Boundary 2 (~y=395): silty-clay valley → alluvial floodplain near the bay.
-// Adjacent zones share boundary curves so they tile without gaps.
-const Z_USDA_MERRIMAC =
-  "M 0 0 L 465 0 L 465 175 Q 420 165 380 200 Q 340 215 295 185 Q 250 165 210 200 Q 165 230 120 195 Q 75 175 35 200 Q 15 195 0 180 Z";
-const Z_USDA_COVINGTON =
-  "M 0 180 Q 15 195 35 200 Q 75 175 120 195 Q 165 230 210 200 Q 250 165 295 185 Q 340 215 380 200 Q 420 165 465 175 L 465 395 Q 420 405 380 380 Q 335 360 290 390 Q 245 415 200 385 Q 155 360 110 390 Q 65 415 25 395 Q 10 390 0 400 Z";
-const Z_USDA_FLUVAQUENTS =
-  "M 0 400 Q 10 390 25 395 Q 65 415 110 390 Q 155 360 200 385 Q 245 415 290 390 Q 335 360 380 380 Q 420 405 465 395 L 465 586 L 0 586 Z";
-
-// Japan FAO-WRB — four geographic zones partitioned by two vertical mountain
-// fronts (V1 west, V2 east) and one mid-elevation contour (H1 ~y=275):
-//   • Lithosol = western mountain spine (left of V1)
-//   • Andosol  = northern volcanic uplands (between V1/V2, above H1)
-//   • Cambisol = southern forest mid-elevation (between V1/V2, below H1)
-//   • Gleysol  = eastern coastal lowlands hugging the bay (right of V2)
-const Z_JP_LITHOSOL =
-  "M 0 0 L 110 0 Q 135 100 115 200 Q 140 250 120 270 Q 140 300 110 400 Q 130 500 115 586 L 0 586 Z";
-const Z_JP_ANDOSOL =
-  "M 110 0 L 350 0 Q 380 100 340 200 Q 370 250 355 280 Q 320 295 250 270 Q 180 295 120 270 Q 140 250 115 200 Q 135 100 110 0 Z";
-const Z_JP_CAMBISOL =
-  "M 120 270 Q 180 295 250 270 Q 320 295 355 280 Q 370 300 340 400 Q 380 500 390 586 L 115 586 Q 130 500 110 400 Q 140 300 120 270 Z";
-const Z_JP_GLEYSOL =
-  "M 350 0 L 465 0 L 465 586 L 390 586 Q 380 500 340 400 Q 370 300 355 280 Q 370 250 340 200 Q 380 100 350 0 Z";
+// Soil distribution is rendered by assigning each sub-basin a dominant soil
+// (basinAssignments) and then drawing the basin polygon filled with the soil
+// pattern. River corridors get an extra alluvial/wetland buffer overlay
+// (floodplainSoilId). Colors follow the standard USDA / FAO-WRB cartographic
+// palettes; hatch patterns follow standard USDA cartographic conventions
+// (dots = sandy, diagonal = clay, wavy = alluvial, dense-dots = volcanic,
+// horizontal = wetland, cross-hatch = thin/skeletal).
+type SoilPattern = "dots" | "diagonal" | "horizontal" | "wavy" | "dense-dots" | "cross-hatch";
+type SoilZone = {
+  id: string;
+  name: string;
+  color: string;       // base fill (FAO-WRB / USDA-derived)
+  hatch: string;       // overlay hatch / stipple color
+  pattern: SoilPattern;
+};
+type SoilDB = {
+  id: "usda" | "japan";
+  label: string;
+  source: string;
+  zones: SoilZone[];
+  basinAssignments: Record<number, string>; // basin id → soil zone id
+  floodplainSoilId: string;                  // soil drawn as river-corridor buffer
+};
 
 const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
   usda: {
@@ -57,23 +49,92 @@ const SOIL_DATABASES: Record<"usda" | "japan", SoilDB> = {
     label: "USDA Soil Taxonomy",
     source: "USDA NRCS · STATSGO2",
     zones: [
-      { id: "merrimac",    name: "Merrimac (sandy loam, glacial outwash)", color: "#a855f7", d: Z_USDA_MERRIMAC },
-      { id: "covington",   name: "Covington (silty clay, lacustrine)",     color: "#a3e635", d: Z_USDA_COVINGTON },
-      { id: "fluvaquents", name: "Fluvaquents (alluvial floodplain)",      color: "#5eead4", d: Z_USDA_FLUVAQUENTS },
+      { id: "merrimac",    name: "Merrimac (sandy outwash · Spodosol)", color: "#d4b483", hatch: "#7a4f1c", pattern: "dots"     },
+      { id: "covington",   name: "Covington (silty clay · Inceptisol)", color: "#a08254", hatch: "#5a3d1f", pattern: "diagonal" },
+      { id: "fluvaquents", name: "Fluvaquents (alluvial · Entisol)",    color: "#7e9b8f", hatch: "#3a5648", pattern: "wavy"     },
     ],
+    basinAssignments: {
+      // Northern uplands — sandy outwash on glacial / weathered granite
+      25: "merrimac", 3: "merrimac", 20: "merrimac", 24: "merrimac", 23: "merrimac",
+      21: "merrimac", 19: "merrimac", 18: "merrimac", 22: "merrimac", 15: "merrimac",
+      // Mid-elevation interior valleys — silty clay
+      17: "covington", 5: "covington", 1: "covington", 16: "covington",
+      14: "covington", 13: "covington",
+      // Bay-adjacent / lower watershed — alluvial floodplain
+      2: "fluvaquents", 4: "fluvaquents", 6: "fluvaquents", 8: "fluvaquents",
+      9: "fluvaquents", 10: "fluvaquents", 12: "fluvaquents",
+    },
+    floodplainSoilId: "fluvaquents",
   },
   japan: {
     id: "japan",
     label: "Japan FAO-WRB",
     source: "NIAES · Soil Map of Japan",
     zones: [
-      { id: "lithosol", name: "Lithosol (thin mountain soil)",     color: "#84cc16", d: Z_JP_LITHOSOL  },
-      { id: "andosol",  name: "Andosol (volcanic upland)",         color: "#d97706", d: Z_JP_ANDOSOL   },
-      { id: "cambisol", name: "Cambisol (forest brown earth)",     color: "#a16207", d: Z_JP_CAMBISOL  },
-      { id: "gleysol",  name: "Gleysol (waterlogged paddy)",       color: "#475569", d: Z_JP_GLEYSOL   },
+      { id: "lithosol", name: "Lithosol (thin mountain soil)",     color: "#d6c8b0", hatch: "#7d6f4e", pattern: "cross-hatch" },
+      { id: "andosol",  name: "Andosol (volcanic upland)",         color: "#8a5a3b", hatch: "#2a1408", pattern: "dense-dots"  },
+      { id: "cambisol", name: "Cambisol (forest brown earth)",     color: "#e0b572", hatch: "#7a4d1c", pattern: "diagonal"    },
+      { id: "gleysol",  name: "Gleysol (waterlogged paddy)",       color: "#7fa6b8", hatch: "#2d4a5c", pattern: "horizontal"  },
     ],
+    basinAssignments: {
+      // High mountain ridges — thin / skeletal
+      25: "lithosol", 3: "lithosol", 20: "lithosol", 24: "lithosol", 23: "lithosol",
+      // Mid-north volcanic uplands
+      21: "andosol", 19: "andosol", 18: "andosol", 17: "andosol", 22: "andosol",
+      // Central / south interior forest
+      5: "cambisol", 1: "cambisol", 16: "cambisol", 15: "cambisol",
+      14: "cambisol", 13: "cambisol",
+      // Bay-adjacent / lowland (paddy / waterlogged)
+      2: "gleysol", 4: "gleysol", 6: "gleysol", 8: "gleysol",
+      9: "gleysol", 10: "gleysol", 12: "gleysol",
+    },
+    floodplainSoilId: "gleysol",
   },
 };
+
+// SVG <pattern> body for one soil — color baked in for direct Figma copy-paste.
+function SoilPatternDef({ zone }: { zone: SoilZone }) {
+  return (
+    <pattern
+      id={`soilpat-${zone.id}`}
+      patternUnits="userSpaceOnUse"
+      width={6}
+      height={6}
+    >
+      <rect width={6} height={6} fill={zone.color} />
+      {zone.pattern === "dots" && (
+        <circle cx={3} cy={3} r={0.7} fill={zone.hatch} />
+      )}
+      {zone.pattern === "diagonal" && (
+        <path d="M-1 7 L 7 -1 M 2 8 L 8 2" stroke={zone.hatch} strokeWidth={0.5} />
+      )}
+      {zone.pattern === "horizontal" && (
+        <>
+          <line x1={0} y1={2}   x2={6} y2={2}   stroke={zone.hatch} strokeWidth={0.5} />
+          <line x1={0} y1={4.5} x2={6} y2={4.5} stroke={zone.hatch} strokeWidth={0.5} strokeDasharray="1.2 1.2" />
+        </>
+      )}
+      {zone.pattern === "wavy" && (
+        <path d="M0 3 Q1.5 1.5 3 3 T6 3" stroke={zone.hatch} strokeWidth={0.5} fill="none" />
+      )}
+      {zone.pattern === "dense-dots" && (
+        <>
+          <circle cx={1.5} cy={1.5} r={0.5} fill={zone.hatch} />
+          <circle cx={4.5} cy={1.5} r={0.5} fill={zone.hatch} />
+          <circle cx={3}   cy={4}   r={0.5} fill={zone.hatch} />
+          <circle cx={0}   cy={4}   r={0.5} fill={zone.hatch} />
+          <circle cx={6}   cy={4}   r={0.5} fill={zone.hatch} />
+        </>
+      )}
+      {zone.pattern === "cross-hatch" && (
+        <>
+          <line x1={0} y1={0} x2={6} y2={6} stroke={zone.hatch} strokeWidth={0.4} />
+          <line x1={6} y1={0} x2={0} y2={6} stroke={zone.hatch} strokeWidth={0.4} />
+        </>
+      )}
+    </pattern>
+  );
+}
 
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
@@ -394,23 +455,82 @@ export default function MapLibreMap({
             style={{ filter: "saturate(0)" }}
           />
 
-          {/* Soil layer — clipped to the union of all sub-basin polygons */}
-          {showSoilLayer && (
-            <>
-              <defs>
-                <clipPath id="soil-land-clip" clipPathUnits="userSpaceOnUse">
-                  {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => (
-                    <path key={`soilclip-${idStr}`} d={d} />
+          {/* Soil layer — sub-basin-snapped polygons + river-corridor buffer */}
+          {showSoilLayer && (() => {
+            const floodplain = activeSoilDB.zones.find(z => z.id === activeSoilDB.floodplainSoilId)!;
+            return (
+              <>
+                <defs>
+                  <clipPath id="soil-land-clip" clipPathUnits="userSpaceOnUse">
+                    {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => (
+                      <path key={`soilclip-${idStr}`} d={d} />
+                    ))}
+                  </clipPath>
+                  {activeSoilDB.zones.map((z) => (
+                    <SoilPatternDef key={`pat-${z.id}`} zone={z} />
                   ))}
-                </clipPath>
-              </defs>
-              <g clipPath="url(#soil-land-clip)" style={{ pointerEvents: "none" }}>
-                {activeSoilDB.zones.map((z) => (
-                  <path key={z.id} d={z.d} fill={z.color} fillOpacity={0.42} />
-                ))}
-              </g>
-            </>
-          )}
+                </defs>
+
+                <g style={{ pointerEvents: "none" }}>
+                  {/* Sub-basin fills with hatched soil pattern */}
+                  {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
+                    const id = Number(idStr);
+                    const soilId = activeSoilDB.basinAssignments[id];
+                    if (!soilId) return null;
+                    return (
+                      <path
+                        key={`soil-${id}`}
+                        d={d}
+                        fill={`url(#soilpat-${soilId})`}
+                        fillOpacity={0.78}
+                        stroke={activeSoilDB.zones.find(z => z.id === soilId)?.hatch}
+                        strokeWidth={0.4}
+                        strokeOpacity={0.5}
+                      />
+                    );
+                  })}
+
+                  {/* River-corridor buffer — alluvial / waterlogged strip along streams.
+                      Clipped to land so it never bleeds into the bay. */}
+                  <g clipPath="url(#soil-land-clip)">
+                    {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
+                      const id = Number(idStr);
+                      const isMain = MAIN_STEMS.has(id);
+                      return (
+                        <path
+                          key={`flood-${id}`}
+                          d={d}
+                          fill="none"
+                          stroke={floodplain.color}
+                          strokeWidth={isMain ? 7 : 4}
+                          strokeOpacity={0.7}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      );
+                    })}
+                    {/* Hatch overlay along rivers, same pattern as floodplain soil */}
+                    {Object.entries(RIVER_PATHS).map(([idStr, d]) => {
+                      const id = Number(idStr);
+                      const isMain = MAIN_STEMS.has(id);
+                      return (
+                        <path
+                          key={`floodhatch-${id}`}
+                          d={d}
+                          fill="none"
+                          stroke={`url(#soilpat-${floodplain.id})`}
+                          strokeWidth={isMain ? 7 : 4}
+                          strokeOpacity={0.95}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      );
+                    })}
+                  </g>
+                </g>
+              </>
+            );
+          })()}
 
           {/* Sub-basin fills — boundary lines only */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
@@ -749,17 +869,27 @@ export default function MapLibreMap({
                 {activeSoilDB.source}
               </div>
 
-              {/* Legend swatches */}
+              {/* Legend swatches — each shows the actual hatch pattern */}
               <div className="flex flex-col gap-0.5">
                 {activeSoilDB.zones.map((z) => (
                   <div key={z.id} className="flex items-center gap-1.5">
-                    <span
-                      className="w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-black/10"
-                      style={{ background: z.color, opacity: 0.7 }}
-                    />
+                    <svg width={14} height={14} className="flex-shrink-0 rounded-sm border border-black/15">
+                      <defs>
+                        <SoilPatternDef zone={z} />
+                      </defs>
+                      <rect width={14} height={14} fill={`url(#soilpat-${z.id})`} />
+                    </svg>
                     <span className="text-[9px] text-slate-600 leading-tight truncate" title={z.name}>
                       {z.name}
                     </span>
+                    {z.id === activeSoilDB.floodplainSoilId && (
+                      <span
+                        className="text-[7px] text-slate-400 ml-auto flex-shrink-0"
+                        title="Also overlaid as a buffer along river corridors"
+                      >
+                        +rivers
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
