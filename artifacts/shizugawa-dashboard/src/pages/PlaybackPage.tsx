@@ -434,17 +434,21 @@ export default function PlaybackPage() {
                     <div className="flex flex-col gap-0.5">
                       <div className="flex rounded-sm overflow-hidden border border-border/30">
                         {stops.map((color, i) => {
-                          const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(variable.id === "phosphorus" ? 3 : 1);
-                          const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(variable.id === "phosphorus" ? 3 : 1);
+                          const dec = (variable as { decimals?: number }).decimals ?? 1;
+                          const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(dec);
+                          const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(dec);
                           return <div key={i} style={{ backgroundColor: color, width: 22, height: 11 }} title={`${lo}–${hi} ${variable.unit}`} />;
                         })}
                       </div>
                       <div className="flex">
-                        {stops.map((_, i) => (
+                        {stops.map((_, i) => {
+                          const dec = (variable as { decimals?: number }).decimals ?? 1;
+                          return (
                           <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 22 }}>
-                            {(variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(variable.id === "phosphorus" ? 3 : 1)}
+                            {(variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(dec)}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="text-[7px] font-mono text-slate-400 text-right" style={{ width: stops.length * 22 }}>
                         {variable.unit}
