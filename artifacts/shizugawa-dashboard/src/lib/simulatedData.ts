@@ -539,7 +539,14 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiver(SPINE_RIVER12_SHISHIORI,       2, 1, 24, 12, "shishiori"), // basin 12, off karakuwa2
   ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     2, 1, 32, 48, "onagawa"),   // basin 15, off shizugawa
   ...buildRiverWest(SPINE_RIVER16_MITOBE,      1, 1, 32, 48, "mitobe"),    // basin 16, off shizugawa
-];
+]
+  // Drop any river cell that falls inside the bay polygon. Without this,
+  // mouth gap-fill points + lateral half-widths spill several cells past the
+  // coastline (e.g. iriya, shizugawa, togura, oura), producing river voxels
+  // floating on top of ocean voxels. After clipping, each river's outermost
+  // remaining cell sits on the land tile directly adjacent to the bay edge,
+  // so the visual "river meets bay" continuity is preserved.
+  .filter(c => !(c.gz >= 0 && c.gz < GRID_D && c.gx >= 0 && c.gx < GRID_W && BAY_MASK[c.gz][c.gx]));
 
 // River metadata for hover labels in the 3D view.
 // Keys MUST match the riverId slugs assigned in RIVER_CELLS above and the
