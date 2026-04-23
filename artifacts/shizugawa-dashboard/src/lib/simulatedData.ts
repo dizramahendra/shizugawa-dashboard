@@ -288,81 +288,72 @@ const SPINE_RIVER13_SW = densifyNS([
 // (Sub-basin 3 spine removed — not connected to the ocean basin in the
 //  surveyed river network.)
 
-// ── Upstream BRANCHES — replicate the Y-fork shape of natural watersheds ────
-// Each branch shares its parent river's riverId so it lights up together on
-// hover and samples values from the same bay-edge mouth cell.
+// ── Upstream tributary FORKS — each traced from a real SVG river path ───────
+// Every fork carries its own canonical mapview river ID (matches the slug in
+// the RIVERS registry below) so it labels independently on hover and can be
+// deep-linked from the Map view.
+//
+// The control points below are the start/key/end points of the corresponding
+// "river N" SVG path in svgPaths.ts, projected through the affine transform:
+//   cx_28 = ((svgX/465 - 0.4631) × 2.1565 + 0.03) × 28
+//   gz_28 = ((1 - svgY/586 - 0.2846) × 2.1565 + 0.0919) × 24
+// Mouth (mouthGx/mouthGz) for each fork is set to the parent mainstem's
+// bay-edge cell so values are sampled from the river system's true outlet.
 
-// Shizugawa (sub2) upstream Y-fork — forks at (gx=-11, cz=18) into a NW
-// (sub2-N) and SW (sub2-S) tributary.
-const SPINE_RIVER2_BRANCH_N = densifyEW([
-  { gx:-11, cz: 18 }, // junction with mainstem
-  { gx:-13, cz: 20 },
-  { gx:-15, cz: 22 },
-  { gx:-17, cz: 23 },
-]);
-const SPINE_RIVER2_BRANCH_S = densifyEW([
-  { gx:-11, cz: 18 }, // junction
-  { gx:-13, cz: 16 },
-  { gx:-15, cz: 14 },
-  { gx:-17, cz: 13 },
-]);
-
-// Togura (sub4) upstream Y-fork — forks at the westernmost mainstem point
-// (gx=-18, cz=24) into a NW (sub4-N) and SW (sub4-S) tributary.
-const SPINE_RIVER4_BRANCH_N = densifyEW([
-  { gx:-18, cz: 24 }, // junction
-  { gx:-20, cz: 26 },
-  { gx:-22, cz: 28 },
-  { gx:-24, cz: 30 },
-]);
-const SPINE_RIVER4_BRANCH_S = densifyEW([
-  { gx:-18, cz: 24 }, // junction
-  { gx:-20, cz: 22 },
-  { gx:-22, cz: 20 },
-  { gx:-24, cz: 18 },
+// SVG river 7 (Okawa, basin 7) — diverges off the Togura junction at
+// SVG (180.023, 206.229) ≈ (cx=-4, gz=22) and runs WNW along
+// (138.102, 192.818) ≈ (cx=-9, gz=22), (97.516, 167) ≈ (cx=-14, gz=25),
+// to (67.904, 165.988) ≈ (cx=-18, gz=25).
+const SPINE_RIVER7_OKAWA = densifyEW([
+  { gx: -4, cz: 22 }, // Togura junction
+  { gx: -7, cz: 22 },
+  { gx: -9, cz: 22 },
+  { gx:-12, cz: 23 },
+  { gx:-14, cz: 25 },
+  { gx:-16, cz: 25 },
+  { gx:-18, cz: 25 }, // SVG endpoint (67.904, 165.988)
 ]);
 
-// Iriya (sub6) upstream Y-fork — forks at (gx=-11, cz=3) into NW and SW
-// tributaries reaching the SW upland.
-const SPINE_RIVER6_BRANCH_N = densifyEW([
-  { gx:-11, cz:  3 }, // junction
-  { gx:-13, cz:  5 },
-  { gx:-15, cz:  6 },
-]);
-const SPINE_RIVER6_BRANCH_S = densifyEW([
-  { gx:-11, cz:  3 }, // junction
-  { gx:-13, cz:  1 },
-  { gx:-15, cz:  0 },
+// SVG river 14 (Motoyoshi, basin 14) — branches off the Hachiman SW corner at
+// SVG (187.616, 380.355) ≈ (cx=-3, gz=6) and runs west to
+// (138.516, 392.251) ≈ (cx=-9, gz=5).
+const SPINE_RIVER14_MOTOYOSHI = densifyEW([
+  { gx: -3, cz:  6 }, // junction with Hachiman (sub13) SW corner
+  { gx: -5, cz:  6 },
+  { gx: -7, cz:  6 },
+  { gx: -9, cz:  5 }, // SVG endpoint
 ]);
 
-// Karakuwa (sub8) upstream Y-fork — forks at (cx=15, gz=23) into NE and NW
-// tributaries fanning further into the north arm headwaters.
-const SPINE_RIVER8_BRANCH_E = densifyNS([
-  { gz: 23, cx: 15 }, // junction
-  { gz: 25, cx: 17 },
-  { gz: 27, cx: 19 },
-  { gz: 29, cx: 21 },
-]);
-const SPINE_RIVER8_BRANCH_W = densifyNS([
-  { gz: 23, cx: 15 }, // junction
-  { gz: 25, cx: 13 },
-  { gz: 27, cx: 11 },
-  { gz: 29, cx:  9 },
+// SVG river 17 (Sakura, basin 17) — short tributary off the Oura headwater at
+// SVG (255.443, 235.083) ≈ (cx=6, gz=18) → (260.505, 231.792) ≈ (cx=7, gz=19).
+const SPINE_RIVER17_SAKURA = densifyEW([
+  { gx:  6, cz: 18 }, // junction
+  { gx:  7, cz: 19 }, // SVG endpoint
 ]);
 
-// Hachiman (sub10) upstream Y-fork — forks at (cx=-4, gz=-8) into a SW and
-// W branch reaching the south upland sub-basins.
-const SPINE_RIVER10_BRANCH_W = densifyNS([
-  { gz: -8, cx: -4 }, // junction
-  { gz: -9, cx: -6 },
-  { gz:-10, cx: -8 },
-  { gz:-11, cx:-10 },
+// SVG river 18 (Oritate, basin 18) — short NW tributary off the same Oura
+// headwater (255.444, 235.083) → (243.548, 223.188) ≈ (cx=5, gz=20).
+const SPINE_RIVER18_ORITATE = densifyEW([
+  { gx:  6, cz: 18 }, // junction
+  { gx:  5, cz: 19 },
+  { gx:  5, cz: 20 }, // SVG endpoint
 ]);
-const SPINE_RIVER10_BRANCH_S = densifyNS([
-  { gz: -8, cx: -4 }, // junction
-  { gz:-10, cx: -3 },
-  { gz:-12, cx: -2 },
-  { gz:-14, cx: -1 },
+
+// SVG river 20 (Moriya, basin 20) — short tributary near Niida at
+// SVG (389.075, 196.613) ≈ (cx=23, gz=22) → (390.34, 188.261) ≈ (cx=24, gz=23).
+const SPINE_RIVER20_MORIYA = densifyNS([
+  { gz: 22, cx: 23 }, // junction near Niida (sub8) headwater
+  { gz: 23, cx: 24 }, // SVG endpoint
+]);
+
+// SVG river 12 (Shishiori, basin 12) — short southward tail off the Karakuwa
+// East mouth at SVG (255.697, 419.584) ≈ (cx=6, gz=3) → (258.734, 440.59) ≈
+// (cx=6, gz=0).
+const SPINE_RIVER12_SHISHIORI = densifyNS([
+  { gz:  3, cx:  6 }, // junction with sub10 (Karakuwa East) at south bay edge
+  { gz:  2, cx:  6 },
+  { gz:  1, cx:  6 },
+  { gz:  0, cx:  6 }, // SVG endpoint
 ]);
 
 // Sub-basin 6 (Iriya): west river, cz_28=6 (gz=24), gap-fill at gx_28=5 (gx=20).
@@ -419,51 +410,50 @@ const SPINE_RIVER10_SOUTH = densifyNS([
 ]);
 
 export const RIVER_CELLS: RiverCell[] = [
-  // 10 sub-basin rivers; spines authored in 28×24 space, densified ×4.
+  // ── Mainstems ────────────────────────────────────────────────────────────
+  // Each riverId is a canonical slug from the mapview RIVERS registry below.
   // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
-  // Sub-basin 2 (Shizugawa): west river; mouth at gx=32 gz=48 (inside bay)
-  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 32, 48,  "sub2"),
-  // Sub-basin 4 (Togura):  west river; mouth at gx=32 gz=48
-  ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 32, 48,  "sub4"),
-  // Sub-basin 9 (Oura):  west river; mouth at gx=32 gz=50
-  ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 32, 50,  "sub9"),
-  // Sub-basin 6 (Iriya): west river; mouth at gx=32 gz=22
-  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "sub6"),
-  // Sub-basin 8 (Karakuwa): north river; mouth at gx=80 gz=80 (NW corner of north arm)
-  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 80, 80,  "sub8"),
-  // Sub-basin 10 (Hachiman): south river; mouth at gx=24 gz=12 (south bay edge)
-  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 24, 12,  "sub10"),
-  // Sub-basin 24 (Oya): NORTH tributary that diverges off the Togura mainstem.
-  // Shares Togura's mouth so its values are sampled from the same bay edge.
-  ...buildRiver(SPINE_RIVER24_NORTH,   2, 1, 32, 48,  "sub24"),
-  // Sub-basin 13 (Mizujiri): southwest river feeding the SW upland sub-basin.
-  ...buildRiver(SPINE_RIVER13_SW,      2, 1, 24, 12,  "sub13"),
+  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 32, 48,  "shizugawa"), // basin 2
+  ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 32, 48,  "togura"),    // basin 4
+  ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 32, 50,  "oura"),      // basin 9
+  ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "iriya"),     // basin 6
+  ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 80, 80,  "niida"),     // basin 8
+  ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 24, 12,  "karakuwa2"), // basin 10
+  ...buildRiver(SPINE_RIVER24_NORTH,   2, 1, 32, 48,  "oya"),       // basin 24
+  ...buildRiver(SPINE_RIVER13_SW,      2, 1, 24, 12,  "hachiman"),  // basin 13
 
-  // ── Upstream Y-fork BRANCHES (replicate natural watershed branching) ─────
-  // Each branch shares its parent's riverId so they hover/sample together.
-  ...buildRiverWest(SPINE_RIVER2_BRANCH_N, 1, 1, 32, 48, "sub2"),
-  ...buildRiverWest(SPINE_RIVER2_BRANCH_S, 1, 1, 32, 48, "sub2"),
-  ...buildRiverWest(SPINE_RIVER4_BRANCH_N, 1, 1, 32, 48, "sub4"),
-  ...buildRiverWest(SPINE_RIVER4_BRANCH_S, 1, 1, 32, 48, "sub4"),
-  ...buildRiverWest(SPINE_RIVER6_BRANCH_N, 1, 1, 32, 22, "sub6"),
-  ...buildRiverWest(SPINE_RIVER6_BRANCH_S, 1, 1, 32, 22, "sub6"),
-  ...buildRiver(SPINE_RIVER8_BRANCH_E,     1, 1, 80, 80, "sub8"),
-  ...buildRiver(SPINE_RIVER8_BRANCH_W,     1, 1, 80, 80, "sub8"),
-  ...buildRiver(SPINE_RIVER10_BRANCH_W,    1, 1, 24, 12, "sub10"),
-  ...buildRiver(SPINE_RIVER10_BRANCH_S,    1, 1, 24, 12, "sub10"),
+  // ── SVG-traced tributary forks ───────────────────────────────────────────
+  // Each fork has its own mapview riverId; its mouth is the parent
+  // mainstem's bay-edge cell so values are sampled from the true outlet.
+  ...buildRiverWest(SPINE_RIVER7_OKAWA,        2, 1, 32, 48, "okawa"),     // basin 7,  off togura
+  ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   2, 1, 24, 12, "motoyoshi"), // basin 14, off hachiman
+  ...buildRiverWest(SPINE_RIVER17_SAKURA,      1, 1, 32, 50, "sakura"),    // basin 17, off oura
+  ...buildRiverWest(SPINE_RIVER18_ORITATE,     1, 1, 32, 50, "oritate"),   // basin 18, off oura
+  ...buildRiver(SPINE_RIVER20_MORIYA,          1, 1, 80, 80, "moriya"),    // basin 20, off niida
+  ...buildRiver(SPINE_RIVER12_SHISHIORI,       2, 1, 24, 12, "shishiori"), // basin 12, off karakuwa2
 ];
 
 // River metadata for hover labels in the 3D view.
-// These mirror the river names shown in the Map viewport sidebar.
+// Keys MUST match the riverId slugs assigned in RIVER_CELLS above and the
+// canonical RIVERS registry so the 3D view labels each river the same way the
+// Map view does.
 export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
-  sub2:  { name: "Shizugawa River",        subBasin: "Sub-basin 2" },
-  sub4:  { name: "Togura River",           subBasin: "Sub-basin 4" },
-  sub6:  { name: "Iriya River",            subBasin: "Sub-basin 6" },
-  sub8:  { name: "Karakuwa River",         subBasin: "Sub-basin 8" },
-  sub9:  { name: "Oura River",             subBasin: "Sub-basin 9" },
-  sub10: { name: "Hachiman River",         subBasin: "Sub-basin 10" },
-  sub24: { name: "Oya Tributary (N)",      subBasin: "Sub-basin 24" },
-  sub13: { name: "Mizujiri River (SW)",    subBasin: "Sub-basin 13" },
+  // Mainstems
+  shizugawa: { name: "Shizugawa River", subBasin: "Sub-basin 2"  },
+  togura:    { name: "Togura River",    subBasin: "Sub-basin 4"  },
+  iriya:     { name: "Iriya River",     subBasin: "Sub-basin 6"  },
+  niida:     { name: "Niida River",     subBasin: "Sub-basin 8"  },
+  oura:      { name: "Oura River",      subBasin: "Sub-basin 9"  },
+  karakuwa2: { name: "Karakuwa East",   subBasin: "Sub-basin 10" },
+  hachiman:  { name: "Hachiman River",  subBasin: "Sub-basin 13" },
+  oya:       { name: "Oya River",       subBasin: "Sub-basin 24" },
+  // SVG-traced tributary forks
+  okawa:     { name: "Okawa River",     subBasin: "Sub-basin 7"  },
+  motoyoshi: { name: "Motoyoshi River", subBasin: "Sub-basin 14" },
+  sakura:    { name: "Sakura River",    subBasin: "Sub-basin 17" },
+  oritate:   { name: "Oritate River",   subBasin: "Sub-basin 18" },
+  moriya:    { name: "Moriya River",    subBasin: "Sub-basin 20" },
+  shishiori: { name: "Shishiori River", subBasin: "Sub-basin 12" },
 };
 
 function noise(x: number, z: number, t: number, scale: number): number {
