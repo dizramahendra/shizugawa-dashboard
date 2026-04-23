@@ -12,13 +12,13 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   },
   phosphorus: {
     stops: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
-    low: "0.010 mg/L",
-    high: "0.130 mg/L",
+    low: "10 μg/L",
+    high: "130 μg/L",
   },
   flow: {
     stops: ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
-    low: "0 t/ha",
-    high: "750 t/ha",
+    low: "0 cm/s",
+    high: "100 cm/s",
   },
   all: {
     stops: ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
@@ -27,14 +27,14 @@ const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   },
 };
 
-// Classified break-point legend for flow (6 classes per brief)
+// Classified break-point legend for flow (6 classes, cm/s)
 const FLOW_BREAKS: { range: string; color: string }[] = [
-  { range: "0 – 25",     color: "#0f0527" },
-  { range: "25 – 50",    color: "#3a0f7a" },
-  { range: "50 – 75",    color: "#7c3ad8" },
-  { range: "75 – 100",   color: "#9d61e8" },
-  { range: "100 – 125",  color: "#d4b6f7" },
-  { range: "125 – 750",  color: "#f7f0fe" },
+  { range: "0 – 10",    color: "#0f0527" },
+  { range: "10 – 25",   color: "#3a0f7a" },
+  { range: "25 – 50",   color: "#7c3ad8" },
+  { range: "50 – 75",   color: "#9d61e8" },
+  { range: "75 – 90",   color: "#d4b6f7" },
+  { range: "90 – 100",  color: "#f7f0fe" },
 ];
 
 const DEPTH_LABELS = ["0–5m", "5–15m", "15–30m", "30–50m", ">50m"];

@@ -97,10 +97,13 @@ const COLOR_SCALES: Record<string, string[]> = {
 };
 
 // Physical value ranges for tooltip display (normalized 0-1 → physical unit)
+// 3D voxel-hover values are intentionally reported in t/ha (agronomic
+// loading) regardless of variable, while the rest of the dashboard uses
+// concentration units (mg/L, μg/L, cm/s).
 const PHYS: Record<string, { min: number; max: number; unit: string; dec: number }> = {
-  nitrogen:   { min: 0.2,  max: 3.0,  unit: "mg/L", dec: 2 },
-  phosphorus: { min: 10,   max: 130,  unit: "μg/L", dec: 1 },
-  flow:       { min: 0,    max: 750,  unit: "t/ha",  dec: 0 },
+  nitrogen:   { min: 0.10, max: 5.00, unit: "t/ha", dec: 2 },
+  phosphorus: { min: 0.01, max: 0.50, unit: "t/ha", dec: 3 },
+  flow:       { min: 0,    max: 750,  unit: "t/ha", dec: 0 },
 };
 
 function toPhysical(val: number, scale: string): string {

@@ -389,9 +389,9 @@ export function getWeekLabel(week: number, year: number = 2023): WeekLabel {
 }
 
 export const VARIABLE_OPTIONS = [
-  { id: "nitrogen",   label: "Total Nitrogen",   unit: "t/ha",  colorScale: "nitrogen",   min: 0.10, max: 5.00, decimals: 2 },
-  { id: "phosphorus", label: "Total Phosphorus", unit: "t/ha",  colorScale: "phosphorus", min: 0.01, max: 0.50, decimals: 3 },
-  { id: "flow",       label: "Water Flow",       unit: "cm/s",  colorScale: "flow",       min: 0,    max: 100,  decimals: 1 },
+  { id: "nitrogen",   label: "Total Nitrogen",   unit: "mg/L", colorScale: "nitrogen",   min: 0.2,  max: 3.0, decimals: 2 },
+  { id: "phosphorus", label: "Total Phosphorus", unit: "μg/L", colorScale: "phosphorus", min: 10,   max: 130, decimals: 0 },
+  { id: "flow",       label: "Water Flow",       unit: "cm/s", colorScale: "flow",       min: 0,    max: 100, decimals: 1 },
 ];
 
 /**
@@ -440,8 +440,8 @@ export function getSedimentElutionIntensity(week: number, year: number = 2023): 
 
 export function valueToConcentration(value: number, variableId: string): number {
   switch (variableId) {
-    case "nitrogen":   return +(value * 4.90 + 0.10).toFixed(2);   // 0.10–5.00 t/ha
-    case "phosphorus": return +(value * 0.49  + 0.01).toFixed(3);  // 0.010–0.500 t/ha
+    case "nitrogen":   return +(value * 2.80 + 0.20).toFixed(2);   // 0.20–3.00 mg/L
+    case "phosphorus": return +(value * 120  + 10).toFixed(0);     // 10–130 µg/L
     case "flow":       return +(value * 100).toFixed(1);            // 0–100 cm/s
     default:           return +value.toFixed(3);
   }
