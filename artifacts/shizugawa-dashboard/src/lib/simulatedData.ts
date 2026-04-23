@@ -333,16 +333,20 @@ const SPINE_RIVER24_NORTH = densifyNS([
 //   (151.394, 423.917) ≈ (cx=-7, gz=2)
 //   (145.94,  429.334) ≈ (cx=-8, gz=1)
 //   (139.023, 440.085) ≈ (cx=-9, gz=0)  ← endpoint
-const SPINE_RIVER13_SW = densifyNS([
-  { gz:  6, cx: -2 }, // junction with river 6 (Iriya)
-  { gz:  5, cx: -3 },
-  { gz:  5, cx: -4 },
-  { gz:  4, cx: -5 },
-  { gz:  3, cx: -5 },
-  { gz:  2, cx: -6 },
-  { gz:  2, cx: -7 },
-  { gz:  1, cx: -8 },
-  { gz:  0, cx: -9 }, // SVG endpoint
+// NOTE: spine is authored in {gx, cz} (EW form) and rendered with
+// buildRiverWest because every cell sits west of the bay (gx ≤ 0). The
+// alternative buildRiver helper would clip negative-gx cells and the river
+// would not render in 3D at all.
+const SPINE_RIVER13_SW = densifyEW([
+  { gx: -2, cz:  6 }, // junction with river 6 (Iriya)
+  { gx: -3, cz:  5 },
+  { gx: -4, cz:  5 },
+  { gx: -5, cz:  4 },
+  { gx: -5, cz:  3 },
+  { gx: -6, cz:  2 },
+  { gx: -7, cz:  2 },
+  { gx: -8, cz:  1 },
+  { gx: -9, cz:  0 }, // SVG endpoint
 ]);
 
 // (Sub-basin 3 spine removed — not connected to the ocean basin in the
@@ -522,7 +526,7 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 80, 80,  "niida"),     // basin 8
   ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 24, 12,  "karakuwa2"), // basin 10
   ...buildRiver(SPINE_RIVER24_NORTH,   2, 1, 32, 48,  "oya"),       // basin 24
-  ...buildRiver(SPINE_RIVER13_SW,      2, 1, 24, 12,  "hachiman"),  // basin 13
+  ...buildRiverWest(SPINE_RIVER13_SW,  2, 1, 24, 12,  "hachiman"),  // basin 13
 
   // ── SVG-traced tributary forks ───────────────────────────────────────────
   // Each fork has its own mapview riverId; its mouth is the parent
