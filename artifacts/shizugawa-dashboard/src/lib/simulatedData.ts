@@ -541,31 +541,32 @@ export const RIVER_CELLS: RiverCell[] = [
   // Each riverId is a canonical slug from the mapview RIVERS registry below.
   // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
   // Shizugawa watershed — three SVG-distinct segments chained head-to-tail
-  // halfWDelta values are HALVED from their original (option 2 — visually
-  // balanced compromise between the SVG map's hairline strokes (option 1:
-  // halfWDelta = 0) and the previous chunky 5-9 cell wide rivers. To
-  // tighten further to map proportions, set every halfWDelta below to 0.
-  ...buildRiverWest(SPINE_RIVER2_MOUTH,    1, 0, 32, 48, "shizugawa"),     // basin 2  (river 2 SVG)
-  ...buildRiverWest(SPINE_RIVER5_URASHIRO, 1, 0, 32, 48, "urashiro"),      // basin 5  (river 5 SVG)
-  ...buildRiverWest(SPINE_RIVER1_HEAD,     1, 0, 32, 48, "shizugawa1"),    // basin 1  (river 1 SVG)
-  ...buildRiverWest(SPINE_RIVER4_WEST, 1, 0, 32, 48,  "togura"),    // basin 4
-  ...buildRiverWest(SPINE_RIVER9_WEST, 1, 0, 32, 50,  "oura"),      // basin 9
-  ...buildRiverWest(SPINE_RIVER6_WEST, 1, 0, 32, 22,  "iriya"),     // basin 6
-  ...buildRiver(SPINE_RIVER8_NORTH,    1, 0, 80, 80,  "niida"),     // basin 8
-  ...buildRiver(SPINE_RIVER10_SOUTH,   2, 0, 24, 12,  "karakuwa2"), // basin 10
-  ...buildRiver(SPINE_RIVER24_NORTH,   1, 0, 32, 48,  "oya"),       // basin 24
-  ...buildRiverWest(SPINE_RIVER13_SW,  1, 0, 24, 12,  "hachiman"),  // basin 13
+  // Option 1: every river is a 1-cell-wide hairline matching the SVG map
+  // proportions. The 4-connected rasterizer in densifyNS/densifyEW guarantees
+  // no gaps. To bring the rivers back to a chunkier 3-cell look (option 2),
+  // raise the 4th argument (halfWDelta) of each call below to 1 (small forks
+  // can stay at 0).
+  ...buildRiverWest(SPINE_RIVER2_MOUTH,    0, 0, 32, 48, "shizugawa"),     // basin 2  (river 2 SVG)
+  ...buildRiverWest(SPINE_RIVER5_URASHIRO, 0, 0, 32, 48, "urashiro"),      // basin 5  (river 5 SVG)
+  ...buildRiverWest(SPINE_RIVER1_HEAD,     0, 0, 32, 48, "shizugawa1"),    // basin 1  (river 1 SVG)
+  ...buildRiverWest(SPINE_RIVER4_WEST, 0, 0, 32, 48,  "togura"),    // basin 4
+  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "oura"),      // basin 9
+  ...buildRiverWest(SPINE_RIVER6_WEST, 0, 0, 32, 22,  "iriya"),     // basin 6
+  ...buildRiver(SPINE_RIVER8_NORTH,    0, 0, 80, 80,  "niida"),     // basin 8
+  ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "karakuwa2"), // basin 10
+  ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya"),       // basin 24
+  ...buildRiverWest(SPINE_RIVER13_SW,  0, 0, 24, 12,  "hachiman"),  // basin 13
 
   // ── SVG-traced tributary forks ───────────────────────────────────────────
   // Each fork has its own mapview riverId; its mouth is the parent
   // mainstem's bay-edge cell so values are sampled from the true outlet.
-  ...buildRiverWest(SPINE_RIVER7_OKAWA,        1, 0, 32, 48, "okawa"),     // basin 7,  off togura
-  ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   1, 0, 24, 12, "motoyoshi"), // basin 14, off hachiman
+  ...buildRiverWest(SPINE_RIVER7_OKAWA,        0, 0, 32, 48, "okawa"),     // basin 7,  off togura
+  ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   0, 0, 24, 12, "motoyoshi"), // basin 14, off hachiman
   ...buildRiverWest(SPINE_RIVER17_SAKURA,      0, 0, 32, 50, "sakura"),    // basin 17, off oura
   ...buildRiverWest(SPINE_RIVER18_ORITATE,     0, 0, 32, 50, "oritate"),   // basin 18, off oura
   ...buildRiver(SPINE_RIVER20_MORIYA,          0, 0, 80, 80, "moriya"),    // basin 20, off niida
-  ...buildRiver(SPINE_RIVER12_SHISHIORI,       1, 0, 24, 12, "shishiori"), // basin 12, off karakuwa2
-  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     1, 0, 32, 48, "onagawa"),   // basin 15, off shizugawa
+  ...buildRiver(SPINE_RIVER12_SHISHIORI,       0, 0, 24, 12, "shishiori"), // basin 12, off karakuwa2
+  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     0, 0, 32, 48, "onagawa"),   // basin 15, off shizugawa
   ...buildRiverWest(SPINE_RIVER16_MITOBE,      0, 0, 32, 48, "mitobe"),    // basin 16, off shizugawa
 ]
   // Drop any river cell that falls inside the bay polygon. Without this,
