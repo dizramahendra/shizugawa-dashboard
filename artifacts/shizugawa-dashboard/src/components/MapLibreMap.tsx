@@ -18,6 +18,11 @@ const MODEL_RIVER: Record<number, string> = {
 
 const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
+// Feature flag — hides the Soil layer UI + rendering. All soil code below is
+// preserved intentionally so we can flip this back to `true` later without
+// recovering the implementation. Toggle to `true` to restore the layer.
+const SOIL_LAYER_ENABLED = false;
+
 // ── Soil databases (watershed context layer) ─────────────────────────────────
 // The soil layer is rendered as a randomized pixel scatter over the entire
 // land area (clipped to the union of sub-basin polygons). Each pixel cell
@@ -386,7 +391,7 @@ export default function MapLibreMap({
           />
 
           {/* Soil layer — random pixel scatter, clipped to land */}
-          {showSoilLayer && (() => {
+          {SOIL_LAYER_ENABLED && showSoilLayer && (() => {
             const cols = Math.ceil(SVG_W / SOIL_PIXEL_SIZE);
             const rows = Math.ceil(SVG_H / SOIL_PIXEL_SIZE);
             const zones = activeSoilDB.zones;
@@ -722,8 +727,8 @@ export default function MapLibreMap({
         </div>
       )}
 
-      {/* Layers panel — top-right overlay */}
-      {!corridorSegments && !selectedRiver && (
+      {/* Layers panel — top-right overlay (currently hidden via SOIL_LAYER_ENABLED) */}
+      {SOIL_LAYER_ENABLED && !corridorSegments && !selectedRiver && (
         <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm border border-border rounded-md shadow-sm overflow-hidden z-10" style={{ width: 188 }}>
           <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Layers</span>
