@@ -160,31 +160,60 @@ function buildRiverWest(
 // for the 112×96 grid.  Optional `w` (half-width override in 28×24 space) is
 // also ×4 so the physical width is preserved at STEP=0.5.
 
+// Walk a 4-connected line between two integer cells (a,b)→(c,d) along the
+// longer axis, stepping the shorter axis proportionally and inserting an
+// L-shaped intermediate whenever the next cell would otherwise be diagonal.
+// Width is interpolated linearly. The starting cell is OMITTED (caller pushes
+// it first); the ending cell IS included. Guarantees no diagonal-only jumps,
+// so a halfW=0 spine renders as a continuous 1-cell line with no gaps.
+function rasterLine(
+  ax: number, az: number, aw: number | undefined,
+  bx: number, bz: number, bw: number | undefined,
+  hasW: boolean,
+): Array<{ gx: number; gz: number; w?: number }> {
+  const out: Array<{ gx: number; gz: number; w?: number }> = [];
+  const dx = bx - ax, dz = bz - az;
+  const steps = Math.max(Math.abs(dx), Math.abs(dz));
+  if (steps === 0) return out;
+  let prevX = ax, prevZ = az;
+  for (let s = 1; s <= steps; s++) {
+    const t  = s / steps;
+    const nx = Math.round(ax + dx * t);
+    const nz = Math.round(az + dz * t);
+    const nw = hasW
+      ? Math.round((aw as number) + ((bw as number) - (aw as number)) * t)
+      : undefined;
+    // Insert an L-step if this move would be diagonal (both axes change).
+    if (nx !== prevX && nz !== prevZ) {
+      out.push({ gx: nx, gz: prevZ, ...(nw !== undefined ? { w: nw } : {}) });
+    }
+    out.push({ gx: nx, gz: nz, ...(nw !== undefined ? { w: nw } : {}) });
+    prevX = nx; prevZ = nz;
+  }
+  return out;
+}
+
 function densifyNS(
   sparse: Array<{ gz: number; cx: number; w?: number }>,
 ): Array<{ gz: number; cx: number; w?: number }> {
   const SCALE = 4;
   const out: Array<{ gz: number; cx: number; w?: number }> = [];
-  for (let i = 0; i < sparse.length; i++) {
-    const { gz, cx, w } = sparse[i];
-    out.push({ gz: gz * SCALE, cx: cx * SCALE, ...(w !== undefined ? { w: w * SCALE } : {}) });
-    if (i < sparse.length - 1) {
-      const next = sparse[i + 1];
-      const dgz = next.gz - gz;
-      const totalSteps = Math.abs(dgz) * SCALE;
-      const dir = Math.sign(dgz);
-      for (let s = 1; s < totalSteps; s++) {
-        const t = s / totalSteps;
-        const midCx = Math.round((cx + (next.cx - cx) * t) * SCALE);
-        const midW = (w !== undefined && next.w !== undefined)
-          ? Math.round((w + (next.w - w) * t) * SCALE) : undefined;
-        out.push({
-          gz: gz * SCALE + dir * s,
-          cx: midCx,
-          ...(midW !== undefined ? { w: midW } : {}),
-        });
-      }
-    }
+  if (sparse.length === 0) return out;
+  // Push the first point.
+  const first = sparse[0];
+  out.push({
+    gz: first.gz * SCALE, cx: first.cx * SCALE,
+    ...(first.w !== undefined ? { w: first.w * SCALE } : {}),
+  });
+  for (let i = 0; i < sparse.length - 1; i++) {
+    const a = sparse[i], b = sparse[i + 1];
+    const hasW = a.w !== undefined && b.w !== undefined;
+    const seg = rasterLine(
+      a.cx * SCALE, a.gz * SCALE, hasW ? (a.w as number) * SCALE : undefined,
+      b.cx * SCALE, b.gz * SCALE, hasW ? (b.w as number) * SCALE : undefined,
+      hasW,
+    );
+    for (const p of seg) out.push({ gz: p.gz, cx: p.gx, ...(p.w !== undefined ? { w: p.w } : {}) });
   }
   return out;
 }
@@ -194,26 +223,21 @@ function densifyEW(
 ): Array<{ gx: number; cz: number; w?: number }> {
   const SCALE = 4;
   const out: Array<{ gx: number; cz: number; w?: number }> = [];
-  for (let i = 0; i < sparse.length; i++) {
-    const { gx, cz, w } = sparse[i];
-    out.push({ gx: gx * SCALE, cz: cz * SCALE, ...(w !== undefined ? { w: w * SCALE } : {}) });
-    if (i < sparse.length - 1) {
-      const next = sparse[i + 1];
-      const dgx = next.gx - gx;
-      const totalSteps = Math.abs(dgx) * SCALE;
-      const dir = Math.sign(dgx);
-      for (let s = 1; s < totalSteps; s++) {
-        const t = s / totalSteps;
-        const midCz = Math.round((cz + (next.cz - cz) * t) * SCALE);
-        const midW = (w !== undefined && next.w !== undefined)
-          ? Math.round((w + (next.w - w) * t) * SCALE) : undefined;
-        out.push({
-          gx: gx * SCALE + dir * s,
-          cz: midCz,
-          ...(midW !== undefined ? { w: midW } : {}),
-        });
-      }
-    }
+  if (sparse.length === 0) return out;
+  const first = sparse[0];
+  out.push({
+    gx: first.gx * SCALE, cz: first.cz * SCALE,
+    ...(first.w !== undefined ? { w: first.w * SCALE } : {}),
+  });
+  for (let i = 0; i < sparse.length - 1; i++) {
+    const a = sparse[i], b = sparse[i + 1];
+    const hasW = a.w !== undefined && b.w !== undefined;
+    const seg = rasterLine(
+      a.gx * SCALE, a.cz * SCALE, hasW ? (a.w as number) * SCALE : undefined,
+      b.gx * SCALE, b.cz * SCALE, hasW ? (b.w as number) * SCALE : undefined,
+      hasW,
+    );
+    for (const p of seg) out.push({ gx: p.gx, cz: p.gz, ...(p.w !== undefined ? { w: p.w } : {}) });
   }
   return out;
 }
