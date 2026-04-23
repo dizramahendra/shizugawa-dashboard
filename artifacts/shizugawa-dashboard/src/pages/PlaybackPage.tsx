@@ -104,7 +104,9 @@ export default function PlaybackPage() {
     return null;
   });
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
-  const [showUI, setShowUI] = useState(searchParams.get("ui") !== "0");
+  // Default: UI hidden on the Ocean Playback 3D page so the bay reads as the
+  // primary visual on first paint. Pass `?ui=1` to deep-link with UI visible.
+  const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
   const _initView = searchParams.get("view");
   const [cameraPreset, setCameraPreset] = useState(
     (["top","n","s","e","w"].includes(_initView ?? "")) ? (_initView as string) : "top"
@@ -150,8 +152,8 @@ export default function PlaybackPage() {
         next.delete("pz");
       }
 
-      // Hide UI state — only encode when hidden (ui=0); visible is the default
-      if (!showUI) next.set("ui", "0");
+      // UI visibility — only encode when visible (ui=1); hidden is the default
+      if (showUI) next.set("ui", "1");
       else next.delete("ui");
 
       // Camera view preset — only encode when not default top view
