@@ -238,19 +238,37 @@ function densifyEW(
 // West wall at gz=52 is gx≈9 (gx_28=2.3); gap-fills start at gx_28=5 (gx=20).
 // North arm NW corner at gz=80 ≈ gx=79–80; sub8 enters there (cx_28=20, gx=80).
 
-// Sub-basin 2 (Shizugawa): west river, cz_28=13 (gz=52), gap-fill at gx_28=5 (gx=20).
-// Mainstem traces the SVG chain river 2 → river 5 → river 1:
-//   river 2: (224.314, 280.386) → (190.4, 267.478)   ≈ (cx=2,  gz=14) → (cx=-2, gz=16)
-//   river 5: (190.4, 267.478)   → (131.936, 264.188) ≈ (cx=-2, gz=16) → (cx=-10, gz=16)
-//   river 1: (131.936, 264.188) → (89.6702, 254.57)  ≈ (cx=-10, gz=16) → (cx=-16, gz=17)
-const SPINE_RIVER2_WEST = densifyEW([
+// Shizugawa watershed — the SVG draws this as THREE separate river paths
+// chained head-to-tail. We expose each as its own labeled segment in 3D so
+// hovering reveals the actual sub-basin the cell belongs to.
+//
+// SVG river 2 (Shizugawa, basin 2) — mouth segment from bay edge inland.
+//   (224.314, 280.386) → (190.4, 267.478) ≈ (cx=2, gz=14) → (cx=-2, gz=16)
+const SPINE_RIVER2_MOUTH = densifyEW([
   { gx:  5, cz: 13 }, // gap-fill inside bay (gx=20, gz=52)
-  { gx:  3, cz: 13 }, { gx:  1, cz: 14 },
-  { gx: -1, cz: 15 }, { gx: -3, cz: 16 }, // river 2 endpoint
-  { gx: -5, cz: 16 }, { gx: -7, cz: 16 },
-  { gx: -9, cz: 16 }, { gx:-11, cz: 16 }, // river 5 endpoint (junction with river 15)
-  { gx:-13, cz: 16 }, { gx:-15, cz: 17 },
-  { gx:-17, cz: 17 }, // river 1 endpoint (89.6702, 254.57)
+  { gx:  3, cz: 13 },
+  { gx:  1, cz: 14 },
+  { gx: -1, cz: 15 },
+  { gx: -3, cz: 16 }, // SVG endpoint — junction with river 5 (and fork river 16)
+]);
+
+// SVG river 5 (Urashiro, basin 5) — middle segment.
+//   (190.4, 267.478) → (131.936, 264.188) ≈ (cx=-2, gz=16) → (cx=-10, gz=16)
+const SPINE_RIVER5_URASHIRO = densifyEW([
+  { gx: -3, cz: 16 }, // junction with river 2 (and fork river 16)
+  { gx: -5, cz: 16 },
+  { gx: -7, cz: 16 },
+  { gx: -9, cz: 16 },
+  { gx:-11, cz: 16 }, // SVG endpoint — junction with river 1 (and fork river 15)
+]);
+
+// SVG river 1 (basin 1, "Shizugawa Upper") — headwater segment.
+//   (131.936, 264.188) → (89.6702, 254.57) ≈ (cx=-10, gz=16) → (cx=-17, gz=17)
+const SPINE_RIVER1_HEAD = densifyEW([
+  { gx:-11, cz: 16 }, // junction with river 5 (and fork river 15)
+  { gx:-13, cz: 16 },
+  { gx:-15, cz: 17 },
+  { gx:-17, cz: 17 }, // SVG endpoint (89.6702, 254.57)
 ]);
 
 // Sub-basin 4 (Togura): west river, cz_28=13 (gz=52), gap-fill shifted east to gx_28=6 (gx=24).
@@ -445,7 +463,10 @@ export const RIVER_CELLS: RiverCell[] = [
   // ── Mainstems ────────────────────────────────────────────────────────────
   // Each riverId is a canonical slug from the mapview RIVERS registry below.
   // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
-  ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 32, 48,  "shizugawa"), // basin 2
+  // Shizugawa watershed — three SVG-distinct segments chained head-to-tail
+  ...buildRiverWest(SPINE_RIVER2_MOUTH,    3, 1, 32, 48, "shizugawa"),     // basin 2  (river 2 SVG)
+  ...buildRiverWest(SPINE_RIVER5_URASHIRO, 2, 1, 32, 48, "urashiro"),      // basin 5  (river 5 SVG)
+  ...buildRiverWest(SPINE_RIVER1_HEAD,     2, 1, 32, 48, "shizugawa1"),    // basin 1  (river 1 SVG)
   ...buildRiverWest(SPINE_RIVER4_WEST, 2, 1, 32, 48,  "togura"),    // basin 4
   ...buildRiverWest(SPINE_RIVER9_WEST, 3, 1, 32, 50,  "oura"),      // basin 9
   ...buildRiverWest(SPINE_RIVER6_WEST, 2, 1, 32, 22,  "iriya"),     // basin 6
@@ -473,7 +494,9 @@ export const RIVER_CELLS: RiverCell[] = [
 // Map view does.
 export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   // Mainstems
+  shizugawa1:{ name: "Shizugawa Upper",  subBasin: "Sub-basin 1"  },
   shizugawa: { name: "Shizugawa River", subBasin: "Sub-basin 2"  },
+  urashiro:  { name: "Urashiro River",  subBasin: "Sub-basin 5"  },
   togura:    { name: "Togura River",    subBasin: "Sub-basin 4"  },
   iriya:     { name: "Iriya River",     subBasin: "Sub-basin 6"  },
   niida:     { name: "Niida River",     subBasin: "Sub-basin 8"  },
@@ -643,6 +666,7 @@ export const RIVER_COLS = 120; // along-stream axis (x)
 export const RIVER_ROWS = 22;  // cross-stream axis (z)
 
 export const RIVERS = [
+  { id: "shizugawa1",name: "Shizugawa Upper",basin: 1,  sub: "Sub-basin 1 · Minamisanriku · 6.4 km²",    length: "4.2 km"  },
   { id: "shizugawa", name: "Shizugawa",      basin: 2,  sub: "Sub-basin 2 · Minamisanriku · 25.0 km²",   length: "18.4 km" },
   { id: "oura",      name: "Oura",           basin: 9,  sub: "Sub-basin 9 · Minamisanriku · 8.7 km²",    length: "6.2 km"  },
   { id: "karakuwa",  name: "Karakuwa",       basin: 3,  sub: "Sub-basin 3 · Kesennuma · 12.4 km²",       length: "9.1 km"  },
@@ -716,6 +740,7 @@ export function getColumnMean(data: number[][][], x: number, z: number): number 
  * sit at very different points in their cycle → full blue→red range visible at once.
  */
 const RIVER_PARAMS: Record<string, [number, number, number]> = {
+  shizugawa1:[5.85, 0.48, 0.32],
   shizugawa: [0.00, 0.55, 0.38],
   oura:      [0.60, 0.20, 0.18],
   karakuwa:  [1.20, 0.75, 0.22],
