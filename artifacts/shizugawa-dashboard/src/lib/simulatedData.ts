@@ -105,6 +105,9 @@ function buildRiver(
   mouthGx: number,
   mouthGz: number,
   riverId: string,
+  extraSide: number = 0, // asymmetric extension on the +x side. halfW=0,
+                         // extraSide=1 → 2-cell wide (dx ∈ {0,1}). Used to
+                         // get even widths the symmetric band can't produce.
 ): RiverCell[] {
   const cells: RiverCell[] = [];
   const seen = new Set<string>();
@@ -114,7 +117,7 @@ function buildRiver(
     const halfW = w !== undefined
       ? w
       : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
-    for (let dx = -halfW; dx <= halfW; dx++) {
+    for (let dx = -halfW; dx <= halfW + extraSide; dx++) {
       const gx = cx + dx;
       if (gx < 0 || gx >= GRID_W) continue;
       const key = `${gz},${gx}`;
@@ -135,6 +138,8 @@ function buildRiverWest(
   mouthGx: number,
   mouthGz: number,
   riverId: string,
+  extraSide: number = 0, // asymmetric extension on the +z side. halfW=0,
+                         // extraSide=1 → 2-cell wide (dz ∈ {0,1}).
 ): RiverCell[] {
   const cells: RiverCell[] = [];
   const seen = new Set<string>();
@@ -144,7 +149,7 @@ function buildRiverWest(
     const halfW = w !== undefined
       ? w
       : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
-    for (let dz = -halfW; dz <= halfW; dz++) {
+    for (let dz = -halfW; dz <= halfW + extraSide; dz++) {
       const gz = cz + dz;
       const key = `${gz},${gx}`;
       if (seen.has(key)) continue;
@@ -541,33 +546,33 @@ export const RIVER_CELLS: RiverCell[] = [
   // Each riverId is a canonical slug from the mapview RIVERS registry below.
   // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
   // Shizugawa watershed — three SVG-distinct segments chained head-to-tail
-  // Option 1: every river is a 1-cell-wide hairline matching the SVG map
-  // proportions. The 4-connected rasterizer in densifyNS/densifyEW guarantees
-  // no gaps. To bring the rivers back to a chunkier 3-cell look (option 2),
-  // raise the 4th argument (halfWDelta) of each call below to 1 (small forks
-  // can stay at 0).
-  ...buildRiverWest(SPINE_RIVER2_MOUTH,    0, 0, 32, 48, "shizugawa"),     // basin 2  (river 2 SVG)
-  ...buildRiverWest(SPINE_RIVER5_URASHIRO, 0, 0, 32, 48, "urashiro"),      // basin 5  (river 5 SVG)
-  ...buildRiverWest(SPINE_RIVER1_HEAD,     0, 0, 32, 48, "shizugawa1"),    // basin 1  (river 1 SVG)
-  ...buildRiverWest(SPINE_RIVER4_WEST, 0, 0, 32, 48,  "togura"),    // basin 4
-  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "oura"),      // basin 9
-  ...buildRiverWest(SPINE_RIVER6_WEST, 0, 0, 32, 22,  "iriya"),     // basin 6
-  ...buildRiver(SPINE_RIVER8_NORTH,    0, 0, 80, 80,  "niida"),     // basin 8
-  ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "karakuwa2"), // basin 10
-  ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya"),       // basin 24
-  ...buildRiverWest(SPINE_RIVER13_SW,  0, 0, 24, 12,  "hachiman"),  // basin 13
+  // Width = 2 cells (halfWDelta=0 + extraSide=1 → dx/dz ∈ {0,1}).
+  // Symmetric `halfWDelta` only produces odd widths (1,3,5,…); the
+  // `extraSide` arg adds an asymmetric +1 offset to make even widths possible.
+  // For 1-cell hairline (option 1), drop extraSide back to 0.
+  // For 3-cell chunky (option 2), set halfWDelta=1, extraSide=0.
+  ...buildRiverWest(SPINE_RIVER2_MOUTH,    0, 0, 32, 48, "shizugawa", 1),     // basin 2  (river 2 SVG)
+  ...buildRiverWest(SPINE_RIVER5_URASHIRO, 0, 0, 32, 48, "urashiro", 1),      // basin 5  (river 5 SVG)
+  ...buildRiverWest(SPINE_RIVER1_HEAD,     0, 0, 32, 48, "shizugawa1", 1),    // basin 1  (river 1 SVG)
+  ...buildRiverWest(SPINE_RIVER4_WEST, 0, 0, 32, 48,  "togura", 1),    // basin 4
+  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "oura", 1),      // basin 9
+  ...buildRiverWest(SPINE_RIVER6_WEST, 0, 0, 32, 22,  "iriya", 1),     // basin 6
+  ...buildRiver(SPINE_RIVER8_NORTH,    0, 0, 80, 80,  "niida", 1),     // basin 8
+  ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "karakuwa2", 1), // basin 10
+  ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya", 1),       // basin 24
+  ...buildRiverWest(SPINE_RIVER13_SW,  0, 0, 24, 12,  "hachiman", 1),  // basin 13
 
   // ── SVG-traced tributary forks ───────────────────────────────────────────
   // Each fork has its own mapview riverId; its mouth is the parent
   // mainstem's bay-edge cell so values are sampled from the true outlet.
-  ...buildRiverWest(SPINE_RIVER7_OKAWA,        0, 0, 32, 48, "okawa"),     // basin 7,  off togura
-  ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   0, 0, 24, 12, "motoyoshi"), // basin 14, off hachiman
-  ...buildRiverWest(SPINE_RIVER17_SAKURA,      0, 0, 32, 50, "sakura"),    // basin 17, off oura
-  ...buildRiverWest(SPINE_RIVER18_ORITATE,     0, 0, 32, 50, "oritate"),   // basin 18, off oura
-  ...buildRiver(SPINE_RIVER20_MORIYA,          0, 0, 80, 80, "moriya"),    // basin 20, off niida
-  ...buildRiver(SPINE_RIVER12_SHISHIORI,       0, 0, 24, 12, "shishiori"), // basin 12, off karakuwa2
-  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     0, 0, 32, 48, "onagawa"),   // basin 15, off shizugawa
-  ...buildRiverWest(SPINE_RIVER16_MITOBE,      0, 0, 32, 48, "mitobe"),    // basin 16, off shizugawa
+  ...buildRiverWest(SPINE_RIVER7_OKAWA,        0, 0, 32, 48, "okawa", 1),     // basin 7,  off togura
+  ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   0, 0, 24, 12, "motoyoshi", 1), // basin 14, off hachiman
+  ...buildRiverWest(SPINE_RIVER17_SAKURA,      0, 0, 32, 50, "sakura", 1),    // basin 17, off oura
+  ...buildRiverWest(SPINE_RIVER18_ORITATE,     0, 0, 32, 50, "oritate", 1),   // basin 18, off oura
+  ...buildRiver(SPINE_RIVER20_MORIYA,          0, 0, 80, 80, "moriya", 1),    // basin 20, off niida
+  ...buildRiver(SPINE_RIVER12_SHISHIORI,       0, 0, 24, 12, "shishiori", 1), // basin 12, off karakuwa2
+  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     0, 0, 32, 48, "onagawa", 1),   // basin 15, off shizugawa
+  ...buildRiverWest(SPINE_RIVER16_MITOBE,      0, 0, 32, 48, "mitobe", 1),    // basin 16, off shizugawa
 ]
   // Drop any river cell that falls inside the bay polygon. Without this,
   // mouth gap-fill points + lateral half-widths spill several cells past the
