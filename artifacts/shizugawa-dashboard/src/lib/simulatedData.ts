@@ -285,15 +285,84 @@ const SPINE_RIVER13_SW = densifyNS([
   { gz: -4, cx:-11 }, // upstream source
 ]);
 
-// Sub-basin 3 (Karakuwa-NE): far-northeast river — the most distant traced
-// sub-basin from the ocean.  SVG path id="river 3" runs from (374.142, 74.876)
-// up to (452.6, 119) along the NE arm.
-const SPINE_RIVER3_NE = densifyNS([
-  { gz: 22, cx: 20 }, // joins north arm near Karakuwa
-  { gz: 26, cx: 22 },
-  { gz: 29, cx: 25 },
-  { gz: 32, cx: 28 },
-  { gz: 34, cx: 31 }, // far-NE source area
+// (Sub-basin 3 spine removed — not connected to the ocean basin in the
+//  surveyed river network.)
+
+// ── Upstream BRANCHES — replicate the Y-fork shape of natural watersheds ────
+// Each branch shares its parent river's riverId so it lights up together on
+// hover and samples values from the same bay-edge mouth cell.
+
+// Shizugawa (sub2) upstream Y-fork — forks at (gx=-11, cz=18) into a NW
+// (sub2-N) and SW (sub2-S) tributary.
+const SPINE_RIVER2_BRANCH_N = densifyEW([
+  { gx:-11, cz: 18 }, // junction with mainstem
+  { gx:-13, cz: 20 },
+  { gx:-15, cz: 22 },
+  { gx:-17, cz: 23 },
+]);
+const SPINE_RIVER2_BRANCH_S = densifyEW([
+  { gx:-11, cz: 18 }, // junction
+  { gx:-13, cz: 16 },
+  { gx:-15, cz: 14 },
+  { gx:-17, cz: 13 },
+]);
+
+// Togura (sub4) upstream Y-fork — forks at the westernmost mainstem point
+// (gx=-18, cz=24) into a NW (sub4-N) and SW (sub4-S) tributary.
+const SPINE_RIVER4_BRANCH_N = densifyEW([
+  { gx:-18, cz: 24 }, // junction
+  { gx:-20, cz: 26 },
+  { gx:-22, cz: 28 },
+  { gx:-24, cz: 30 },
+]);
+const SPINE_RIVER4_BRANCH_S = densifyEW([
+  { gx:-18, cz: 24 }, // junction
+  { gx:-20, cz: 22 },
+  { gx:-22, cz: 20 },
+  { gx:-24, cz: 18 },
+]);
+
+// Iriya (sub6) upstream Y-fork — forks at (gx=-11, cz=3) into NW and SW
+// tributaries reaching the SW upland.
+const SPINE_RIVER6_BRANCH_N = densifyEW([
+  { gx:-11, cz:  3 }, // junction
+  { gx:-13, cz:  5 },
+  { gx:-15, cz:  6 },
+]);
+const SPINE_RIVER6_BRANCH_S = densifyEW([
+  { gx:-11, cz:  3 }, // junction
+  { gx:-13, cz:  1 },
+  { gx:-15, cz:  0 },
+]);
+
+// Karakuwa (sub8) upstream Y-fork — forks at (cx=15, gz=23) into NE and NW
+// tributaries fanning further into the north arm headwaters.
+const SPINE_RIVER8_BRANCH_E = densifyNS([
+  { gz: 23, cx: 15 }, // junction
+  { gz: 25, cx: 17 },
+  { gz: 27, cx: 19 },
+  { gz: 29, cx: 21 },
+]);
+const SPINE_RIVER8_BRANCH_W = densifyNS([
+  { gz: 23, cx: 15 }, // junction
+  { gz: 25, cx: 13 },
+  { gz: 27, cx: 11 },
+  { gz: 29, cx:  9 },
+]);
+
+// Hachiman (sub10) upstream Y-fork — forks at (cx=-4, gz=-8) into a SW and
+// W branch reaching the south upland sub-basins.
+const SPINE_RIVER10_BRANCH_W = densifyNS([
+  { gz: -8, cx: -4 }, // junction
+  { gz: -9, cx: -6 },
+  { gz:-10, cx: -8 },
+  { gz:-11, cx:-10 },
+]);
+const SPINE_RIVER10_BRANCH_S = densifyNS([
+  { gz: -8, cx: -4 }, // junction
+  { gz:-10, cx: -3 },
+  { gz:-12, cx: -2 },
+  { gz:-14, cx: -1 },
 ]);
 
 // Sub-basin 6 (Iriya): west river, cz_28=6 (gz=24), gap-fill at gx_28=5 (gx=20).
@@ -369,8 +438,19 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiver(SPINE_RIVER24_NORTH,   2, 1, 32, 48,  "sub24"),
   // Sub-basin 13 (Mizujiri): southwest river feeding the SW upland sub-basin.
   ...buildRiver(SPINE_RIVER13_SW,      2, 1, 24, 12,  "sub13"),
-  // Sub-basin 3 (Karakuwa-NE): far-northeast river, most distant traced sub-basin.
-  ...buildRiver(SPINE_RIVER3_NE,       2, 1, 80, 80,  "sub3"),
+
+  // ── Upstream Y-fork BRANCHES (replicate natural watershed branching) ─────
+  // Each branch shares its parent's riverId so they hover/sample together.
+  ...buildRiverWest(SPINE_RIVER2_BRANCH_N, 1, 1, 32, 48, "sub2"),
+  ...buildRiverWest(SPINE_RIVER2_BRANCH_S, 1, 1, 32, 48, "sub2"),
+  ...buildRiverWest(SPINE_RIVER4_BRANCH_N, 1, 1, 32, 48, "sub4"),
+  ...buildRiverWest(SPINE_RIVER4_BRANCH_S, 1, 1, 32, 48, "sub4"),
+  ...buildRiverWest(SPINE_RIVER6_BRANCH_N, 1, 1, 32, 22, "sub6"),
+  ...buildRiverWest(SPINE_RIVER6_BRANCH_S, 1, 1, 32, 22, "sub6"),
+  ...buildRiver(SPINE_RIVER8_BRANCH_E,     1, 1, 80, 80, "sub8"),
+  ...buildRiver(SPINE_RIVER8_BRANCH_W,     1, 1, 80, 80, "sub8"),
+  ...buildRiver(SPINE_RIVER10_BRANCH_W,    1, 1, 24, 12, "sub10"),
+  ...buildRiver(SPINE_RIVER10_BRANCH_S,    1, 1, 24, 12, "sub10"),
 ];
 
 // River metadata for hover labels in the 3D view.
@@ -384,7 +464,6 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   sub10: { name: "Hachiman River",         subBasin: "Sub-basin 10" },
   sub24: { name: "Oya Tributary (N)",      subBasin: "Sub-basin 24" },
   sub13: { name: "Mizujiri River (SW)",    subBasin: "Sub-basin 13" },
-  sub3:  { name: "Karakuwa-NE River",      subBasin: "Sub-basin 3"  },
 };
 
 function noise(x: number, z: number, t: number, scale: number): number {
