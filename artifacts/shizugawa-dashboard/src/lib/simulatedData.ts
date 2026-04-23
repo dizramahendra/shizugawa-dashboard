@@ -322,15 +322,27 @@ const SPINE_RIVER24_NORTH = densifyNS([
   { gz: 30, cx: -7 }, // SVG endpoint (157.751, 108.561)
 ]);
 
-// Sub-basin 13 (Mizujiri): southwest river feeding the SW upland sub-basin.
-// SVG path id="river 13" runs from (187.616, 380.355) southwest down to
-// roughly (139.023, 440). Mouth lies just south of the bay's SW corner.
+// Sub-basin 13 (Hachiman/Mizujiri): SW fork off the river-6 (Iriya) terminus.
+// SVG path id="river 13" branches from the junction (187.616, 380.355)
+// ≈ (cx=-2, gz=6) and runs SW through key SVG waypoints down to the
+// endpoint (139.023, 440.085) ≈ (cx=-9, gz=0):
+//   (181.644, 386.825) ≈ (cx=-3, gz=5)
+//   (175.214, 394.348) ≈ (cx=-4, gz=5)
+//   (170.2,   408.693) ≈ (cx=-5, gz=3)
+//   (159.811, 417.057) ≈ (cx=-6, gz=2)
+//   (151.394, 423.917) ≈ (cx=-7, gz=2)
+//   (145.94,  429.334) ≈ (cx=-8, gz=1)
+//   (139.023, 440.085) ≈ (cx=-9, gz=0)  ← endpoint
 const SPINE_RIVER13_SW = densifyNS([
-  { gz:  4, cx: -3 }, // mouth area, just south of bay SW edge
-  { gz:  2, cx: -5 },
-  { gz:  0, cx: -7 },
-  { gz: -2, cx: -9 },
-  { gz: -4, cx:-11 }, // upstream source
+  { gz:  6, cx: -2 }, // junction with river 6 (Iriya)
+  { gz:  5, cx: -3 },
+  { gz:  5, cx: -4 },
+  { gz:  4, cx: -5 },
+  { gz:  3, cx: -5 },
+  { gz:  2, cx: -6 },
+  { gz:  2, cx: -7 },
+  { gz:  1, cx: -8 },
+  { gz:  0, cx: -9 }, // SVG endpoint
 ]);
 
 // (Sub-basin 3 spine removed — not connected to the ocean basin in the
@@ -363,13 +375,20 @@ const SPINE_RIVER7_OKAWA = densifyEW([
   { gx:-18, cz: 25 }, // SVG endpoint (67.904, 165.988)
 ]);
 
-// SVG river 14 (Motoyoshi, basin 14) — branches off the Hachiman SW corner at
-// SVG (187.616, 380.355) ≈ (cx=-3, gz=6) and runs west to
-// (138.516, 392.251) ≈ (cx=-9, gz=5).
+// SVG river 14 (Motoyoshi, basin 14) — west fork off the river-6 (Iriya)
+// terminus at SVG (187.616, 380.355) ≈ (cx=-2, gz=6). Path runs WNW through:
+//   (172.058, 382.122) ≈ (cx=-5, gz=6)
+//   (165.344, 379.596) ≈ (cx=-6, gz=6)
+//   (157.325, 381.541) ≈ (cx=-7, gz=6)
+//   (144.902, 389.989) ≈ (cx=-8, gz=5)
+//   (138.516, 392.251) ≈ (cx=-9, gz=5)  ← endpoint
 const SPINE_RIVER14_MOTOYOSHI = densifyEW([
-  { gx: -3, cz:  6 }, // junction with Hachiman (sub13) SW corner
+  { gx: -2, cz:  6 }, // junction with river 6 (Iriya)
+  { gx: -4, cz:  6 },
   { gx: -5, cz:  6 },
+  { gx: -6, cz:  6 },
   { gx: -7, cz:  6 },
+  { gx: -8, cz:  5 },
   { gx: -9, cz:  5 }, // SVG endpoint
 ]);
 
@@ -425,14 +444,18 @@ const SPINE_RIVER12_SHISHIORI = densifyNS([
   { gz:  0, cx:  6 }, // SVG endpoint
 ]);
 
-// Sub-basin 6 (Iriya): west river, cz_28=6 (gz=24), gap-fill at gx_28=5 (gx=20).
-// Bay west wall at gz=24 is gx=5; gx=20 is inside. Extends southwest.
+// Sub-basin 6 (Iriya): SVG path id="river 6" runs east → west from
+//   (215.962, 381.874) ≈ (cx=1, gz=6)  ← bay-edge mouth
+// to
+//   (187.616, 380.355) ≈ (cx=-2, gz=6) ← junction with rivers 13 & 14
+// All waypoints sit on row gz=6, with the mouth one column inside the bay
+// west wall (cx=5 at gz=6) — i.e. the line is the inland river segment.
 const SPINE_RIVER6_WEST = densifyEW([
-  { gx:  5, cz: 6 }, // gap-fill (gx=20, gz=24)
-  { gx:  3, cz: 6 }, { gx:  1, cz: 6 },
-  { gx: -1, cz: 5 }, { gx: -3, cz: 5 },
-  { gx: -5, cz: 4 }, { gx: -7, cz: 4 },
-  { gx: -9, cz: 3 }, { gx:-11, cz: 3 },
+  { gx:  5, cz: 6 }, // gap-fill at bay west wall (cx=5, gz=6)
+  { gx:  3, cz: 6 },
+  { gx:  1, cz: 6 }, // SVG mouth (215.962, 381.874)
+  { gx:  0, cz: 6 },
+  { gx: -2, cz: 6 }, // junction with rivers 13 & 14 (SVG 187.616, 380.355)
 ]);
 
 // Sub-basin 8 (Karakuwa): north river — spine traced from SVG RIVER_PATHS[8].
