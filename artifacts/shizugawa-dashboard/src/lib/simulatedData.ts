@@ -119,7 +119,10 @@ function buildRiver(
       : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
     for (let dx = -halfW; dx <= halfW + extraSide; dx++) {
       const gx = cx + dx;
-      if (gx < 0 || gx >= GRID_W) continue;
+      // Allow negative gx — the renderer places those cells west of the grid
+      // origin, which is exactly where rivers like Oya (basin 24) live. The
+      // upper-bound check still guards against runaway eastern spread.
+      if (gx >= GRID_W) continue;
       const key = `${gz},${gx}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -564,7 +567,7 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiverWest(SPINE_RIVER6_WEST, 0, 0, 32, 22,  "iriya", 1),     // basin 6
   ...buildRiver(SPINE_RIVER8_NORTH,    0, 0, 80, 80,  "niida", 1),     // basin 8
   ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "karakuwa2", 1), // basin 10
-  ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya", 1),       // basin 24
+  ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya", 1),       // basin 24 (all-negative cx — buildRiver no longer clips them)
   ...buildRiverWest(SPINE_RIVER13_SW,  0, 0, 24, 12,  "hachiman", 1),  // basin 13
 
   // ── SVG-traced tributary forks ───────────────────────────────────────────
