@@ -239,13 +239,18 @@ function densifyEW(
 // North arm NW corner at gz=80 ≈ gx=79–80; sub8 enters there (cx_28=20, gx=80).
 
 // Sub-basin 2 (Shizugawa): west river, cz_28=13 (gz=52), gap-fill at gx_28=5 (gx=20).
-// Bay west wall at gz=52 is gx≈9; gx=20 is clearly inside. Extends west-northwest.
+// Mainstem traces the SVG chain river 2 → river 5 → river 1:
+//   river 2: (224.314, 280.386) → (190.4, 267.478)   ≈ (cx=2,  gz=14) → (cx=-2, gz=16)
+//   river 5: (190.4, 267.478)   → (131.936, 264.188) ≈ (cx=-2, gz=16) → (cx=-10, gz=16)
+//   river 1: (131.936, 264.188) → (89.6702, 254.57)  ≈ (cx=-10, gz=16) → (cx=-16, gz=17)
 const SPINE_RIVER2_WEST = densifyEW([
   { gx:  5, cz: 13 }, // gap-fill inside bay (gx=20, gz=52)
-  { gx:  3, cz: 13 }, { gx:  1, cz: 13 },
-  { gx: -1, cz: 14 }, { gx: -3, cz: 14 },
-  { gx: -5, cz: 15 }, { gx: -7, cz: 16 },
-  { gx: -9, cz: 17 }, { gx:-11, cz: 18 },
+  { gx:  3, cz: 13 }, { gx:  1, cz: 14 },
+  { gx: -1, cz: 15 }, { gx: -3, cz: 16 }, // river 2 endpoint
+  { gx: -5, cz: 16 }, { gx: -7, cz: 16 },
+  { gx: -9, cz: 16 }, { gx:-11, cz: 16 }, // river 5 endpoint (junction with river 15)
+  { gx:-13, cz: 16 }, { gx:-15, cz: 17 },
+  { gx:-17, cz: 17 }, // river 1 endpoint (89.6702, 254.57)
 ]);
 
 // Sub-basin 4 (Togura): west river, cz_28=13 (gz=52), gap-fill shifted east to gx_28=6 (gx=24).
@@ -346,6 +351,26 @@ const SPINE_RIVER20_MORIYA = densifyNS([
   { gz: 23, cx: 24 }, // SVG endpoint
 ]);
 
+// SVG river 15 (Onagawa, basin 15) — long SW fork off the Shizugawa mainstem
+// at the river-1/river-5 junction SVG (131.936, 264.188) ≈ (cx=-10, gz=16),
+// running SW down to (70.6885, 340.874) ≈ (cx=-18, gz=9).
+const SPINE_RIVER15_ONAGAWA = densifyEW([
+  { gx:-11, cz: 16 }, // junction with Shizugawa mainstem
+  { gx:-13, cz: 14 },
+  { gx:-15, cz: 12 },
+  { gx:-17, cz: 10 },
+  { gx:-18, cz:  9 }, // SVG endpoint (70.6885, 340.874)
+]);
+
+// SVG river 16 (Mitobe, basin 16) — short SSW fork off the Shizugawa mainstem
+// at the river-2/river-5 junction SVG (190.4, 267.478) ≈ (cx=-2, gz=16),
+// running SSW down to (164.585, 288.991) ≈ (cx=-6, gz=14).
+const SPINE_RIVER16_MITOBE = densifyEW([
+  { gx: -3, cz: 16 }, // junction with Shizugawa mainstem
+  { gx: -5, cz: 15 },
+  { gx: -6, cz: 14 }, // SVG endpoint (164.585, 288.991)
+]);
+
 // SVG river 12 (Shishiori, basin 12) — short southward tail off the Karakuwa
 // East mouth at SVG (255.697, 419.584) ≈ (cx=6, gz=3) → (258.734, 440.59) ≈
 // (cx=6, gz=0).
@@ -431,6 +456,8 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiverWest(SPINE_RIVER18_ORITATE,     1, 1, 32, 50, "oritate"),   // basin 18, off oura
   ...buildRiver(SPINE_RIVER20_MORIYA,          1, 1, 80, 80, "moriya"),    // basin 20, off niida
   ...buildRiver(SPINE_RIVER12_SHISHIORI,       2, 1, 24, 12, "shishiori"), // basin 12, off karakuwa2
+  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     2, 1, 32, 48, "onagawa"),   // basin 15, off shizugawa
+  ...buildRiverWest(SPINE_RIVER16_MITOBE,      1, 1, 32, 48, "mitobe"),    // basin 16, off shizugawa
 ];
 
 // River metadata for hover labels in the 3D view.
@@ -454,6 +481,8 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   oritate:   { name: "Oritate River",   subBasin: "Sub-basin 18" },
   moriya:    { name: "Moriya River",    subBasin: "Sub-basin 20" },
   shishiori: { name: "Shishiori River", subBasin: "Sub-basin 12" },
+  onagawa:   { name: "Onagawa River",   subBasin: "Sub-basin 15" },
+  mitobe:    { name: "Mitobe River",    subBasin: "Sub-basin 16" },
 };
 
 function noise(x: number, z: number, t: number, scale: number): number {
