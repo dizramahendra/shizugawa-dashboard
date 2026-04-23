@@ -404,12 +404,19 @@ const SPINE_RIVER8_NORTH = densifyNS([
   { gz: 23, cx: 15 }, // source (gz=92, gx=60)
 ]);
 
-// Sub-basin 9 (Oura): west river, shifted east to gx_28=6 (gx=24).
-// Shortened to 3 control points (gx 6→2, 4 units = half of previous 8).
-// Steepest northward rise: cz climbs 13→20→27 over just 4 gx_28 units.
+// Sub-basin 9 (Oura): short west river traced from SVG river 9 path:
+//   (250.382, 276.083) → (252.913, 267.644) → (250.382, 260.067)
+//   → (249.309, 254.41) → (248.61, 244.893) → (255.444, 235.083)
+// In 28-coords: (cx=5, gz=15) → (cx=6, gz=16) → (cx=5, gz=16)
+//   → (cx=5, gz=17) → (cx=5, gz=18) → (cx=6, gz=18) [endpoint = junction
+// where SVG rivers 17 (Sakura) and 18 (Oritate) BOTH branch off].
 const SPINE_RIVER9_WEST = densifyEW([
-  { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52)
-  { gx:  4, cz: 20 },
+  { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52) inside bay
+  { gx:  5, cz: 14 },
+  { gx:  5, cz: 15 }, // SVG mouth (250.382, 276.083)
+  { gx:  5, cz: 16 },
+  { gx:  5, cz: 17 },
+  { gx:  6, cz: 18 }, // SVG endpoint — junction with rivers 17 & 18
 ]);
 
 // Sub-basin 10 (Hachiman): south river — spine traced from SVG RIVER_PATHS[10].
