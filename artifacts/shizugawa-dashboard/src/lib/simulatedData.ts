@@ -296,15 +296,30 @@ const SPINE_RIVER4_WEST = densifyEW([
   { gx: -4, cz: 21 }, // SVG endpoint — junction with rivers 7 (Okawa) & 24 (Oya)
 ]);
 
-// Sub-basin 24 (Oya): north tributary that DIVERGES off the Togura mainstem
-// SVG endpoint (180.023, 206.229) ≈ (cx=-4, gz=21). SVG river 24 path runs
-// vertically north then curves NW into the upper sub-basin area.
+// Sub-basin 24 (Oya): north tributary, traced from SVG river 24 waypoints.
+// Diverges off the Togura SVG endpoint (180.023, 206.229) ≈ (cx=-4, gz=21),
+// runs mostly straight north along cx=-4 to about (cx=-4, gz=24), then jogs
+// slightly NW through (cx=-5, gz=26) → (cx=-5, gz=28) and ends at the SVG
+// terminus (157.751, 108.561) ≈ (cx=-7, gz=30).
+//   (180.023, 197.266) ≈ (cx=-4, gz=22)
+//   (180.023, 176.933) ≈ (cx=-4, gz=24)
+//   (174.961, 158.749) ≈ (cx=-4, gz=25)
+//   (170.152, 152.473) ≈ (cx=-5, gz=26)
+//   (171.671, 137.563) ≈ (cx=-5, gz=28)
+//   (166.609, 128.636) ≈ (cx=-5, gz=28)
+//   (161.099, 111.052) ≈ (cx=-6, gz=29)
+//   (157.751, 108.561) ≈ (cx=-7, gz=30) ← endpoint
 const SPINE_RIVER24_NORTH = densifyNS([
-  { gz: 21, cx: -4 }, // junction with Togura (matches SVG 180.023, 206.229)
-  { gz: 24, cx: -5 },
-  { gz: 27, cx: -6 },
-  { gz: 30, cx: -7 },
-  { gz: 33, cx: -8 }, // far north source area
+  { gz: 21, cx: -4 }, // junction with Togura (SVG 180.023, 206.229)
+  { gz: 22, cx: -4 },
+  { gz: 23, cx: -4 },
+  { gz: 24, cx: -4 },
+  { gz: 25, cx: -4 },
+  { gz: 26, cx: -5 },
+  { gz: 27, cx: -5 },
+  { gz: 28, cx: -5 },
+  { gz: 29, cx: -6 },
+  { gz: 30, cx: -7 }, // SVG endpoint (157.751, 108.561)
 ]);
 
 // Sub-basin 13 (Mizujiri): southwest river feeding the SW upland sub-basin.
