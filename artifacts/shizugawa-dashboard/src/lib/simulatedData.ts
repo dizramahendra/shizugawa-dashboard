@@ -250,12 +250,50 @@ const SPINE_RIVER2_WEST = densifyEW([
 
 // Sub-basin 4 (Togura): west river, cz_28=13 (gz=52), gap-fill shifted east to gx_28=6 (gx=24).
 // Curves northward, tip at the end continues drifting north (not back south/west).
+// Extended further upstream (SVG river 7 continuation) to reach the far-west
+// sub-basin 16/22 area near (gx_28=-18, cz_28=25).
 const SPINE_RIVER4_WEST = densifyEW([
   { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52)
   { gx:  4, cz: 15 }, { gx:  2, cz: 17 },
   { gx:  0, cz: 19 }, { gx: -2, cz: 21 },
   { gx: -4, cz: 22 }, { gx: -6, cz: 22 },
   { gx: -8, cz: 23 }, { gx:-10, cz: 25 },
+  { gx:-12, cz: 25 }, { gx:-14, cz: 25 },
+  { gx:-16, cz: 24 }, { gx:-18, cz: 24 },
+]);
+
+// Sub-basin 24 (Oya): north tributary that DIVERGES off the Togura mainstem
+// at the junction near (gx_28=-4, gz_28=22) and runs north into the upper
+// sub-basin area. SVG path id="river 24" branches from the same point that
+// SVG river 4 reaches at (180.023, 206.229).
+const SPINE_RIVER24_NORTH = densifyNS([
+  { gz: 22, cx: -4 }, // junction with Togura
+  { gz: 25, cx: -5 },
+  { gz: 28, cx: -6 },
+  { gz: 31, cx: -7 },
+  { gz: 34, cx: -8 }, // far north source area
+]);
+
+// Sub-basin 13 (Mizujiri): southwest river feeding the SW upland sub-basin.
+// SVG path id="river 13" runs from (187.616, 380.355) southwest down to
+// roughly (139.023, 440). Mouth lies just south of the bay's SW corner.
+const SPINE_RIVER13_SW = densifyNS([
+  { gz:  4, cx: -3 }, // mouth area, just south of bay SW edge
+  { gz:  2, cx: -5 },
+  { gz:  0, cx: -7 },
+  { gz: -2, cx: -9 },
+  { gz: -4, cx:-11 }, // upstream source
+]);
+
+// Sub-basin 3 (Karakuwa-NE): far-northeast river — the most distant traced
+// sub-basin from the ocean.  SVG path id="river 3" runs from (374.142, 74.876)
+// up to (452.6, 119) along the NE arm.
+const SPINE_RIVER3_NE = densifyNS([
+  { gz: 22, cx: 20 }, // joins north arm near Karakuwa
+  { gz: 26, cx: 22 },
+  { gz: 29, cx: 25 },
+  { gz: 32, cx: 28 },
+  { gz: 34, cx: 31 }, // far-NE source area
 ]);
 
 // Sub-basin 6 (Iriya): west river, cz_28=6 (gz=24), gap-fill at gx_28=5 (gx=20).
@@ -312,7 +350,7 @@ const SPINE_RIVER10_SOUTH = densifyNS([
 ]);
 
 export const RIVER_CELLS: RiverCell[] = [
-  // 6 active sub-basin rivers; spines authored in 28×24 space, densified ×4.
+  // 10 sub-basin rivers; spines authored in 28×24 space, densified ×4.
   // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
   // Sub-basin 2 (Shizugawa): west river; mouth at gx=32 gz=48 (inside bay)
   ...buildRiverWest(SPINE_RIVER2_WEST, 3, 1, 32, 48,  "sub2"),
@@ -326,17 +364,27 @@ export const RIVER_CELLS: RiverCell[] = [
   ...buildRiver(SPINE_RIVER8_NORTH,    3, 1, 80, 80,  "sub8"),
   // Sub-basin 10 (Hachiman): south river; mouth at gx=24 gz=12 (south bay edge)
   ...buildRiver(SPINE_RIVER10_SOUTH,   4, 1, 24, 12,  "sub10"),
+  // Sub-basin 24 (Oya): NORTH tributary that diverges off the Togura mainstem.
+  // Shares Togura's mouth so its values are sampled from the same bay edge.
+  ...buildRiver(SPINE_RIVER24_NORTH,   2, 1, 32, 48,  "sub24"),
+  // Sub-basin 13 (Mizujiri): southwest river feeding the SW upland sub-basin.
+  ...buildRiver(SPINE_RIVER13_SW,      2, 1, 24, 12,  "sub13"),
+  // Sub-basin 3 (Karakuwa-NE): far-northeast river, most distant traced sub-basin.
+  ...buildRiver(SPINE_RIVER3_NE,       2, 1, 80, 80,  "sub3"),
 ];
 
 // River metadata for hover labels in the 3D view.
 // These mirror the river names shown in the Map viewport sidebar.
 export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
-  sub2:  { name: "Shizugawa River", subBasin: "Sub-basin 2" },
-  sub4:  { name: "Togura River",    subBasin: "Sub-basin 4" },
-  sub6:  { name: "Iriya River",     subBasin: "Sub-basin 6" },
-  sub8:  { name: "Karakuwa River",  subBasin: "Sub-basin 8" },
-  sub9:  { name: "Oura River",      subBasin: "Sub-basin 9" },
-  sub10: { name: "Hachiman River",  subBasin: "Sub-basin 10" },
+  sub2:  { name: "Shizugawa River",        subBasin: "Sub-basin 2" },
+  sub4:  { name: "Togura River",           subBasin: "Sub-basin 4" },
+  sub6:  { name: "Iriya River",            subBasin: "Sub-basin 6" },
+  sub8:  { name: "Karakuwa River",         subBasin: "Sub-basin 8" },
+  sub9:  { name: "Oura River",             subBasin: "Sub-basin 9" },
+  sub10: { name: "Hachiman River",         subBasin: "Sub-basin 10" },
+  sub24: { name: "Oya Tributary (N)",      subBasin: "Sub-basin 24" },
+  sub13: { name: "Mizujiri River (SW)",    subBasin: "Sub-basin 13" },
+  sub3:  { name: "Karakuwa-NE River",      subBasin: "Sub-basin 3"  },
 };
 
 function noise(x: number, z: number, t: number, scale: number): number {
