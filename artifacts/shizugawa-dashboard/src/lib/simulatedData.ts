@@ -467,14 +467,19 @@ const SPINE_RIVER16_MITOBE = densifyEW([
   { gx: -6, cz: 14 }, // SVG endpoint (164.585, 288.991)
 ]);
 
-// SVG river 12 (Shishiori, basin 12) — short southward tail off the Karakuwa
-// East mouth at SVG (255.697, 419.584) ≈ (cx=6, gz=3) → (258.734, 440.59) ≈
-// (cx=6, gz=0).
+// SVG river 12 (Shishiori, basin 12) — short southward stub forking off the
+// Karakuwa (River 10) mainstem. The SVG path zigzags between x≈256–259 and
+// y≈420–441, but every x value rounds to cx=6, so the trace is a vertical
+// 3-cell line. The northern end (cx=6, gz=2) is the SVG start point
+// (255.697, 419.584) — which is *also* River 10's SVG starting waypoint, so
+// the two rivers share this cell as their fork junction. Endpoint at
+// (258.734, 440.59) ≈ (cx=6, gz=0). The previous trace incorrectly extended
+// one cell north to gz=3, which is River 10's bay gap-fill cell, not part of
+// this river's SVG path.
 const SPINE_RIVER12_SHISHIORI = densifyNS([
-  { gz:  3, cx:  6 }, // junction with sub10 (Karakuwa East) at south bay edge
-  { gz:  2, cx:  6 },
-  { gz:  1, cx:  6 },
-  { gz:  0, cx:  6 }, // SVG endpoint
+  { gz:  2, cx:  6 }, // SVG start (255.697, 419.584) — fork junction with River 10
+  { gz:  1, cx:  6 }, // SVG zigzag waypoints (256.962, 428.948)..(256.962, 437.047)
+  { gz:  0, cx:  6 }, // SVG endpoint (258.734, 440.59)
 ]);
 
 // Sub-basin 6 (Iriya): SVG path id="river 6" runs east → west from
