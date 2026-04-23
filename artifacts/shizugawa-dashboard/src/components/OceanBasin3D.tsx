@@ -998,7 +998,9 @@ function ScaledLabel({
 
 // Always-visible N/W/S/E compass labels — scale UP as camera pulls back
 function CompassLabels() {
-  const props = { scaleMode: "direct" as const, baseDistance: 38, minScale: 0.7, maxScale: 3.2 };
+  // Midway between the original (small) and the previous (over-large) sizing.
+  // minScale 0.6 ≈ midpoint of 0.55 → 0.7; maxScale 2.7 ≈ midpoint of 2.2 → 3.2.
+  const props = { scaleMode: "direct" as const, baseDistance: 38, minScale: 0.6, maxScale: 2.7 };
   return (
     <>
       <ScaledLabel position={[0, BOX_TOP + 0.6, BOX_NORTH_Z]} center zIndexRange={[0,0]} {...props}>
