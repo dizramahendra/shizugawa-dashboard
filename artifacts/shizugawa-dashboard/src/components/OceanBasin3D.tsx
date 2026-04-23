@@ -1239,7 +1239,7 @@ export default function OceanBasin3D({
         enableZoom={true}
         enableRotate={true}
         minDistance={15}
-        maxDistance={115}
+        maxDistance={220}
         maxPolarAngle={Math.PI / 2.1}
       />
     </Canvas>
