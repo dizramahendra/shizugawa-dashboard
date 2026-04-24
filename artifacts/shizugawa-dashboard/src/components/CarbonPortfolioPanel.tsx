@@ -31,6 +31,7 @@ const fmtCoords = (x: number, z: number) => {
 };
 
 type ViewMode = "per-pixel" | "average";
+type CellCarbonMode = "per-cell" | "total";
 
 const EVAL_WEEK = TOTAL_WEEKS - 1; // end-of-year — measure is fully ramped
 
@@ -42,6 +43,7 @@ export default function CarbonPortfolioPanel({
   onChangeMeasure, onRemovePixel,
 }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("per-pixel");
+  const [cellCarbonMode, setCellCarbonMode] = useState<CellCarbonMode>("per-cell");
 
   // Per-pixel annual seagrass-carbon series (year-long, measure applied at week 0).
   // Time is intentionally fixed: we evaluate the steady-state annual outlook.
@@ -237,77 +239,176 @@ export default function CarbonPortfolioPanel({
       {/* Per-cell seagrass carbon breakdown */}
       {(() => {
         const PER_PIXEL_CAPACITY = 8; // matches the hero card scale
+        const n                  = pixels.length;
+        const totalCapacity      = PER_PIXEL_CAPACITY * Math.max(1, n);
+        const isTotal            = cellCarbonMode === "total";
+
+        // ---------- TOTAL-mode rows (project-area sums) ----------
+        const totalRows: Array<{
+          key: string;
+          label: string;
+          value: number;
+          colorBg: string;
+        }> = [
+          {
+            key: "baseline",
+            label: "Baseline · total",
+            value: annual.baseline,
+            colorBg: "linear-gradient(to right, #475569, #94a3b8)",
+          },
+        ];
+        if (hasMeasure) {
+          totalRows.push({
+            key: "scenario",
+            label: "Scenario · total",
+            value: annual.scenario,
+            colorBg: "linear-gradient(to right, #0f172a, #2563eb)",
+          });
+        }
+
         return (
           <div>
-            <div className="panel-section-title mb-1">Per-cell seagrass carbon</div>
-            <div className="text-[10px] text-muted-foreground mb-2 leading-snug">
-              Carbon captured by seagrass meadows · tCO₂e per hectare per year ·{" "}
-              {hasMeasure ? "scenario at full ramp" : "baseline"}.
+            <div className="flex items-center justify-between mb-1">
+              <div className="panel-section-title">Per-cell seagrass carbon</div>
+              <div className="inline-flex rounded border border-border bg-white overflow-hidden text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setCellCarbonMode("per-cell")}
+                  className={`px-2 py-0.5 flex items-center gap-1 ${cellCarbonMode === "per-cell" ? "bg-emerald-600 text-white" : "text-muted-foreground hover:bg-muted"}`}
+                  data-testid="cell-carbon-per-cell"
+                  title="One bar per sample point (tCO₂e/ha/yr)"
+                >
+                  <LayoutGrid className="w-2.5 h-2.5" /> per-cell
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCellCarbonMode("total")}
+                  className={`px-2 py-0.5 flex items-center gap-1 ${cellCarbonMode === "total" ? "bg-emerald-600 text-white" : "text-muted-foreground hover:bg-muted"}`}
+                  data-testid="cell-carbon-total"
+                  title="Project-area sum across all sample points (tCO₂e/yr)"
+                >
+                  <Layers className="w-2.5 h-2.5" /> total
+                </button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              {series.map((s, idx) => {
-                const p = s.pixel;
-                const last = s.carbon[s.carbon.length - 1];
-                const baselineVal = last?.baselineCum ?? 0;
-                const scenarioVal = last?.scenarioCum ?? 0;
-                const value       = hasMeasure ? scenarioVal : baselineVal;
-                const pct         = Math.min(100, (value / PER_PIXEL_CAPACITY) * 100);
-                const baselinePct = Math.min(100, (baselineVal / PER_PIXEL_CAPACITY) * 100);
-                const overflow    = value > PER_PIXEL_CAPACITY;
-                const labelInside = pct >= 22;
-                return (
-                  <div key={p.id} className="flex items-center gap-2">
-                    {/* index badge in the cell's palette color */}
-                    <div
-                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
-                      style={{ backgroundColor: p.color }}
-                      title={fmtCoords(p.x, p.z)}
-                    >
-                      {idx + 1}
-                    </div>
-                    {/* horizontal bar */}
-                    <div className="relative flex-1 h-5 rounded-full bg-slate-100 overflow-hidden">
-                      {/* fill — black → blue gradient (matches the hero card) */}
+            <div className="text-[10px] text-muted-foreground mb-2 leading-snug">
+              {isTotal
+                ? <>Project-area total across {n} sample point{n > 1 ? "s" : ""} · tCO₂e per year · {hasMeasure ? "scenario at full ramp vs baseline" : "baseline"}.</>
+                : <>Carbon captured by seagrass meadows · tCO₂e per hectare per year · {hasMeasure ? "scenario at full ramp" : "baseline"}.</>}
+            </div>
+
+            {isTotal ? (
+              /* ---------- TOTAL view: 1 or 2 sum bars ---------- */
+              <div className="space-y-1.5">
+                {totalRows.map((row) => {
+                  const pct         = Math.min(100, (row.value / totalCapacity) * 100);
+                  const overflow    = row.value > totalCapacity;
+                  const labelInside = pct >= 22;
+                  return (
+                    <div key={row.key} className="flex items-center gap-2">
                       <div
-                        className="absolute inset-y-0 left-0 rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          background: "linear-gradient(to right, #0f172a, #2563eb)",
-                        }}
-                      />
-                      {/* baseline tick on the same scale */}
-                      {hasMeasure && baselineVal > 0 && (
-                        <div
-                          className="absolute top-0 bottom-0 w-[2px] bg-slate-700/80"
-                          style={{ left: `calc(${baselinePct}% - 1px)` }}
-                          title={`Baseline ${baselineVal.toFixed(2)}`}
-                        />
-                      )}
-                      {/* value label, right-aligned to the fill edge */}
-                      <div
-                        className="absolute top-1/2 text-[11px] font-mono font-semibold whitespace-nowrap leading-none tabular-nums"
-                        style={{
-                          left: `${pct}%`,
-                          transform: labelInside
-                            ? "translate(calc(-100% - 6px), -50%)"
-                            : "translate(6px, -50%)",
-                          color: labelInside ? "#ffffff" : "#1e293b",
-                        }}
+                        className="flex-shrink-0 w-20 text-[10px] font-medium text-slate-700 truncate"
+                        title={row.label}
                       >
-                        {value.toFixed(2)}
-                        {overflow && <span className="ml-0.5 opacity-80">▶</span>}
+                        {row.label}
+                      </div>
+                      <div className="relative flex-1 h-5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full"
+                          style={{ width: `${pct}%`, background: row.colorBg }}
+                        />
+                        <div
+                          className="absolute top-1/2 text-[11px] font-mono font-semibold whitespace-nowrap leading-none tabular-nums"
+                          style={{
+                            left: `${pct}%`,
+                            transform: labelInside
+                              ? "translate(calc(-100% - 6px), -50%)"
+                              : "translate(6px, -50%)",
+                            color: labelInside ? "#ffffff" : "#1e293b",
+                          }}
+                        >
+                          {row.value.toFixed(2)}
+                          {overflow && <span className="ml-0.5 opacity-80">▶</span>}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="text-[9px] text-muted-foreground mt-2 leading-snug">
-              Each bar fills toward {PER_PIXEL_CAPACITY} tCO₂e/ha/yr — the theoretical max for an
-              ideal Zostera marina meadow
-              {hasMeasure && <> · <span className="text-slate-700">▎</span> tick = baseline</>}
-              .
-            </div>
+                  );
+                })}
+                <div className="text-[9px] text-muted-foreground mt-2 leading-snug">
+                  Bars fill toward {totalCapacity.toFixed(0)} tCO₂e/yr — the theoretical
+                  max for {n} hectare{n > 1 ? "s" : ""} of ideal Zostera marina meadow
+                  ({PER_PIXEL_CAPACITY} × {n}).
+                </div>
+              </div>
+            ) : (
+              /* ---------- PER-CELL view: one bar per sample point ---------- */
+              <>
+                <div className="space-y-1.5">
+                  {series.map((s, idx) => {
+                    const p = s.pixel;
+                    const last = s.carbon[s.carbon.length - 1];
+                    const baselineVal = last?.baselineCum ?? 0;
+                    const scenarioVal = last?.scenarioCum ?? 0;
+                    const value       = hasMeasure ? scenarioVal : baselineVal;
+                    const pct         = Math.min(100, (value / PER_PIXEL_CAPACITY) * 100);
+                    const baselinePct = Math.min(100, (baselineVal / PER_PIXEL_CAPACITY) * 100);
+                    const overflow    = value > PER_PIXEL_CAPACITY;
+                    const labelInside = pct >= 22;
+                    return (
+                      <div key={p.id} className="flex items-center gap-2">
+                        {/* index badge in the cell's palette color */}
+                        <div
+                          className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                          style={{ backgroundColor: p.color }}
+                          title={fmtCoords(p.x, p.z)}
+                        >
+                          {idx + 1}
+                        </div>
+                        {/* horizontal bar */}
+                        <div className="relative flex-1 h-5 rounded-full bg-slate-100 overflow-hidden">
+                          {/* fill — black → blue gradient (matches the hero card) */}
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full"
+                            style={{
+                              width: `${pct}%`,
+                              background: "linear-gradient(to right, #0f172a, #2563eb)",
+                            }}
+                          />
+                          {/* baseline tick on the same scale */}
+                          {hasMeasure && baselineVal > 0 && (
+                            <div
+                              className="absolute top-0 bottom-0 w-[2px] bg-slate-700/80"
+                              style={{ left: `calc(${baselinePct}% - 1px)` }}
+                              title={`Baseline ${baselineVal.toFixed(2)}`}
+                            />
+                          )}
+                          {/* value label, right-aligned to the fill edge */}
+                          <div
+                            className="absolute top-1/2 text-[11px] font-mono font-semibold whitespace-nowrap leading-none tabular-nums"
+                            style={{
+                              left: `${pct}%`,
+                              transform: labelInside
+                                ? "translate(calc(-100% - 6px), -50%)"
+                                : "translate(6px, -50%)",
+                              color: labelInside ? "#ffffff" : "#1e293b",
+                            }}
+                          >
+                            {value.toFixed(2)}
+                            {overflow && <span className="ml-0.5 opacity-80">▶</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="text-[9px] text-muted-foreground mt-2 leading-snug">
+                  Each bar fills toward {PER_PIXEL_CAPACITY} tCO₂e/ha/yr — the theoretical max for an
+                  ideal Zostera marina meadow
+                  {hasMeasure && <> · <span className="text-slate-700">▎</span> tick = baseline</>}
+                  .
+                </div>
+              </>
+            )}
           </div>
         );
       })()}
