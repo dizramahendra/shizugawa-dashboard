@@ -66,13 +66,15 @@ export default function CarbonPortfolioPanel({
     return { baseline, scenario, delta: scenario - baseline };
   }, [series]);
 
-  const compareData = useMemo(
-    () => [
-      { key: "baseline", label: "Baseline", value: annual.baseline, color: BASELINE_COLOR },
-      { key: "scenario", label: "Scenario", value: annual.scenario, color: SEAGRASS_COLOR },
-    ],
-    [annual],
-  );
+  const hasMeasure = measure !== "none";
+
+  const compareData = useMemo(() => {
+    const rows = [{ key: "baseline", label: "Baseline", value: annual.baseline, color: BASELINE_COLOR }];
+    if (hasMeasure) {
+      rows.push({ key: "scenario", label: "Scenario", value: annual.scenario, color: SEAGRASS_COLOR });
+    }
+    return rows;
+  }, [annual, hasMeasure]);
 
   // Per-pixel HSI at fully-ramped state (end of evaluation horizon).
   const hsiNow = useMemo(() => {
@@ -141,22 +143,40 @@ export default function CarbonPortfolioPanel({
     <div className="px-4 py-4 space-y-4">
       {MeasureSelect}
 
-      {/* Avoided-emissions KPI (annual, steady-state) */}
-      <div className="rounded-md border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
-          <TrendingUp className="w-3 h-3" />
-          Annual seagrass-carbon gain
+      {/* Annual seagrass-carbon KPI (baseline-only until a measure is picked) */}
+      {hasMeasure ? (
+        <div className="rounded-md border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
+            <TrendingUp className="w-3 h-3" />
+            Annual seagrass-carbon gain
+          </div>
+          <div className="mt-1 flex items-baseline gap-1">
+            <span className={`text-2xl font-mono font-bold ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
+            </span>
+            <span className="text-xs text-muted-foreground">tCO₂e/ha · per year</span>
+          </div>
+          <div className="mt-1 text-[10px] text-muted-foreground">
+            Scenario − baseline at full ramp · summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}.
+          </div>
         </div>
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className={`text-2xl font-mono font-bold ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-            {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
-          </span>
-          <span className="text-xs text-muted-foreground">tCO₂e/ha · per year</span>
+      ) : (
+        <div className="rounded-md border border-border bg-muted/30 p-3">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            <TrendingUp className="w-3 h-3" />
+            Annual seagrass carbon · baseline
+          </div>
+          <div className="mt-1 flex items-baseline gap-1">
+            <span className="text-2xl font-mono font-bold text-foreground">
+              {annual.baseline.toFixed(2)}
+            </span>
+            <span className="text-xs text-muted-foreground">tCO₂e/ha · per year</span>
+          </div>
+          <div className="mt-1 text-[10px] text-muted-foreground">
+            Pick a project-area measure above to see the scenario gain.
+          </div>
         </div>
-        <div className="mt-1 text-[10px] text-muted-foreground">
-          Scenario − baseline at full ramp · summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}.
-        </div>
-      </div>
+      )}
 
       {/* HSI gauges with view-mode toggle */}
       <div>
@@ -193,11 +213,15 @@ export default function CarbonPortfolioPanel({
               Mean across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}
             </div>
             <HsiGauge
-              value={hsiAvg.scenario}
+              value={hasMeasure ? hsiAvg.scenario : hsiAvg.baseline}
               size={156}
-              accentColor={SEAGRASS_COLOR}
-              baselineValue={hsiAvg.baseline}
-              label={`baseline ${hsiAvg.baseline.toFixed(2)} → scenario ${hsiAvg.scenario.toFixed(2)}`}
+              accentColor={hasMeasure ? SEAGRASS_COLOR : BASELINE_COLOR}
+              baselineValue={hasMeasure ? hsiAvg.baseline : undefined}
+              label={
+                hasMeasure
+                  ? `baseline ${hsiAvg.baseline.toFixed(2)} → scenario ${hsiAvg.scenario.toFixed(2)}`
+                  : `baseline ${hsiAvg.baseline.toFixed(2)}`
+              }
             />
           </div>
         ) : (
@@ -216,11 +240,15 @@ export default function CarbonPortfolioPanel({
                   <span className="text-[10px] font-mono text-muted-foreground truncate">{fmtCoords(p.x, p.z)}</span>
                 </div>
                 <HsiGauge
-                  value={scenario}
+                  value={hasMeasure ? scenario : baseline}
                   size={104}
-                  accentColor={p.color}
-                  baselineValue={baseline}
-                  label={`baseline ${baseline.toFixed(2)} → scenario ${scenario.toFixed(2)}`}
+                  accentColor={hasMeasure ? p.color : BASELINE_COLOR}
+                  baselineValue={hasMeasure ? baseline : undefined}
+                  label={
+                    hasMeasure
+                      ? `baseline ${baseline.toFixed(2)} → scenario ${scenario.toFixed(2)}`
+                      : `baseline ${baseline.toFixed(2)}`
+                  }
                 />
               </div>
             ))}
@@ -228,13 +256,17 @@ export default function CarbonPortfolioPanel({
         )}
 
         <div className="text-[9px] text-muted-foreground mt-1 leading-snug">
-          Coloured arc = scenario seagrass HSI · dark tick = baseline · gradient strip is the bay's HSI legend.
+          {hasMeasure
+            ? "Coloured arc = scenario seagrass HSI · dark tick = baseline · gradient strip is the bay's HSI legend."
+            : "Showing baseline seagrass HSI · pick a measure above to overlay the scenario."}
         </div>
       </div>
 
       {/* Baseline vs scenario annual sequestration */}
       <div>
-        <div className="panel-section-title mb-1">Seagrass carbon · baseline vs scenario</div>
+        <div className="panel-section-title mb-1">
+          {hasMeasure ? "Seagrass carbon · baseline vs scenario" : "Seagrass carbon · baseline"}
+        </div>
         <div className="text-[9px] text-muted-foreground mb-1">
           Annual sequestration · tCO₂e/ha · summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}
         </div>
@@ -261,13 +293,17 @@ export default function CarbonPortfolioPanel({
             <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: BASELINE_COLOR }} />
             Baseline {annual.baseline.toFixed(2)}
           </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: SEAGRASS_COLOR }} />
-            Scenario {annual.scenario.toFixed(2)}
-          </span>
-          <span className={`font-mono ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-            Δ {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
-          </span>
+          {hasMeasure && (
+            <>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: SEAGRASS_COLOR }} />
+                Scenario {annual.scenario.toFixed(2)}
+              </span>
+              <span className={`font-mono ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                Δ {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
