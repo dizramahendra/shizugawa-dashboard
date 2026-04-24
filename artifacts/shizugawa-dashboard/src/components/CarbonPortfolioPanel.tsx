@@ -146,11 +146,12 @@ export default function CarbonPortfolioPanel({
       {/* Hero KPI — Ocean Carbon Storage card */}
       {(() => {
         // Hero shows the per-hectare average across the selected sample
-        // points, against a flat ~6 tCO₂e/ha/yr scientific ceiling for an
-        // ideal Zostera marina meadow. Average (not sum) keeps the units
-        // honest — "tCO₂e/ha/yr" really is a per-hectare rate — and keeps
-        // the ceiling stable regardless of how many cells are selected.
-        const PER_PIXEL_CAPACITY = 6;
+        // points, against a flat ~8 tCO₂e/ha/yr scientific ceiling — the
+        // top of the published Zostera marina range (Mcleod 2011,
+        // Fourqurean 2012). Average (not sum) keeps the units honest —
+        // "tCO₂e/ha/yr" really is a per-hectare rate — and keeps the
+        // ceiling stable regardless of how many cells are selected.
+        const PER_PIXEL_CAPACITY = 8;
         const n                  = Math.max(1, pixels.length);
         const baselineAvg        = annual.baseline / n;
         const scenarioAvg        = annual.scenario / n;
@@ -235,7 +236,7 @@ export default function CarbonPortfolioPanel({
 
       {/* Per-cell seagrass carbon breakdown */}
       {(() => {
-        const PER_PIXEL_CAPACITY = 6; // matches the hero card scale
+        const PER_PIXEL_CAPACITY = 8; // matches the hero card scale
         return (
           <div>
             <div className="panel-section-title mb-1">Per-cell seagrass carbon</div>

@@ -1163,9 +1163,12 @@ const CHANNEL_FITNESS: Record<CarbonChannel, (x: number, z: number) => number> =
   oyster:     (x, z) => 1 - oysterSiteFitness(x, z),
 };
 
-/** Per-channel max baseline annual flux at perfect fitness × HSI=1 (tCO₂e/ha/yr). */
+/** Per-channel max baseline annual flux at perfect fitness × HSI=1 (tCO₂e/ha/yr).
+ *  Seagrass tuned to land in the literature-defensible Zostera marina range
+ *  (Tokoro 2014, J-Blue Credit, Mcleod 2011) — top-end healthy meadows
+ *  ~5 tCO₂e/ha/yr, typical Sanriku baselines ~1–2 tCO₂e/ha/yr. */
 const CHANNEL_MAX_FLUX: Record<CarbonChannel, number> = {
-  seagrass:   3.2,
+  seagrass:   5.0,
   macroalgae: 3.6,  // kombu/wakame can be even higher in cultivated lines
   oyster:     0.8,
 };
