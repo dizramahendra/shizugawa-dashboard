@@ -106,8 +106,11 @@ export default function PlaybackPage() {
     return null;
   });
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
-  // Multi-pixel selection state for the decarbonization simulator (max 4)
+  // Multi-pixel selection state for the decarbonization simulator (max 4) —
+  // single project-area measure now lives at page level (not per-pixel).
   const [selectedPixels, setSelectedPixels] = useState<SelectedPixel[]>([]);
+  const [decarbMeasure, setDecarbMeasure]   = useState<MeasureId>("none");
+  const [decarbAppliedAt, setDecarbAppliedAt] = useState<number>(0);
   // Default: UI hidden on the Ocean Playback 3D page so the bay reads as the
   // primary visual on first paint. Pass `?ui=1` to deep-link with UI visible.
   const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
@@ -234,7 +237,8 @@ export default function PlaybackPage() {
 
   const handleCellClick = (x: number, z: number) => {
     if (inspectTool === "carbon-sim") {
-      // Toggle pixel into the multi-selection set (max 4, distinct colors)
+      // Toggle pixel into the multi-selection set (max 4, distinct colors).
+      // The measure is at the project-area level, not per-pixel.
       setSelectedPixels((prev) => {
         const id = `${x}:${z}`;
         const idx = prev.findIndex((p) => p.id === id);
@@ -242,7 +246,7 @@ export default function PlaybackPage() {
         if (prev.length >= 4) return prev;
         const usedColors = new Set(prev.map((p) => p.color));
         const color = PIXEL_PALETTE.find((c) => !usedColors.has(c)) ?? PIXEL_PALETTE[prev.length % PIXEL_PALETTE.length];
-        return [...prev, { id, x, z, color, measure: "none" as MeasureId, appliedAtWeek: weekRange[0] }];
+        return [...prev, { id, x, z, color }];
       });
       return;
     }
@@ -250,8 +254,10 @@ export default function PlaybackPage() {
     if (inspectTool === "none") setInspectTool("point-select");
   };
 
-  const handleChangeMeasure = (id: string, measure: MeasureId) =>
-    setSelectedPixels((prev) => prev.map((p) => p.id === id ? { ...p, measure, appliedAtWeek: week } : p));
+  const handleChangeMeasure = (m: MeasureId) => {
+    setDecarbMeasure(m);
+    setDecarbAppliedAt(week);
+  };
   const handleRemovePixel = (id: string) =>
     setSelectedPixels((prev) => prev.filter((p) => p.id !== id));
 
@@ -696,7 +702,7 @@ export default function PlaybackPage() {
                     <span className="text-[10px] text-emerald-800 leading-tight">
                       {selectedPixels.length === 0
                         ? "Click ocean cells to compare HSI + carbon (max 4)"
-                        : `${selectedPixels.length} of 4 cells selected — pick a measure per cell`}
+                        : `${selectedPixels.length} of 4 cells selected — pick a measure for the project area`}
                     </span>
                   </div>
                 )}
@@ -868,6 +874,8 @@ export default function PlaybackPage() {
             {/* Decarbonization simulator inspector */}
             {inspectTool === "carbon-sim" && (
               <DecarbInspector
+                measure={decarbMeasure}
+                appliedAtWeek={decarbAppliedAt}
                 pixels={selectedPixels}
                 week={week}
                 weekRange={weekRange}

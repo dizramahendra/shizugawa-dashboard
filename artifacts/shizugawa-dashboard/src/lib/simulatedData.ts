@@ -1081,26 +1081,44 @@ export function generateRiverData(week: number, riverId: string, year: number = 
 // observed. Designed for the Figma handoff demo.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type MeasureId = "none" | "plant-eelgrass" | "restore-reef" | "reduce-runoff";
+export type MeasureId =
+  | "none"
+  | "plant-eelgrass"
+  | "cultivate-macroalgae"
+  | "restore-reef"
+  | "reduce-runoff"
+  | "tidal-flat-restoration";
+
+export type CarbonChannel = "seagrass" | "macroalgae" | "oyster";
+
+export interface ChannelBoosts {
+  seagrass:   number;
+  macroalgae: number;
+  oyster:     number;
+}
 
 export interface DecarbMeasure {
   id: MeasureId;
   label: string;
   short: string;
   desc: string;
-  /** seagrass-carbon multiplier on baseline flux (steady state) */
+  /** Seagrass-channel multiplier (legacy /playback inspector reads this). */
   carbonBoost: number;
-  /** additive HSI offset at steady state (0–1) */
+  /** Per-channel multipliers for the new blue-carbon model. */
+  channels: ChannelBoosts;
+  /** Additive HSI offset at steady state (0–1) */
   hsiBoost: number;
-  /** weeks for the measure to ramp from 0 → full effect */
+  /** Weeks for the measure to ramp from 0 → full effect */
   rampWeeks: number;
 }
 
 export const DECARB_MEASURES: DecarbMeasure[] = [
-  { id: "none",            label: "No measure (baseline)",     short: "Baseline",         desc: "No decarbonization measure applied — current trajectory.",                                  carbonBoost: 0,   hsiBoost: 0,    rampWeeks: 1  },
-  { id: "plant-eelgrass",  label: "Plant eelgrass meadow",     short: "Plant eelgrass",   desc: "Replant Zostera marina across the cell. Boosts seagrass-carbon sequestration directly.",   carbonBoost: 2.4, hsiBoost: 0.18, rampWeeks: 18 },
-  { id: "restore-reef",    label: "Restore oyster reef",       short: "Restore reef",     desc: "Rebuild oyster reef structure — improves filtration and habitat suitability quickly.",     carbonBoost: 0.7, hsiBoost: 0.22, rampWeeks: 10 },
-  { id: "reduce-runoff",   label: "Reduce upstream N/P load",  short: "Reduce runoff",    desc: "Cut nitrogen + phosphorus runoff from the watershed. Improves HSI broadly, modest carbon gain.", carbonBoost: 0.5, hsiBoost: 0.14, rampWeeks: 24 },
+  { id: "none",                    label: "No measure (baseline)",      short: "Baseline",       desc: "Current trajectory — no decarbonization measure applied.",                                                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 0,   oyster: 0   }, hsiBoost: 0,    rampWeeks: 1  },
+  { id: "plant-eelgrass",          label: "Plant eelgrass meadow",      short: "Eelgrass",       desc: "Replant Zostera marina across the project area. Drives seagrass-carbon sequestration directly.",                            carbonBoost: 2.4, channels: { seagrass: 2.4, macroalgae: 0,   oyster: 0   }, hsiBoost: 0.18, rampWeeks: 18 },
+  { id: "cultivate-macroalgae",    label: "Cultivate macroalgae (kombu/wakame)", short: "Macroalgae", desc: "Establish kelp / kombu cultivation lines — Sanriku's headline blue-carbon practice.",                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 2.6, oyster: 0   }, hsiBoost: 0.08, rampWeeks: 12 },
+  { id: "restore-reef",            label: "Restore oyster reef",        short: "Oyster reef",    desc: "Rebuild oyster reef structure — fast HSI lift, modest sediment-carbon contribution.",                                       carbonBoost: 0.7, channels: { seagrass: 0,   macroalgae: 0,   oyster: 1.6 }, hsiBoost: 0.22, rampWeeks: 10 },
+  { id: "reduce-runoff",           label: "Reduce upstream N/P load",   short: "Reduce runoff",  desc: "Cut nitrogen + phosphorus runoff from the watershed — broad HSI lift enables all carbon channels.",                       carbonBoost: 0.5, channels: { seagrass: 0.6, macroalgae: 0.4, oyster: 0.3 }, hsiBoost: 0.14, rampWeeks: 24 },
+  { id: "tidal-flat-restoration",  label: "Restore tidal flats",        short: "Tidal flat",     desc: "Restore intertidal sediment flats — small carbon contribution, meaningful biodiversity + HSI gains.",                      carbonBoost: 0.3, channels: { seagrass: 0.3, macroalgae: 0.2, oyster: 0.4 }, hsiBoost: 0.10, rampWeeks: 16 },
 ];
 
 export function getMeasure(id: MeasureId): DecarbMeasure {
@@ -1113,9 +1131,8 @@ export function getMeasure(id: MeasureId): DecarbMeasure {
  * tell different stories. Returns 0 (perfect) → 1 (poor).
  */
 function seagrassSiteFitness(x: number, z: number): number {
-  // Bay center (mid-bay shallow belt). Coordinates expressed as fractions of
-  // the grid so the function works regardless of the underlying grid resolution.
-  const cx = (GRID_W - 1) * 0.45;       // slightly west-of-center, inner bay
+  // Mid-bay shallow belt. 0 = perfect, 1 = unsuitable.
+  const cx = (GRID_W - 1) * 0.45;
   const cz = (GRID_D - 1) * 0.50;
   const rx = (GRID_W - 1) * 0.5;
   const rz = (GRID_D - 1) * 0.45;
@@ -1124,6 +1141,43 @@ function seagrassSiteFitness(x: number, z: number): number {
   const radial = Math.sqrt(dx * dx + dz * dz);
   return Math.max(0, Math.min(1, radial));
 }
+
+/** Macroalgae thrives where there's good water exchange — outer bay, eastern edge. */
+function macroalgaeSiteFitness(x: number, z: number): number {
+  // 0 = perfect, 1 = unsuitable
+  const eastness = x / (GRID_W - 1);     // 0 west → 1 east
+  const edgeProx = Math.min(z, GRID_D - 1 - z) / ((GRID_D - 1) / 2); // 0 edge → 1 mid
+  return 1 - Math.max(0, Math.min(1, eastness * 0.7 + (1 - edgeProx) * 0.3));
+}
+
+/** Oyster reefs sit near sheltered river mouths — inner bay, western edge. */
+function oysterSiteFitness(x: number, z: number): number {
+  // 0 = perfect, 1 = unsuitable
+  const westness = 1 - x / (GRID_W - 1);
+  const cz = (GRID_D - 1) * 0.5;
+  const verticalCenter = 1 - Math.abs(z - cz) / cz;
+  return 1 - Math.max(0, Math.min(1, westness * 0.7 + verticalCenter * 0.3));
+}
+
+const CHANNEL_FITNESS: Record<CarbonChannel, (x: number, z: number) => number> = {
+  seagrass:   (x, z) => 1 - seagrassSiteFitness(x, z),
+  macroalgae: (x, z) => 1 - macroalgaeSiteFitness(x, z),
+  oyster:     (x, z) => 1 - oysterSiteFitness(x, z),
+};
+
+/** Per-channel max baseline annual flux at perfect fitness × HSI=1 (tCO₂e/ha/yr). */
+const CHANNEL_MAX_FLUX: Record<CarbonChannel, number> = {
+  seagrass:   3.2,
+  macroalgae: 3.6,  // kombu/wakame can be even higher in cultivated lines
+  oyster:     0.8,
+};
+
+/** Per-channel seasonal modulation phase (radians offset). */
+const CHANNEL_SEASON_PHASE: Record<CarbonChannel, number> = {
+  seagrass:   -0.5,        // peaks late spring/early summer
+  macroalgae:  0.6,        // peaks winter (cold-water kombu)
+  oyster:      0.0,
+};
 
 /**
  * Baseline HSI for an ocean cell at a given week — derived deterministically
@@ -1245,6 +1299,100 @@ export function buildCarbonSeries(
   }
   return out;
 }
+
+/** Bay coordinate bounds (shared with PlaybackPage HUD). */
+export const BAY_COORDS = {
+  lonW: 141.383, lonE: 141.468,
+  latS: 38.582,  latN: 38.651,
+};
+
+export function gridToLonLat(x: number, z: number): { lon: number; lat: number } {
+  const lon = BAY_COORDS.lonW + (x / (GRID_W - 1)) * (BAY_COORDS.lonE - BAY_COORDS.lonW);
+  const lat = BAY_COORDS.latS + (z / (GRID_D - 1)) * (BAY_COORDS.latN - BAY_COORDS.latS);
+  return { lon, lat };
+}
+
+/** Per-channel baseline carbon flux (tCO₂e/ha/yr) at a cell, given a precomputed weekly field. */
+function channelBaselineRate(
+  channel: CarbonChannel,
+  data: number[][][], week: number, x: number, z: number,
+): number {
+  const fit = CHANNEL_FITNESS[channel](x, z);
+  if (fit < 0.15) return 0;
+  const hsi = hsiFromField(data, week, x, z);
+  const phase = CHANNEL_SEASON_PHASE[channel];
+  const seasonal = 0.6 + 0.4 * Math.sin((week / TOTAL_WEEKS) * Math.PI * 2 + phase);
+  return fit * hsi * CHANNEL_MAX_FLUX[channel] * seasonal;
+}
+
+export interface BlueCarbonPoint {
+  week: number;
+  baselineRate: number;
+  scenarioRate: number;
+  baselineCum: number;
+  scenarioCum: number;
+  /** Per-channel scenario rate breakdown (tCO₂e/ha/yr). */
+  channelsRate: ChannelBoosts;
+  /** Per-channel cumulative scenario contribution (tCO₂e/ha). */
+  channelsCum:  ChannelBoosts;
+}
+
+/**
+ * Weekly time series of blue-carbon flux + per-channel breakdown for one
+ * cell under a measure scenario. Channels: seagrass, macroalgae, oyster.
+ */
+export function buildBlueCarbonSeries(
+  fromWeek: number, toWeek: number, year: number,
+  x: number, z: number, measureId: MeasureId, appliedAtWeek: number = 0,
+): BlueCarbonPoint[] {
+  const m = getMeasure(measureId);
+  const weekFrac = 1 / TOTAL_WEEKS;
+  const channels: CarbonChannel[] = ["seagrass", "macroalgae", "oyster"];
+  const cumBase  = { seagrass: 0, macroalgae: 0, oyster: 0 };
+  const cumScen  = { seagrass: 0, macroalgae: 0, oyster: 0 };
+  let bCumTotal = 0, sCumTotal = 0;
+  const out: BlueCarbonPoint[] = [];
+  for (let w = fromWeek; w <= toWeek; w++) {
+    const data = generateWeekData(w, year);
+    const ramp = measureRamp(w - appliedAtWeek, m.rampWeeks);
+    let bRateTotal = 0, sRateTotal = 0;
+    const channelsRate: ChannelBoosts = { seagrass: 0, macroalgae: 0, oyster: 0 };
+    for (const ch of channels) {
+      const bRate = channelBaselineRate(ch, data, w, x, z);
+      const boost = m.channels[ch];
+      // "introduced" capacity: a measure can produce flux on previously zero-fitness
+      // cells (e.g. cultivating macroalgae where there is none today).
+      const introduced = (bRate === 0 && boost > 0) ? ramp * 0.6 * boost : 0;
+      const sRate = bRate * (1 + boost * ramp) + introduced;
+      channelsRate[ch] = sRate;
+      cumBase[ch] += bRate * weekFrac;
+      cumScen[ch] += sRate * weekFrac;
+      bRateTotal += bRate;
+      sRateTotal += sRate;
+    }
+    bCumTotal += bRateTotal * weekFrac;
+    sCumTotal += sRateTotal * weekFrac;
+    out.push({
+      week: w,
+      baselineRate: bRateTotal, scenarioRate: sRateTotal,
+      baselineCum:  bCumTotal,  scenarioCum:  sCumTotal,
+      channelsRate, channelsCum: { ...cumScen },
+    });
+  }
+  return out;
+}
+
+export const CHANNEL_LABELS: Record<CarbonChannel, string> = {
+  seagrass:   "Seagrass meadow",
+  macroalgae: "Macroalgae cultivation",
+  oyster:     "Oyster reef",
+};
+
+export const CHANNEL_COLORS: Record<CarbonChannel, string> = {
+  seagrass:   "#16a34a", // green-600
+  macroalgae: "#0891b2", // cyan-600
+  oyster:     "#a16207", // amber-700
+};
 
 /** HSI suitability bands used for chart background shading + pill labels. */
 export const HSI_BANDS = [

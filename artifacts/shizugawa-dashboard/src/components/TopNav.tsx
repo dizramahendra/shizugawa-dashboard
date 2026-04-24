@@ -13,7 +13,8 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
   const isOcean  = location.pathname.startsWith("/playback");
   const isCS     = location.pathname.startsWith("/cross-section");
   const isRiver  = location.pathname.startsWith("/river");
-  const isMap    = !isOcean && !isCS && !isRiver;
+  const isCarbon = location.pathname.startsWith("/carbon");
+  const isMap    = !isOcean && !isCS && !isRiver && !isCarbon;
 
   /*
    * Cross-section tab href:
@@ -131,6 +132,15 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/60 inline-block" />
             Ocean Playback (3D)
+          </span>
+        </NavLink>
+        <NavLink
+          to="/carbon"
+          className={`tab-item ${isCarbon ? "tab-item-active" : ""}`}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+            Carbon Sequestration
           </span>
         </NavLink>
       </nav>

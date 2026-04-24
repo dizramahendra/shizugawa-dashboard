@@ -41,6 +41,14 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
   - Scientific color scales per variable
   - Playback speed control (0.5×, 1×, 2×, 4×)
   - Horizontal / vertical slice modes + depth graph
+  - **Carbon Sequestration tab (`/carbon`)**: dedicated route with project-area
+    decarbonization simulator. Single project-area measure dropdown applied to
+    up to 4 sample pixels; per-pixel Mobadas-style semicircular HSI gauges;
+    rainbow HSI legend strip; stacked-area blue-carbon breakdown
+    (seagrass / macroalgae / oyster channels); avoided-emissions KPI.
+  - Measures: do nothing, oyster aquaculture, seagrass restoration,
+    cultivate macroalgae, tidal flat restoration, sediment dredging,
+    aerator deployment.
 
 ### `artifacts/api-server` — Express API Server
 

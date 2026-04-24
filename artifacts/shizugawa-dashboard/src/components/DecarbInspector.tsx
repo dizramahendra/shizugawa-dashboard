@@ -6,50 +6,48 @@ import {
 } from "recharts";
 import {
   DECARB_MEASURES, MeasureId, getMeasure, hsiBand, HSI_BANDS,
-  buildHsiSeries, buildCarbonSeries, getWeekLabel, GRID_W, GRID_D,
+  buildHsiSeries, buildCarbonSeries, getWeekLabel, gridToLonLat,
 } from "@/lib/simulatedData";
-
-const BAY_LON_W = 141.383, BAY_LON_E = 141.468;
-const BAY_LAT_S = 38.582,  BAY_LAT_N = 38.651;
 
 export interface SelectedPixel {
   id: string;             // stable key, e.g. "x:z"
   x: number;
   z: number;
   color: string;          // PIXEL_PALETTE entry
-  measure: MeasureId;
-  /** week at which the measure was switched on (default = weekRange[0]) */
-  appliedAtWeek: number;
 }
 
 interface Props {
-  pixels:     SelectedPixel[];
-  week:       number;
-  weekRange:  [number, number];
-  year:       number;
-  onChangeMeasure: (id: string, measure: MeasureId) => void;
+  pixels:        SelectedPixel[];
+  /** Single project-area measure shared by every selected pixel. */
+  measure:       MeasureId;
+  /** Week at which the measure was switched on. */
+  appliedAtWeek: number;
+  week:          number;
+  weekRange:     [number, number];
+  year:          number;
+  onChangeMeasure: (m: MeasureId) => void;
   onRemovePixel:   (id: string) => void;
 }
 
 const fmtCoords = (x: number, z: number) => {
-  const lon = (BAY_LON_W + (x / (GRID_W - 1)) * (BAY_LON_E - BAY_LON_W)).toFixed(3);
-  const lat = (BAY_LAT_S + (z / (GRID_D - 1)) * (BAY_LAT_N - BAY_LAT_S)).toFixed(3);
-  return `${lat}°N · ${lon}°E`;
+  const { lon, lat } = gridToLonLat(x, z);
+  return `${lat.toFixed(3)}°N · ${lon.toFixed(3)}°E`;
 };
 
 export default function DecarbInspector({
-  pixels, week, weekRange, year, onChangeMeasure, onRemovePixel,
+  pixels, measure, appliedAtWeek, week, weekRange, year,
+  onChangeMeasure, onRemovePixel,
 }: Props) {
-  // Build per-pixel time-series across the active playback range
+  // Build per-pixel time-series across the active playback range, using the
+  // shared project-area measure.
   const series = useMemo(() => {
     return pixels.map((p) => ({
       pixel: p,
-      hsi:    buildHsiSeries   (weekRange[0], weekRange[1], year, p.x, p.z, p.measure, p.appliedAtWeek),
-      carbon: buildCarbonSeries(weekRange[0], weekRange[1], year, p.x, p.z, p.measure, p.appliedAtWeek),
+      hsi:    buildHsiSeries   (weekRange[0], weekRange[1], year, p.x, p.z, measure, appliedAtWeek),
+      carbon: buildCarbonSeries(weekRange[0], weekRange[1], year, p.x, p.z, measure, appliedAtWeek),
     }));
-  }, [pixels, weekRange, year]);
+  }, [pixels, weekRange, year, measure, appliedAtWeek]);
 
-  // Joined dataset for the HSI line chart (one row per week, one series per pixel)
   const hsiData = useMemo(() => {
     const rows: Record<string, number | string>[] = [];
     for (let w = weekRange[0]; w <= weekRange[1]; w++) {
@@ -78,8 +76,6 @@ export default function DecarbInspector({
     return rows;
   }, [series, weekRange, year]);
 
-  // Cumulative carbon delta = sum across pixels of (scenario − baseline) at the
-  // last week in the playback range.
   const cumDelta = useMemo(() => {
     let total = 0;
     series.forEach((s) => {
@@ -88,6 +84,8 @@ export default function DecarbInspector({
     });
     return total;
   }, [series]);
+
+  const m = getMeasure(measure);
 
   // ── EMPTY STATE ──────────────────────────────────────────────────────────
   if (pixels.length === 0) {
@@ -98,7 +96,7 @@ export default function DecarbInspector({
         </div>
         <div className="text-sm font-medium text-foreground mb-1">Decarbonization simulator</div>
         <div className="text-xs text-muted-foreground leading-relaxed max-w-[220px] mx-auto">
-          Click up to 4 ocean cells to compare habitat suitability and seagrass-carbon flux. Apply a measure to see the avoided emissions.
+          Click up to 4 ocean cells to define a project area. Pick a measure to see avoided emissions across the whole area. (Full inspector lives in the Carbon tab.)
         </div>
       </div>
     );
@@ -106,11 +104,31 @@ export default function DecarbInspector({
 
   return (
     <div className="px-4 py-4 space-y-4">
+      {/* Project measure dropdown (single, applied to whole project area) */}
+      <div>
+        <label className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          Project-area measure
+        </label>
+        <select
+          className="mt-1 w-full text-xs h-8 px-2 rounded border border-border bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          value={measure}
+          onChange={(e) => onChangeMeasure(e.target.value as MeasureId)}
+          data-testid="decarb-measure-select"
+        >
+          {DECARB_MEASURES.map((opt) => (
+            <option key={opt.id} value={opt.id}>{opt.label}</option>
+          ))}
+        </select>
+        {measure !== "none" && (
+          <div className="mt-1 text-[10px] text-muted-foreground leading-snug">{m.desc}</div>
+        )}
+      </div>
+
       {/* Cumulative-impact KPI */}
       <div className="rounded-md border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
           <TrendingUp className="w-3 h-3" />
-          Avoided emissions · selected pixels
+          Avoided emissions · project area
         </div>
         <div className="mt-1 flex items-baseline gap-1">
           <span className={`text-2xl font-mono font-bold ${cumDelta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
@@ -119,13 +137,13 @@ export default function DecarbInspector({
           <span className="text-xs text-muted-foreground">tCO₂e/ha · over playback range</span>
         </div>
         <div className="mt-1 text-[10px] text-muted-foreground">
-          Scenario − baseline, summed across {pixels.length} pixel{pixels.length > 1 ? "s" : ""}.
+          Scenario − baseline, summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}.
         </div>
       </div>
 
-      {/* Per-pixel cards with measure dropdown */}
+      {/* Per-pixel cards (no per-pixel dropdown — single project measure above) */}
       <div className="space-y-2">
-        <div className="panel-section-title">Selected pixels & measures</div>
+        <div className="panel-section-title">Sample points</div>
         {pixels.map((p) => {
           const baselineHsiNow = hsiData[week - weekRange[0]]?.[`b${pixels.indexOf(p)}`] as number ?? 0;
           const scenarioHsiNow = hsiData[week - weekRange[0]]?.[`s${pixels.indexOf(p)}`] as number ?? 0;
@@ -152,25 +170,6 @@ export default function DecarbInspector({
                 >
                   <X className="w-3 h-3" />
                 </button>
-              </div>
-              <div className="mt-2">
-                <label className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">
-                  Decarbonization measure
-                </label>
-                <select
-                  className="mt-0.5 w-full text-[11px] h-7 px-1.5 rounded border border-border bg-white focus:outline-none focus:ring-1 focus:ring-primary"
-                  value={p.measure}
-                  onChange={(e) => onChangeMeasure(p.id, e.target.value as MeasureId)}
-                >
-                  {DECARB_MEASURES.map((m) => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
-                  ))}
-                </select>
-                {p.measure !== "none" && (
-                  <div className="mt-1 text-[9px] text-muted-foreground leading-snug">
-                    {getMeasure(p.measure).desc}
-                  </div>
-                )}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
                 <div className="bg-muted/50 rounded p-1">
@@ -217,10 +216,10 @@ export default function DecarbInspector({
         </div>
       </div>
 
-      {/* Cumulative seagrass carbon */}
+      {/* Cumulative seagrass carbon (legacy single-channel — see Carbon tab for breakdown) */}
       <div>
         <div className="panel-section-title mb-1">Cumulative seagrass carbon</div>
-        <div className="text-[9px] text-muted-foreground mb-1">tCO₂e / ha · accumulated since week {weekRange[0] + 1}</div>
+        <div className="text-[9px] text-muted-foreground mb-1">tCO₂e / ha · accumulated since week {weekRange[0] + 1} · see Carbon tab for full blue-carbon breakdown</div>
         <div className="h-[160px] -mx-1">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={carbonData} margin={{ top: 4, right: 8, bottom: 0, left: -22 }}>
@@ -253,7 +252,9 @@ export default function DecarbInspector({
       </div>
 
       <div className="text-[9px] text-muted-foreground italic leading-snug pt-1 border-t border-border/50">
-        Modeled values · synthetic baseline + measure response. Replace with calibrated HSI and eelgrass-carbon model for production use.
+        Modeled values · synthetic baseline + measure response. Open the
+        Carbon Sequestration tab for the full portfolio dashboard with HSI
+        gauges and per-mechanism breakdown.
       </div>
     </div>
   );
