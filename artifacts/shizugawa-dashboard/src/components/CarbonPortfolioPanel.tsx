@@ -262,6 +262,84 @@ export default function CarbonPortfolioPanel({
         </div>
       </div>
 
+      {/* Dumbbell — baseline → scenario at a glance */}
+      <div>
+        <div className="panel-section-title mb-1">
+          Seagrass carbon · {hasMeasure ? "baseline → scenario" : "baseline"}
+        </div>
+        <div className="text-[9px] text-muted-foreground mb-2">
+          Annual sequestration · tCO₂e/ha · summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}
+        </div>
+        {(() => {
+          // Scale: a touch of headroom so dots don't kiss the right edge.
+          const axisMax = Math.max(annual.baseline, annual.scenario, 0.01) * 1.15;
+          const baselinePct = (annual.baseline / axisMax) * 100;
+          const scenarioPct = (annual.scenario / axisMax) * 100;
+          const lo = Math.min(baselinePct, scenarioPct);
+          const hi = Math.max(baselinePct, scenarioPct);
+          const midPct = (baselinePct + scenarioPct) / 2;
+          return (
+            <div className="rounded-md border border-border bg-white px-3 pt-7 pb-6">
+              <div className="relative h-3">
+                {/* full-range track */}
+                <div className="absolute left-1.5 right-1.5 top-1/2 -translate-y-1/2 h-px bg-border" />
+
+                {/* connector segment between baseline and scenario */}
+                {hasMeasure && (
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-emerald-400"
+                    style={{ left: `${lo}%`, width: `${hi - lo}%` }}
+                  />
+                )}
+
+                {/* baseline dot + label */}
+                <div
+                  className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-slate-400 border-2 border-white ring-1 ring-slate-300 z-10"
+                  style={{ left: `${baselinePct}%` }}
+                  title={`Baseline ${annual.baseline.toFixed(2)} tCO₂e/ha`}
+                />
+                <div
+                  className="absolute -translate-x-1/2 text-[9px] font-mono text-muted-foreground whitespace-nowrap"
+                  style={{ left: `${baselinePct}%`, top: "calc(100% + 4px)" }}
+                >
+                  {annual.baseline.toFixed(2)}
+                </div>
+
+                {/* scenario dot + label (only when a measure is applied) */}
+                {hasMeasure && (
+                  <>
+                    <div
+                      className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-600 border-2 border-white ring-1 ring-emerald-300 z-10"
+                      style={{ left: `${scenarioPct}%` }}
+                      title={`Scenario ${annual.scenario.toFixed(2)} tCO₂e/ha`}
+                    />
+                    <div
+                      className="absolute -translate-x-1/2 text-[9px] font-mono font-semibold text-emerald-700 whitespace-nowrap"
+                      style={{ left: `${scenarioPct}%`, top: "calc(100% + 4px)" }}
+                    >
+                      {annual.scenario.toFixed(2)}
+                    </div>
+                    <div
+                      className={`absolute -translate-x-1/2 text-[10px] font-mono font-bold whitespace-nowrap
+                        ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}
+                      style={{ left: `${midPct}%`, top: "-20px" }}
+                    >
+                      Δ {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* axis end-labels */}
+              <div className="flex justify-between text-[9px] font-mono text-muted-foreground mt-3">
+                <span>0</span>
+                <span>{axisMax.toFixed(2)}</span>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       {/* Baseline vs scenario annual sequestration */}
       <div>
         <div className="panel-section-title mb-1">
