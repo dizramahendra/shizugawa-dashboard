@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, Leaf, TrendingUp, Layers, LayoutGrid } from "lucide-react";
+import { X, Leaf, Layers, LayoutGrid } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell,
 } from "recharts";
@@ -143,40 +143,94 @@ export default function CarbonPortfolioPanel({
     <div className="px-4 py-4 space-y-4">
       {MeasureSelect}
 
-      {/* Annual seagrass-carbon KPI (baseline-only until a measure is picked) */}
-      {hasMeasure ? (
-        <div className="rounded-md border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
-            <TrendingUp className="w-3 h-3" />
-            Annual seagrass-carbon gain
+      {/* Hero KPI — Ocean Carbon Storage card */}
+      {(() => {
+        // Theoretical max per hectare for an ideal Zostera marina meadow.
+        // ~6 tCO₂e/ha/yr is a published upper bound for healthy eelgrass.
+        // Project-area ceiling scales with the number of selected pixels so
+        // the % stays meaningful regardless of project size.
+        const PER_PIXEL_CAPACITY = 6;
+        const capacityCeiling   = PER_PIXEL_CAPACITY * pixels.length;
+        const heroValue         = hasMeasure ? annual.scenario : annual.baseline;
+        const capacityPct       = capacityCeiling > 0
+          ? Math.min(100, (heroValue / capacityCeiling) * 100)
+          : 0;
+        const baselineCapPct    = capacityCeiling > 0
+          ? Math.min(100, (annual.baseline / capacityCeiling) * 100)
+          : 0;
+        return (
+          <div>
+            <div className="rounded-xl overflow-hidden border border-border bg-white">
+              {/* Blue gradient hero */}
+              <div className="bg-gradient-to-b from-slate-400 via-sky-500 to-blue-600 px-4 py-5 text-white text-center">
+                <div className="text-[10px] uppercase tracking-[0.18em] font-semibold opacity-95">
+                  Seagrass Carbon Sequestration
+                </div>
+                <div className="mt-2 flex items-baseline justify-center gap-2 flex-wrap">
+                  <span className="text-5xl font-bold leading-none tracking-tight tabular-nums">
+                    {heroValue.toFixed(2)}
+                  </span>
+                  <span className="text-xs opacity-95 font-medium">tCO₂e / ha / year</span>
+                </div>
+                {hasMeasure ? (
+                  <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur text-[11px] font-mono font-semibold">
+                    <span>{annual.delta >= 0 ? "▲" : "▼"}</span>
+                    <span>
+                      {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)} vs baseline
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full bg-white/15 text-[10px] uppercase tracking-wide font-semibold">
+                    Baseline · no measure
+                  </div>
+                )}
+              </div>
+
+              {/* Capacity bar */}
+              <div className="px-4 pt-3 pb-3">
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                  <span className="font-semibold text-foreground">Sequestration Capacity</span>
+                  <span className="font-bold text-blue-600 tabular-nums">{capacityPct.toFixed(0)}%</span>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden bg-slate-100">
+                  {/* current fill (black → blue gradient like the mock) */}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
+                    style={{
+                      width: `${capacityPct}%`,
+                      background: "linear-gradient(to right, #0f172a, #2563eb)",
+                    }}
+                  />
+                  {/* baseline tick — only meaningful when a scenario is shown */}
+                  {hasMeasure && annual.baseline > 0 && (
+                    <div
+                      className="absolute top-[-2px] bottom-[-2px] w-[2px] bg-slate-700"
+                      style={{ left: `calc(${baselineCapPct}% - 1px)` }}
+                      title={`Baseline ${annual.baseline.toFixed(2)} tCO₂e/ha/yr`}
+                    />
+                  )}
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground mt-1 tabular-nums">
+                  <span>0</span>
+                  <span>{capacityCeiling.toFixed(0)} tCO₂e/ha/yr</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-2 text-[10px] text-muted-foreground leading-snug">
+              {hasMeasure
+                ? "Annual seagrass carbon at full ramp under the selected measure, against the theoretical maximum for an ideal Zostera marina meadow."
+                : "Baseline annual seagrass carbon for the selected sample points, against the theoretical maximum for an ideal Zostera marina meadow."}
+              {hasMeasure && (
+                <>
+                  <br />
+                  <span className="text-slate-700">▎</span> dark tick = baseline position on the same scale.
+                </>
+              )}
+            </div>
           </div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className={`text-2xl font-mono font-bold ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-              {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
-            </span>
-            <span className="text-xs text-muted-foreground">tCO₂e/ha · per year</span>
-          </div>
-          <div className="mt-1 text-[10px] text-muted-foreground">
-            Scenario − baseline at full ramp · summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}.
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-md border border-border bg-muted/30 p-3">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-            <TrendingUp className="w-3 h-3" />
-            Annual seagrass carbon · baseline
-          </div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-mono font-bold text-foreground">
-              {annual.baseline.toFixed(2)}
-            </span>
-            <span className="text-xs text-muted-foreground">tCO₂e/ha · per year</span>
-          </div>
-          <div className="mt-1 text-[10px] text-muted-foreground">
-            Pick a project-area measure above to see the scenario gain.
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* HSI gauges with view-mode toggle */}
       <div>
