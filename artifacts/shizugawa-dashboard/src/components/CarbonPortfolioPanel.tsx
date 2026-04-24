@@ -145,19 +145,20 @@ export default function CarbonPortfolioPanel({
 
       {/* Hero KPI — Ocean Carbon Storage card */}
       {(() => {
-        // Theoretical max per hectare for an ideal Zostera marina meadow.
-        // ~6 tCO₂e/ha/yr is a published upper bound for healthy eelgrass.
-        // Project-area ceiling scales with the number of selected pixels so
-        // the % stays meaningful regardless of project size.
+        // Hero shows the per-hectare average across the selected sample
+        // points, against a flat ~6 tCO₂e/ha/yr scientific ceiling for an
+        // ideal Zostera marina meadow. Average (not sum) keeps the units
+        // honest — "tCO₂e/ha/yr" really is a per-hectare rate — and keeps
+        // the ceiling stable regardless of how many cells are selected.
         const PER_PIXEL_CAPACITY = 6;
-        const capacityCeiling   = PER_PIXEL_CAPACITY * pixels.length;
-        const heroValue         = hasMeasure ? annual.scenario : annual.baseline;
-        const capacityPct       = capacityCeiling > 0
-          ? Math.min(100, (heroValue / capacityCeiling) * 100)
-          : 0;
-        const baselineCapPct    = capacityCeiling > 0
-          ? Math.min(100, (annual.baseline / capacityCeiling) * 100)
-          : 0;
+        const n                  = Math.max(1, pixels.length);
+        const baselineAvg        = annual.baseline / n;
+        const scenarioAvg        = annual.scenario / n;
+        const deltaAvg           = scenarioAvg - baselineAvg;
+        const heroValue          = hasMeasure ? scenarioAvg : baselineAvg;
+        const capacityCeiling    = PER_PIXEL_CAPACITY;
+        const capacityPct        = Math.min(100, (heroValue / capacityCeiling) * 100);
+        const baselineCapPct     = Math.min(100, (baselineAvg / capacityCeiling) * 100);
         return (
           <div>
             <div className="rounded-xl overflow-hidden border border-border bg-white">
@@ -174,9 +175,9 @@ export default function CarbonPortfolioPanel({
                 </div>
                 {hasMeasure ? (
                   <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur text-[11px] font-mono font-semibold">
-                    <span>{annual.delta >= 0 ? "▲" : "▼"}</span>
+                    <span>{deltaAvg >= 0 ? "▲" : "▼"}</span>
                     <span>
-                      {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)} vs baseline
+                      {deltaAvg >= 0 ? "+" : ""}{deltaAvg.toFixed(2)} vs baseline
                     </span>
                   </div>
                 ) : (
@@ -219,8 +220,8 @@ export default function CarbonPortfolioPanel({
 
             <div className="mt-2 text-[10px] text-muted-foreground leading-snug">
               {hasMeasure
-                ? "Annual seagrass carbon at full ramp under the selected measure, against the theoretical maximum for an ideal Zostera marina meadow."
-                : "Baseline annual seagrass carbon for the selected sample points, against the theoretical maximum for an ideal Zostera marina meadow."}
+                ? `Average annual seagrass carbon across ${pixels.length} sample point${pixels.length > 1 ? "s" : ""} once the measure is fully established, against the theoretical maximum for an ideal Zostera marina meadow.`
+                : `Average annual seagrass carbon across ${pixels.length} sample point${pixels.length > 1 ? "s" : ""}, against the theoretical maximum for an ideal Zostera marina meadow.`}
               {hasMeasure && (
                 <>
                   <br />
