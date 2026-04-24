@@ -1,53 +1,26 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, Leaf } from "lucide-react";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
-import PlaybackControls from "@/components/PlaybackControls";
 import CarbonPortfolioPanel, { PortfolioPixel } from "@/components/CarbonPortfolioPanel";
 import { RainbowStrip } from "@/components/HsiGauge";
 import { usePlayback } from "@/context/PlaybackContext";
 import {
-  PIXEL_PALETTE, MeasureId, getWeekLabel,
+  PIXEL_PALETTE, MeasureId,
   gridToLonLat, BAY_COORDS,
 } from "@/lib/simulatedData";
 import { YEARS } from "@/lib/weekUtils";
 
 export default function CarbonPage() {
   const navigate = useNavigate();
-  const { year, setYear, weekRange } = usePlayback();
+  const { year, setYear } = usePlayback();
 
-  const [week, setWeek]           = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed]         = useState(1);
   const [showUI, setShowUI]       = useState(true);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
 
-  const [pixels,     setPixels]   = useState<PortfolioPixel[]>([]);
-  const [measure,    setMeasure]  = useState<MeasureId>("none");
-  const [appliedAt,  setAppliedAt] = useState<number>(weekRange[0]);
-
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pause = useCallback(() => setIsPlaying(false), []);
-
-  // Clamp week to playback range
-  useEffect(() => {
-    setWeek((w) => Math.max(weekRange[0], Math.min(weekRange[1], w)));
-  }, [weekRange]);
-
-  // Play loop
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (isPlaying) {
-      intervalRef.current = setInterval(() => {
-        setWeek((w) => {
-          if (w >= weekRange[1]) { setIsPlaying(false); return weekRange[0]; }
-          return w + 1;
-        });
-      }, 800 / speed);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isPlaying, speed, weekRange]);
+  const [pixels,  setPixels]  = useState<PortfolioPixel[]>([]);
+  const [measure, setMeasure] = useState<MeasureId>("none");
 
   // Click-to-toggle pixel into the project area
   const handleCellClick = (x: number, z: number) => {
@@ -62,16 +35,8 @@ export default function CarbonPage() {
     });
   };
 
-  const handleChangeMeasure = (m: MeasureId) => {
-    setMeasure(m);
-    setAppliedAt(week);
-  };
   const handleRemovePixel = (id: string) =>
     setPixels((prev) => prev.filter((p) => p.id !== id));
-
-  const handleSeek = (w: number) => { setWeek(w); pause(); };
-
-  const { label: weekLabel } = getWeekLabel(week, year);
 
   // Hover/selection HUD coordinates
   const huePt = hoveredPoint ?? (pixels.length > 0 ? { x: pixels[0].x, z: pixels[0].z } : null);
@@ -79,7 +44,7 @@ export default function CarbonPage() {
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
-      <TopNav stateLabel={isPlaying ? "Playing" : "Paused"} />
+      <TopNav stateLabel="Planning" />
 
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-border flex-wrap">
@@ -91,11 +56,11 @@ export default function CarbonPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground font-medium">Year</span>
+          <span className="text-xs text-muted-foreground font-medium">Baseline year</span>
           <select
             className="filter-select pr-8 appearance-none"
             value={year}
-            onChange={(e) => { setYear(Number(e.target.value)); pause(); }}
+            onChange={(e) => setYear(Number(e.target.value))}
             style={{
               backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")",
               backgroundPosition: "right 0.5rem center",
@@ -130,26 +95,23 @@ export default function CarbonPage() {
         </button>
 
         <div className="ml-auto flex items-center gap-1.5 text-xs">
-          {isPlaying ? (
-            <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
-          ) : (
-            <><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /><span className="text-amber-600">Paused</span></>
-          )}
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          <span className="text-emerald-700">Annual outlook · steady-state</span>
         </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 3D viewport + playback */}
+        {/* 3D viewport (no playback bar — carbon outlook is time-independent) */}
         <div className="flex-1 flex flex-col min-w-0">
           <div
             className="flex-1 relative overflow-hidden"
             onPointerLeave={() => setHoveredPoint(null)}
           >
             <OceanBasin3D
-              week={week}
+              week={0}
               colorScale="nitrogen"
-              dashboardState={isPlaying ? "playback" : "paused"}
+              dashboardState="paused"
               selectedPoint={null}
               sliceLevel={0}
               sliceDir="north"
@@ -168,8 +130,6 @@ export default function CarbonPage() {
                     ? `${huePtLL.lat.toFixed(3)}°N · ${huePtLL.lon.toFixed(3)}°E`
                     : "— °N · — °E"}
                 </span>
-                <span className="text-white/40 text-[10px]">|</span>
-                <span className="text-[10px] font-mono text-white/70 leading-none">{weekLabel}</span>
               </div>
             </div>
 
@@ -212,21 +172,6 @@ export default function CarbonPage() {
               </div>
             )}
           </div>
-
-          <PlaybackControls
-            week={week}
-            isPlaying={isPlaying}
-            speed={speed}
-            year={year}
-            windowStart={weekRange[0]}
-            windowEnd={weekRange[1]}
-            onPlay={() => setIsPlaying(true)}
-            onPause={pause}
-            onSeek={handleSeek}
-            onSpeedChange={setSpeed}
-            onBack={() => { setWeek((w) => Math.max(weekRange[0], w - 1)); pause(); }}
-            onForward={() => { setWeek((w) => Math.min(weekRange[1], w + 1)); pause(); }}
-          />
         </div>
 
         {/* Right: portfolio panel */}
@@ -243,11 +188,8 @@ export default function CarbonPage() {
             <CarbonPortfolioPanel
               pixels={pixels}
               measure={measure}
-              appliedAtWeek={appliedAt}
-              week={week}
-              weekRange={weekRange}
               year={year}
-              onChangeMeasure={handleChangeMeasure}
+              onChangeMeasure={setMeasure}
               onRemovePixel={handleRemovePixel}
             />
           </div>
