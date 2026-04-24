@@ -1072,3 +1072,191 @@ export function generateRiverData(week: number, riverId: string, year: number = 
   }
   return data;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DECARBONIZATION SIMULATOR
+// HSI (Habitat Suitability Index, 0–1) and Seagrass Carbon flux
+// (tCO₂e/ha/yr) per ocean cell, with optional decarbonization-measure
+// scenarios. All values are deterministic synthetic — clearly modeled, not
+// observed. Designed for the Figma handoff demo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MeasureId = "none" | "plant-eelgrass" | "restore-reef" | "reduce-runoff";
+
+export interface DecarbMeasure {
+  id: MeasureId;
+  label: string;
+  short: string;
+  desc: string;
+  /** seagrass-carbon multiplier on baseline flux (steady state) */
+  carbonBoost: number;
+  /** additive HSI offset at steady state (0–1) */
+  hsiBoost: number;
+  /** weeks for the measure to ramp from 0 → full effect */
+  rampWeeks: number;
+}
+
+export const DECARB_MEASURES: DecarbMeasure[] = [
+  { id: "none",            label: "No measure (baseline)",     short: "Baseline",         desc: "No decarbonization measure applied — current trajectory.",                                  carbonBoost: 0,   hsiBoost: 0,    rampWeeks: 1  },
+  { id: "plant-eelgrass",  label: "Plant eelgrass meadow",     short: "Plant eelgrass",   desc: "Replant Zostera marina across the cell. Boosts seagrass-carbon sequestration directly.",   carbonBoost: 2.4, hsiBoost: 0.18, rampWeeks: 18 },
+  { id: "restore-reef",    label: "Restore oyster reef",       short: "Restore reef",     desc: "Rebuild oyster reef structure — improves filtration and habitat suitability quickly.",     carbonBoost: 0.7, hsiBoost: 0.22, rampWeeks: 10 },
+  { id: "reduce-runoff",   label: "Reduce upstream N/P load",  short: "Reduce runoff",    desc: "Cut nitrogen + phosphorus runoff from the watershed. Improves HSI broadly, modest carbon gain.", carbonBoost: 0.5, hsiBoost: 0.14, rampWeeks: 24 },
+];
+
+export function getMeasure(id: MeasureId): DecarbMeasure {
+  return DECARB_MEASURES.find((m) => m.id === id) ?? DECARB_MEASURES[0];
+}
+
+/**
+ * Distance from the central seagrass-suitable belt (mid-bay, mid-depth).
+ * Used to make seagrass carbon spatially heterogeneous so different pixels
+ * tell different stories. Returns 0 (perfect) → 1 (poor).
+ */
+function seagrassSiteFitness(x: number, z: number): number {
+  // Bay center (mid-bay shallow belt). Coordinates expressed as fractions of
+  // the grid so the function works regardless of the underlying grid resolution.
+  const cx = (GRID_W - 1) * 0.45;       // slightly west-of-center, inner bay
+  const cz = (GRID_D - 1) * 0.50;
+  const rx = (GRID_W - 1) * 0.5;
+  const rz = (GRID_D - 1) * 0.45;
+  const dx = (x - cx) / rx;
+  const dz = (z - cz) / rz;
+  const radial = Math.sqrt(dx * dx + dz * dz);
+  return Math.max(0, Math.min(1, radial));
+}
+
+/**
+ * Baseline HSI for an ocean cell at a given week — derived deterministically
+ * from the existing N/P/flow simulation. High HSI = N + P in the safe band
+ * AND moderate flow. Returns 0–1.
+ */
+/** Internal: HSI given a precomputed weekly field. */
+function hsiFromField(data: number[][][], week: number, x: number, z: number): number {
+  const col = getColumnMean(data, x, z);
+  const optimum = 0.45;
+  const proximity = 1 - Math.min(1, Math.abs(col - optimum) / 0.5);
+  const fitness  = 1 - seagrassSiteFitness(x, z) * 0.6;
+  const seasonal = 0.92 + 0.08 * Math.sin((week / TOTAL_WEEKS) * Math.PI * 2);
+  return Math.max(0, Math.min(1, proximity * fitness * seasonal));
+}
+
+export function getBaselineHsi(week: number, year: number, x: number, z: number): number {
+  return hsiFromField(generateWeekData(week, year), week, x, z);
+}
+
+/**
+ * Baseline seagrass carbon flux (tCO₂e/ha/yr) at an ocean cell for a given
+ * week. Cells outside the seagrass-suitable belt get near-zero flux.
+ */
+/** Internal: carbon flux given a precomputed weekly field. */
+function carbonFromField(data: number[][][], week: number, x: number, z: number): number {
+  const fit = 1 - seagrassSiteFitness(x, z);
+  if (fit < 0.15) return 0;
+  const hsi = hsiFromField(data, week, x, z);
+  const seasonal = 0.6 + 0.4 * Math.sin((week / TOTAL_WEEKS) * Math.PI * 2 - 0.5);
+  return fit * hsi * 3.2 * seasonal;
+}
+
+export function getBaselineCarbonFlux(week: number, year: number, x: number, z: number): number {
+  return carbonFromField(generateWeekData(week, year), week, x, z);
+}
+
+/** Ramp factor 0→1 representing measure effectiveness over time. */
+function measureRamp(weeksApplied: number, rampWeeks: number): number {
+  if (weeksApplied <= 0) return 0;
+  return Math.min(1, weeksApplied / Math.max(1, rampWeeks));
+}
+
+/**
+ * HSI under a decarbonization-measure scenario. `appliedAtWeek` is the
+ * playback week at which the measure was switched on (0 = start of period).
+ */
+export function getScenarioHsi(
+  week: number, year: number, x: number, z: number,
+  measureId: MeasureId, appliedAtWeek: number = 0,
+): number {
+  const baseline = getBaselineHsi(week, year, x, z);
+  if (measureId === "none") return baseline;
+  const m = getMeasure(measureId);
+  const ramp = measureRamp(week - appliedAtWeek, m.rampWeeks);
+  return Math.max(0, Math.min(1, baseline + m.hsiBoost * ramp));
+}
+
+/**
+ * Seagrass carbon flux under a measure scenario.
+ */
+export function getScenarioCarbonFlux(
+  week: number, year: number, x: number, z: number,
+  measureId: MeasureId, appliedAtWeek: number = 0,
+): number {
+  const baseline = getBaselineCarbonFlux(week, year, x, z);
+  if (measureId === "none") return baseline;
+  const m = getMeasure(measureId);
+  const ramp = measureRamp(week - appliedAtWeek, m.rampWeeks);
+  // "Plant eelgrass" can introduce flux on cells with low fitness too —
+  // assume planting succeeds where HSI scenario is decent.
+  const introduced = (measureId === "plant-eelgrass" && baseline === 0)
+    ? ramp * 1.6
+    : 0;
+  return baseline * (1 + m.carbonBoost * ramp) + introduced;
+}
+
+/**
+ * Convenience: weekly time series of (baseline, scenario) values across the
+ * playback range. Returns array length (toWeek - fromWeek + 1).
+ */
+export function buildHsiSeries(
+  fromWeek: number, toWeek: number, year: number,
+  x: number, z: number, measureId: MeasureId, appliedAtWeek: number = 0,
+): { week: number; baseline: number; scenario: number }[] {
+  const m = getMeasure(measureId);
+  const out: { week: number; baseline: number; scenario: number }[] = [];
+  for (let w = fromWeek; w <= toWeek; w++) {
+    const data = generateWeekData(w, year);
+    const baseline = hsiFromField(data, w, x, z);
+    const scenario = measureId === "none"
+      ? baseline
+      : Math.max(0, Math.min(1, baseline + m.hsiBoost * measureRamp(w - appliedAtWeek, m.rampWeeks)));
+    out.push({ week: w, baseline, scenario });
+  }
+  return out;
+}
+
+export function buildCarbonSeries(
+  fromWeek: number, toWeek: number, year: number,
+  x: number, z: number, measureId: MeasureId, appliedAtWeek: number = 0,
+): { week: number; baselineRate: number; scenarioRate: number; baselineCum: number; scenarioCum: number }[] {
+  const m = getMeasure(measureId);
+  const weekFrac = 1 / TOTAL_WEEKS;
+  let bCum = 0, sCum = 0;
+  const out: { week: number; baselineRate: number; scenarioRate: number; baselineCum: number; scenarioCum: number }[] = [];
+  for (let w = fromWeek; w <= toWeek; w++) {
+    const data = generateWeekData(w, year);
+    const bRate = carbonFromField(data, w, x, z);
+    let sRate = bRate;
+    if (measureId !== "none") {
+      const ramp = measureRamp(w - appliedAtWeek, m.rampWeeks);
+      const introduced = (measureId === "plant-eelgrass" && bRate === 0) ? ramp * 1.6 : 0;
+      sRate = bRate * (1 + m.carbonBoost * ramp) + introduced;
+    }
+    bCum += bRate * weekFrac;
+    sCum += sRate * weekFrac;
+    out.push({ week: w, baselineRate: bRate, scenarioRate: sRate, baselineCum: bCum, scenarioCum: sCum });
+  }
+  return out;
+}
+
+/** HSI suitability bands used for chart background shading + pill labels. */
+export const HSI_BANDS = [
+  { from: 0.00, to: 0.30, label: "Poor",      color: "#fecaca", text: "#991b1b" },
+  { from: 0.30, to: 0.60, label: "Fair",      color: "#fde68a", text: "#92400e" },
+  { from: 0.60, to: 0.85, label: "Good",      color: "#bbf7d0", text: "#166534" },
+  { from: 0.85, to: 1.01, label: "Excellent", color: "#86efac", text: "#14532d" },
+] as const;
+
+export function hsiBand(value: number): typeof HSI_BANDS[number] {
+  return HSI_BANDS.find((b) => value >= b.from && value < b.to) ?? HSI_BANDS[0];
+}
+
+/** Stable color palette for selected pixels (max 4). */
+export const PIXEL_PALETTE = ["#6366f1", "#f59e0b", "#14b8a6", "#ec4899"] as const;

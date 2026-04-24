@@ -339,6 +339,7 @@ function buildBatches(
   sliceLevel: number,
   sliceDir: SliceDir,
   sliceCutType: SliceCutType,
+  markerPixels?: Map<string, [number, number, number]>,
 ): LayerBatch[] {
   const visibleDepths = sliceMode === "slice-h"
     ? Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i)
@@ -365,7 +366,12 @@ function buildBatches(
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const isSelected = selectedPoint?.x === gx && selectedPoint?.z === gz;
-        const [r, g, b] = isSelected ? [1, 0.9, 0.2] : lerpColor(stops, val);
+        const markerColor = markerPixels?.get(`${gx}:${gz}`);
+        const [r, g, b] = markerColor && d === 0
+          ? markerColor
+          : isSelected
+            ? [1, 0.9, 0.2]
+            : lerpColor(stops, val);
 
         const px = offsetX + gx * STEP + CELL_W / 2;
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
@@ -451,14 +457,14 @@ function InstancedDepthLayer({
 }
 
 function VoxelGridInstanced({
-  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, onCellClick, onCellHover,
-}: VoxelGridProps) {
+  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, onCellClick, onCellHover, markerPixels,
+}: VoxelGridProps & { markerPixels?: Map<string, [number, number, number]> }) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
   const batches = useMemo(
-    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType),
-    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType],
+    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels),
+    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels],
   );
 
   const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
@@ -1154,6 +1160,15 @@ interface OceanBasin3DProps {
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
   cameraPreset?: string;
+  markerPixels?: { x: number; z: number; color: string }[];
+}
+
+function hexToRgb01(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16) / 255;
+  const g = parseInt(h.substring(2, 4), 16) / 255;
+  const b = parseInt(h.substring(4, 6), 16) / 255;
+  return [r, g, b];
 }
 
 export default function OceanBasin3D({
@@ -1169,7 +1184,14 @@ export default function OceanBasin3D({
   onCellHover,
   showAnnotations = true,
   cameraPreset = "top",
+  markerPixels,
 }: OceanBasin3DProps) {
+  const markerMap = useMemo(() => {
+    if (!markerPixels || markerPixels.length === 0) return undefined;
+    const m = new Map<string, [number, number, number]>();
+    markerPixels.forEach((p) => m.set(`${p.x}:${p.z}`, hexToRgb01(p.color)));
+    return m;
+  }, [markerPixels]);
   const orbitRef = useRef<any>(null);
 
   const voxelProps: VoxelGridProps = {
@@ -1197,7 +1219,7 @@ export default function OceanBasin3D({
 
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>
-        <VoxelGridInstanced {...voxelProps} />
+        <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} />
 
         <SeabedMesh
           sliceMode={dashboardState}
