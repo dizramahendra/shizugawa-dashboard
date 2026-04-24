@@ -147,21 +147,28 @@ export default function CarbonPortfolioPanel({
 
       {/* Hero KPI — Ocean Carbon Storage card */}
       {(() => {
-        // Hero shows the per-hectare average across the selected sample
-        // points, against a flat ~8 tCO₂e/ha/yr scientific ceiling — the
-        // top of the published Zostera marina range (Mcleod 2011,
-        // Fourqurean 2012). Average (not sum) keeps the units honest —
-        // "tCO₂e/ha/yr" really is a per-hectare rate — and keeps the
-        // ceiling stable regardless of how many cells are selected.
+        // Hero shows the project-area TOTAL annual sequestration
+        // (tCO₂e/yr) — the headline figure used in J-Blue Credit, Verra
+        // VM0033 and IPCC inventories. Per-hectare intensity sits below
+        // as a secondary stat for science-minded readers and for
+        // comparing across sites of different size.
+        //
+        // Each sample point implicitly represents 1 hectare of project
+        // area, so total = Σ baselineCum across pixels and the ceiling
+        // scales linearly: N × 8 tCO₂e/yr (8 = top of the published
+        // Zostera marina range).
         const PER_PIXEL_CAPACITY = 8;
         const n                  = Math.max(1, pixels.length);
-        const baselineAvg        = annual.baseline / n;
-        const scenarioAvg        = annual.scenario / n;
-        const deltaAvg           = scenarioAvg - baselineAvg;
-        const heroValue          = hasMeasure ? scenarioAvg : baselineAvg;
-        const capacityCeiling    = PER_PIXEL_CAPACITY;
+        const baselineTotal      = annual.baseline;
+        const scenarioTotal      = annual.scenario;
+        const deltaTotal         = scenarioTotal - baselineTotal;
+        const heroValue          = hasMeasure ? scenarioTotal : baselineTotal;
+        const baselineAvg        = baselineTotal / n;
+        const scenarioAvg        = scenarioTotal / n;
+        const intensityValue     = hasMeasure ? scenarioAvg : baselineAvg;
+        const capacityCeiling    = PER_PIXEL_CAPACITY * n;
         const capacityPct        = Math.min(100, (heroValue / capacityCeiling) * 100);
-        const baselineCapPct     = Math.min(100, (baselineAvg / capacityCeiling) * 100);
+        const baselineCapPct     = Math.min(100, (baselineTotal / capacityCeiling) * 100);
         return (
           <div>
             <div className="rounded-xl overflow-hidden border border-border bg-white">
@@ -174,13 +181,16 @@ export default function CarbonPortfolioPanel({
                   <span className="text-5xl font-bold leading-none tracking-tight tabular-nums">
                     {heroValue.toFixed(2)}
                   </span>
-                  <span className="text-xs opacity-95 font-medium">tCO₂e / ha / year</span>
+                  <span className="text-xs opacity-95 font-medium">tCO₂e / year</span>
+                </div>
+                <div className="mt-1 text-[10px] opacity-90 font-medium">
+                  project total · {pixels.length} sample point{pixels.length > 1 ? "s" : ""} (~{n} ha)
                 </div>
                 {hasMeasure ? (
                   <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur text-[11px] font-mono font-semibold">
-                    <span>{deltaAvg >= 0 ? "▲" : "▼"}</span>
+                    <span>{deltaTotal >= 0 ? "▲" : "▼"}</span>
                     <span>
-                      {deltaAvg >= 0 ? "+" : ""}{deltaAvg.toFixed(2)} vs baseline
+                      {deltaTotal >= 0 ? "+" : ""}{deltaTotal.toFixed(2)} vs baseline
                     </span>
                   </div>
                 ) : (
@@ -206,25 +216,36 @@ export default function CarbonPortfolioPanel({
                     }}
                   />
                   {/* baseline tick — only meaningful when a scenario is shown */}
-                  {hasMeasure && annual.baseline > 0 && (
+                  {hasMeasure && baselineTotal > 0 && (
                     <div
                       className="absolute top-[-2px] bottom-[-2px] w-[2px] bg-slate-700"
                       style={{ left: `calc(${baselineCapPct}% - 1px)` }}
-                      title={`Baseline ${annual.baseline.toFixed(2)} tCO₂e/ha/yr`}
+                      title={`Baseline ${baselineTotal.toFixed(2)} tCO₂e/yr`}
                     />
                   )}
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-1 tabular-nums">
                   <span>0</span>
-                  <span>{capacityCeiling.toFixed(0)} tCO₂e/ha/yr</span>
+                  <span>{capacityCeiling.toFixed(0)} tCO₂e/yr</span>
+                </div>
+
+                {/* Intensity sub-stat — per-hectare rate for scientific comparison */}
+                <div className="mt-3 pt-2 border-t border-slate-100 flex items-baseline justify-between">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                    Intensity
+                  </span>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-700">
+                    <span className="font-bold text-slate-900">{intensityValue.toFixed(2)}</span>
+                    <span className="ml-1 text-muted-foreground">tCO₂e / ha / yr</span>
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="mt-2 text-[10px] text-muted-foreground leading-snug">
               {hasMeasure
-                ? `Average annual seagrass carbon across ${pixels.length} sample point${pixels.length > 1 ? "s" : ""} once the measure is fully established, against the theoretical maximum for an ideal Zostera marina meadow.`
-                : `Average annual seagrass carbon across ${pixels.length} sample point${pixels.length > 1 ? "s" : ""}, against the theoretical maximum for an ideal Zostera marina meadow.`}
+                ? `Total annual seagrass carbon across the ${pixels.length}-cell project area once the measure is fully established, against the theoretical maximum for an equivalent area of ideal Zostera marina meadow.`
+                : `Total annual seagrass carbon across the ${pixels.length}-cell project area, against the theoretical maximum for an equivalent area of ideal Zostera marina meadow.`}
               {hasMeasure && (
                 <>
                   <br />
