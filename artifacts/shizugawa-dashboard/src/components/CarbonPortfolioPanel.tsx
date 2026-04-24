@@ -6,8 +6,7 @@ import {
 import {
   DECARB_MEASURES, MeasureId, getMeasure,
   buildBlueCarbonSeries, getBaselineHsi, getScenarioHsi,
-  CHANNEL_LABELS, CHANNEL_COLORS, gridToLonLat,
-  TOTAL_WEEKS,
+  gridToLonLat, TOTAL_WEEKS,
 } from "@/lib/simulatedData";
 import HsiGauge, { RainbowStrip } from "@/components/HsiGauge";
 
@@ -35,15 +34,17 @@ type ViewMode = "per-pixel" | "average";
 
 const EVAL_WEEK = TOTAL_WEEKS - 1; // end-of-year — measure is fully ramped
 
+const SEAGRASS_COLOR  = "#059669"; // emerald-600
+const BASELINE_COLOR  = "#94a3b8"; // slate-400
+
 export default function CarbonPortfolioPanel({
   pixels, measure, year,
   onChangeMeasure, onRemovePixel,
 }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("per-pixel");
 
-  // Per-pixel annual blue-carbon series (year-long, measure applied at week 0).
-  // Time is intentionally fixed: we evaluate the steady-state annual outlook,
-  // not a moment-to-moment playback.
+  // Per-pixel annual seagrass-carbon series (year-long, measure applied at week 0).
+  // Time is intentionally fixed: we evaluate the steady-state annual outlook.
   const series = useMemo(() => {
     return pixels.map((p) => ({
       pixel: p,
@@ -51,46 +52,26 @@ export default function CarbonPortfolioPanel({
     }));
   }, [pixels, year, measure]);
 
-  // Avoided emissions across the project area = sum across pixels of
-  // (scenarioCum − baselineCum) at end of year (tCO₂e/ha · year).
-  const cumDelta = useMemo(() => {
-    let total = 0;
+  // Baseline + scenario annual sequestration (tCO₂e/ha · year), summed across
+  // all selected pixels (project-area total).
+  const annual = useMemo(() => {
+    let baseline = 0, scenario = 0;
     for (const s of series) {
       const last = s.carbon[s.carbon.length - 1];
-      if (last) total += last.scenarioCum - last.baselineCum;
+      if (last) {
+        baseline += last.baselineCum;
+        scenario += last.scenarioCum;
+      }
     }
-    return total;
+    return { baseline, scenario, delta: scenario - baseline };
   }, [series]);
 
-  // Per-channel cumulative contribution at end of year, summed across pixels
-  // (mean per ha across the project area).
-  const channelTotals = useMemo(() => {
-    if (series.length === 0) return { seagrass: 0, macroalgae: 0, oyster: 0 };
-    const acc = { seagrass: 0, macroalgae: 0, oyster: 0 };
-    for (const s of series) {
-      const last = s.carbon[s.carbon.length - 1];
-      if (!last) continue;
-      acc.seagrass   += last.channelsCum.seagrass;
-      acc.macroalgae += last.channelsCum.macroalgae;
-      acc.oyster     += last.channelsCum.oyster;
-    }
-    const n = series.length;
-    return {
-      seagrass:   acc.seagrass   / n,
-      macroalgae: acc.macroalgae / n,
-      oyster:     acc.oyster     / n,
-    };
-  }, [series]);
-
-  const channelChartData = useMemo(
-    () => (
-      [
-        { key: "seagrass",   label: CHANNEL_LABELS.seagrass,   value: channelTotals.seagrass,   color: CHANNEL_COLORS.seagrass },
-        { key: "macroalgae", label: CHANNEL_LABELS.macroalgae, value: channelTotals.macroalgae, color: CHANNEL_COLORS.macroalgae },
-        { key: "oyster",     label: CHANNEL_LABELS.oyster,     value: channelTotals.oyster,     color: CHANNEL_COLORS.oyster },
-      ]
-    ),
-    [channelTotals],
+  const compareData = useMemo(
+    () => [
+      { key: "baseline", label: "Baseline", value: annual.baseline, color: BASELINE_COLOR },
+      { key: "scenario", label: "Scenario", value: annual.scenario, color: SEAGRASS_COLOR },
+    ],
+    [annual],
   );
 
   // Per-pixel HSI at fully-ramped state (end of evaluation horizon).
@@ -148,8 +129,8 @@ export default function CarbonPortfolioPanel({
           </div>
           <div className="text-sm font-medium text-foreground mb-1">Project area · no sample points</div>
           <div className="text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
-            Click up to 4 ocean cells to define your project area. Annual avoided
-            emissions and HSI gauges appear once you drop at least one sample point.
+            Click up to 4 ocean cells to define your project area. Annual seagrass-carbon
+            sequestration and HSI gauges appear once you drop at least one sample point.
           </div>
         </div>
       </div>
@@ -164,11 +145,11 @@ export default function CarbonPortfolioPanel({
       <div className="rounded-md border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
           <TrendingUp className="w-3 h-3" />
-          Annual avoided emissions
+          Annual seagrass-carbon gain
         </div>
         <div className="mt-1 flex items-baseline gap-1">
-          <span className={`text-2xl font-mono font-bold ${cumDelta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-            {cumDelta >= 0 ? "+" : ""}{cumDelta.toFixed(2)}
+          <span className={`text-2xl font-mono font-bold ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+            {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
           </span>
           <span className="text-xs text-muted-foreground">tCO₂e/ha · per year</span>
         </div>
@@ -180,7 +161,7 @@ export default function CarbonPortfolioPanel({
       {/* HSI gauges with view-mode toggle */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="panel-section-title">Habitat suitability · steady-state</div>
+          <div className="panel-section-title">Seagrass HSI · steady-state</div>
           <div className="inline-flex rounded border border-border bg-white overflow-hidden text-[10px]">
             <button
               type="button"
@@ -214,7 +195,7 @@ export default function CarbonPortfolioPanel({
             <HsiGauge
               value={hsiAvg.scenario}
               size={156}
-              accentColor="#059669"
+              accentColor={SEAGRASS_COLOR}
               baselineValue={hsiAvg.baseline}
               label={`baseline ${hsiAvg.baseline.toFixed(2)} → scenario ${hsiAvg.scenario.toFixed(2)}`}
             />
@@ -247,49 +228,54 @@ export default function CarbonPortfolioPanel({
         )}
 
         <div className="text-[9px] text-muted-foreground mt-1 leading-snug">
-          Coloured arc = scenario HSI · dark tick = baseline HSI · gradient strip is the bay's HSI legend.
+          Coloured arc = scenario seagrass HSI · dark tick = baseline · gradient strip is the bay's HSI legend.
         </div>
       </div>
 
-      {/* Annual blue-carbon contribution by mechanism (no time axis) */}
+      {/* Baseline vs scenario annual sequestration */}
       <div>
-        <div className="panel-section-title mb-1">Blue carbon · annual contribution by mechanism</div>
+        <div className="panel-section-title mb-1">Seagrass carbon · baseline vs scenario</div>
         <div className="text-[9px] text-muted-foreground mb-1">
-          tCO₂e/ha (project-area mean) · cumulative over one year
+          Annual sequestration · tCO₂e/ha · summed across {pixels.length} sample point{pixels.length > 1 ? "s" : ""}
         </div>
         <div className="h-[140px] -mx-1">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={channelChartData} margin={{ top: 4, right: 8, bottom: 0, left: -22 }}>
+            <BarChart data={compareData} margin={{ top: 4, right: 8, bottom: 0, left: -22 }}>
               <CartesianGrid stroke="#e5e7eb" strokeDasharray="2 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#6b7280" }} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#6b7280" }} />
               <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} />
               <Tooltip
                 contentStyle={{ fontSize: 10, padding: "4px 8px", borderRadius: 4 }}
                 formatter={(v: number) => [`${v.toFixed(2)} tCO₂e/ha`, "annual"]}
               />
               <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-                {channelChartData.map((d) => (
+                {compareData.map((d) => (
                   <Cell key={d.key} fill={d.color} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-[9px]">
-          {(["seagrass", "macroalgae", "oyster"] as const).map((ch) => (
-            <span key={ch} className="inline-flex items-center gap-1 text-muted-foreground">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: CHANNEL_COLORS[ch] }} />
-              {CHANNEL_LABELS[ch]} · {channelTotals[ch].toFixed(2)}
-            </span>
-          ))}
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
+          <span className="inline-flex items-center gap-1">
+            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: BASELINE_COLOR }} />
+            Baseline {annual.baseline.toFixed(2)}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: SEAGRASS_COLOR }} />
+            Scenario {annual.scenario.toFixed(2)}
+          </span>
+          <span className={`font-mono ${annual.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+            Δ {annual.delta >= 0 ? "+" : ""}{annual.delta.toFixed(2)}
+          </span>
         </div>
       </div>
 
       <div className="text-[9px] text-muted-foreground italic leading-snug pt-1 border-t border-border/50">
-        Modeled values · synthetic baseline + measure response. The portfolio
-        approach treats the selected cells as sample points inside one project
-        area sharing the same measure. Replace with calibrated HSI + J-Blue
-        Credit factors for production use.
+        Modeled values · synthetic baseline + measure response. Eelgrass
+        (Zostera marina) is Shizugawa Bay's signature blue-carbon habitat;
+        all measures are valued by their effect on seagrass carbon.
+        Replace with calibrated J-Blue Credit factors for production use.
       </div>
     </div>
   );

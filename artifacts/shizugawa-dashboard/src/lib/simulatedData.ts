@@ -1084,7 +1084,6 @@ export function generateRiverData(week: number, riverId: string, year: number = 
 export type MeasureId =
   | "none"
   | "plant-eelgrass"
-  | "cultivate-macroalgae"
   | "restore-reef"
   | "reduce-runoff"
   | "tidal-flat-restoration";
@@ -1113,12 +1112,11 @@ export interface DecarbMeasure {
 }
 
 export const DECARB_MEASURES: DecarbMeasure[] = [
-  { id: "none",                    label: "No measure (baseline)",      short: "Baseline",       desc: "Current trajectory — no decarbonization measure applied.",                                                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 0,   oyster: 0   }, hsiBoost: 0,    rampWeeks: 1  },
-  { id: "plant-eelgrass",          label: "Plant eelgrass meadow",      short: "Eelgrass",       desc: "Replant Zostera marina across the project area. Drives seagrass-carbon sequestration directly.",                            carbonBoost: 2.4, channels: { seagrass: 2.4, macroalgae: 0,   oyster: 0   }, hsiBoost: 0.18, rampWeeks: 18 },
-  { id: "cultivate-macroalgae",    label: "Cultivate macroalgae (kombu/wakame)", short: "Macroalgae", desc: "Establish kelp / kombu cultivation lines — Sanriku's headline blue-carbon practice.",                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 2.6, oyster: 0   }, hsiBoost: 0.08, rampWeeks: 12 },
-  { id: "restore-reef",            label: "Restore oyster reef",        short: "Oyster reef",    desc: "Rebuild oyster reef structure — fast HSI lift, modest sediment-carbon contribution.",                                       carbonBoost: 0.7, channels: { seagrass: 0,   macroalgae: 0,   oyster: 1.6 }, hsiBoost: 0.22, rampWeeks: 10 },
-  { id: "reduce-runoff",           label: "Reduce upstream N/P load",   short: "Reduce runoff",  desc: "Cut nitrogen + phosphorus runoff from the watershed — broad HSI lift enables all carbon channels.",                       carbonBoost: 0.5, channels: { seagrass: 0.6, macroalgae: 0.4, oyster: 0.3 }, hsiBoost: 0.14, rampWeeks: 24 },
-  { id: "tidal-flat-restoration",  label: "Restore tidal flats",        short: "Tidal flat",     desc: "Restore intertidal sediment flats — small carbon contribution, meaningful biodiversity + HSI gains.",                      carbonBoost: 0.3, channels: { seagrass: 0.3, macroalgae: 0.2, oyster: 0.4 }, hsiBoost: 0.10, rampWeeks: 16 },
+  { id: "none",                    label: "No measure (baseline)",      short: "Baseline",       desc: "Current trajectory — no decarbonization measure applied.",                                                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 0, oyster: 0 }, hsiBoost: 0,    rampWeeks: 1  },
+  { id: "plant-eelgrass",          label: "Plant eelgrass meadow",      short: "Eelgrass",       desc: "Replant Zostera marina across the project area — direct seagrass-carbon sequestration.",                                   carbonBoost: 2.4, channels: { seagrass: 2.4, macroalgae: 0, oyster: 0 }, hsiBoost: 0.20, rampWeeks: 18 },
+  { id: "restore-reef",            label: "Restore oyster reef",        short: "Oyster reef",    desc: "Rebuild oyster reef structure — filter-feeders clarify the water column so eelgrass beds expand and trap more carbon.",   carbonBoost: 0.8, channels: { seagrass: 0.8, macroalgae: 0, oyster: 0 }, hsiBoost: 0.18, rampWeeks: 10 },
+  { id: "reduce-runoff",           label: "Reduce upstream N/P load",   short: "Reduce runoff",  desc: "Cut nitrogen + phosphorus runoff from the watershed — improves light penetration and lets seagrass meadows thrive.",     carbonBoost: 1.0, channels: { seagrass: 1.0, macroalgae: 0, oyster: 0 }, hsiBoost: 0.16, rampWeeks: 24 },
+  { id: "tidal-flat-restoration",  label: "Restore tidal flats",        short: "Tidal flat",     desc: "Restore intertidal sediment flats — adjacent habitat lifts seagrass HSI and modestly boosts sequestration.",             carbonBoost: 0.5, channels: { seagrass: 0.5, macroalgae: 0, oyster: 0 }, hsiBoost: 0.12, rampWeeks: 16 },
 ];
 
 export function getMeasure(id: MeasureId): DecarbMeasure {
@@ -1347,7 +1345,10 @@ export function buildBlueCarbonSeries(
 ): BlueCarbonPoint[] {
   const m = getMeasure(measureId);
   const weekFrac = 1 / TOTAL_WEEKS;
-  const channels: CarbonChannel[] = ["seagrass", "macroalgae", "oyster"];
+  // Seagrass is now the only blue-carbon channel modeled. The macroalgae and
+  // oyster fields on ChannelBoosts are kept (typed as 0) for backward
+  // compatibility with any persisted data shape.
+  const channels: CarbonChannel[] = ["seagrass"];
   const cumBase  = { seagrass: 0, macroalgae: 0, oyster: 0 };
   const cumScen  = { seagrass: 0, macroalgae: 0, oyster: 0 };
   let bCumTotal = 0, sCumTotal = 0;

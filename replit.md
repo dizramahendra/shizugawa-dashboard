@@ -42,13 +42,16 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
   - Playback speed control (0.5×, 1×, 2×, 4×)
   - Horizontal / vertical slice modes + depth graph
   - **Carbon Sequestration tab (`/carbon`)**: dedicated route with project-area
-    decarbonization simulator. Single project-area measure dropdown applied to
-    up to 4 sample pixels; per-pixel Mobadas-style semicircular HSI gauges;
-    rainbow HSI legend strip; stacked-area blue-carbon breakdown
-    (seagrass / macroalgae / oyster channels); avoided-emissions KPI.
-  - Measures: do nothing, oyster aquaculture, seagrass restoration,
-    cultivate macroalgae, tidal flat restoration, sediment dredging,
-    aerator deployment.
+    decarbonization simulator focused on **seagrass (eelgrass / Zostera marina)
+    carbon** — Shizugawa Bay's signature blue-carbon habitat. Single
+    project-area measure dropdown applied to up to 4 sample pixels;
+    per-pixel Mobadas-style semicircular HSI gauges with per-pixel/average
+    toggle; rainbow HSI legend strip; baseline-vs-scenario annual
+    sequestration bar chart; annual seagrass-carbon-gain KPI.
+    No playback/time axis — annual steady-state outlook only.
+  - Measures (all valued by seagrass-carbon impact): no measure,
+    plant eelgrass meadow, restore oyster reef (clarifies water → eelgrass
+    expands), reduce upstream N/P load, restore tidal flats.
 
 ### `artifacts/api-server` — Express API Server
 
