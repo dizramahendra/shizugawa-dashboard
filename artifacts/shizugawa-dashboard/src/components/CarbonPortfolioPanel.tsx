@@ -232,6 +232,84 @@ export default function CarbonPortfolioPanel({
         );
       })()}
 
+      {/* Per-cell seagrass carbon breakdown */}
+      {(() => {
+        const PER_PIXEL_CAPACITY = 6; // matches the hero card scale
+        return (
+          <div>
+            <div className="panel-section-title mb-1">Per-cell seagrass carbon</div>
+            <div className="text-[10px] text-muted-foreground mb-2 leading-snug">
+              Carbon captured by seagrass meadows · tCO₂e per hectare per year ·{" "}
+              {hasMeasure ? "scenario at full ramp" : "baseline"}.
+            </div>
+            <div className="space-y-1.5">
+              {series.map((s, idx) => {
+                const p = s.pixel;
+                const last = s.carbon[s.carbon.length - 1];
+                const baselineVal = last?.baselineCum ?? 0;
+                const scenarioVal = last?.scenarioCum ?? 0;
+                const value       = hasMeasure ? scenarioVal : baselineVal;
+                const pct         = Math.min(100, (value / PER_PIXEL_CAPACITY) * 100);
+                const baselinePct = Math.min(100, (baselineVal / PER_PIXEL_CAPACITY) * 100);
+                const overflow    = value > PER_PIXEL_CAPACITY;
+                const labelInside = pct >= 22;
+                return (
+                  <div key={p.id} className="flex items-center gap-2">
+                    {/* index badge in the cell's palette color */}
+                    <div
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                      style={{ backgroundColor: p.color }}
+                      title={fmtCoords(p.x, p.z)}
+                    >
+                      {idx + 1}
+                    </div>
+                    {/* horizontal bar */}
+                    <div className="relative flex-1 h-5 rounded-full bg-slate-100 overflow-hidden">
+                      {/* fill — black → blue gradient (matches the hero card) */}
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full"
+                        style={{
+                          width: `${pct}%`,
+                          background: "linear-gradient(to right, #0f172a, #2563eb)",
+                        }}
+                      />
+                      {/* baseline tick on the same scale */}
+                      {hasMeasure && baselineVal > 0 && (
+                        <div
+                          className="absolute top-0 bottom-0 w-[2px] bg-slate-700/80"
+                          style={{ left: `calc(${baselinePct}% - 1px)` }}
+                          title={`Baseline ${baselineVal.toFixed(2)}`}
+                        />
+                      )}
+                      {/* value label, right-aligned to the fill edge */}
+                      <div
+                        className="absolute top-1/2 text-[11px] font-mono font-semibold whitespace-nowrap leading-none tabular-nums"
+                        style={{
+                          left: `${pct}%`,
+                          transform: labelInside
+                            ? "translate(calc(-100% - 6px), -50%)"
+                            : "translate(6px, -50%)",
+                          color: labelInside ? "#ffffff" : "#1e293b",
+                        }}
+                      >
+                        {value.toFixed(2)}
+                        {overflow && <span className="ml-0.5 opacity-80">▶</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-[9px] text-muted-foreground mt-2 leading-snug">
+              Each bar fills toward {PER_PIXEL_CAPACITY} tCO₂e/ha/yr — the theoretical max for an
+              ideal Zostera marina meadow
+              {hasMeasure && <> · <span className="text-slate-700">▎</span> tick = baseline</>}
+              .
+            </div>
+          </div>
+        );
+      })()}
+
       {/* HSI gauges with view-mode toggle */}
       <div>
         <div className="flex items-center justify-between mb-2">
