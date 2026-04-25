@@ -645,7 +645,7 @@ const RIVER_MOUTHS: Array<{ gx: number; gz: number }> = (() => {
  *  the nearest river mouth, mimicking advection-diffusion plumes from the
  *  Delft3D reference. Computed once at module load. */
 const NUTRIENT_SOURCE_FIELD: number[][] = (() => {
-  const decayLen = 5; // grid units — larger = wider plumes
+  const decayLen = 9; // grid units — larger = wider plumes (bigger bloom reach)
   const out: number[][] = [];
   for (let z = 0; z < GRID_D; z++) {
     out[z] = [];
@@ -668,8 +668,10 @@ const NUTRIENT_SOURCE_FIELD: number[][] = (() => {
 function nutrientPulse(week: number, year: number = 2023): number {
   const yearShift  = (year - 2023) * 1.5;            // small inter-annual jitter
   const w          = week + yearShift;
-  const spring     = Math.exp(-Math.pow((w - 24) / 7, 2));        // σ ≈ 7 weeks
-  const autumn     = 0.35 * Math.exp(-Math.pow((w - 46) / 4, 2)); // σ ≈ 4 weeks
+  // Spring pulse amplitude > 1 so cells a few grid units off the mouth still
+  // clamp to deep red at the June peak, giving a visibly large bloom.
+  const spring     = 1.4 * Math.exp(-Math.pow((w - 24) / 7, 2));   // σ ≈ 7 weeks
+  const autumn     = 0.35 * Math.exp(-Math.pow((w - 46) / 4, 2));  // σ ≈ 4 weeks
   return Math.max(0.05, spring + autumn);
 }
 
