@@ -4,14 +4,21 @@ interface ColorLegendProps {
   unit: string;
 }
 
+// Shared nutrient ramp — kept in sync with COLOR_SCALES.nitrogen / .phosphorus
+// in OceanBasin3D so the legend always matches what's painted on the bay.
+const NUTRIENT_RAMP = [
+  "#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8",
+  "#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c",
+];
+
 const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   nitrogen: {
-    stops: ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
+    stops: NUTRIENT_RAMP,
     low: "0.2 mg/L",
     high: "3.0 mg/L",
   },
   phosphorus: {
-    stops: ["#1a6b4a","#2d8a5e","#4da876","#7ec89a","#b8e0c0","#f0ebb8","#f0d080","#e8a030","#d45820","#c8401c"],
+    stops: NUTRIENT_RAMP,
     low: "10 μg/L",
     high: "130 μg/L",
   },
