@@ -617,32 +617,89 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   mitobe:    { name: "Mitobe River",    subBasin: "Sub-basin 16" },
 };
 
-function noise(x: number, z: number, t: number, scale: number): number {
-  return (
-    Math.sin(x * 0.7 + t * 0.8) * 0.25 +
-    Math.cos(z * 0.5 + t * 0.6) * 0.2 +
-    Math.sin((x + z) * 0.4 + t * 1.1) * 0.15 +
-    Math.cos(x * 1.2 - z * 0.8 + t * 0.4) * 0.15 +
-    scale * 0.25
-  );
+// ── Nutrient field generator (Delft3D-reference-shaped) ───────────────────────
+// The reference Delft3D animation shows nutrient hotspots emerging from the
+// river-mouth pixels along the western shoreline (and a smaller NE-corner
+// inflow), expanding into a yellow→cyan transition plume in spring/early
+// summer, then collapsing through summer and fall, with a small autumn rebound
+// around late November before going quiet for winter.
+//
+// We model this as: ambient + (per-mouth Gaussian source field) × (seasonal
+// pulse) × (surface-layer weighting), with a small wobble term so the plume
+// has the discrete-cell variability of the real model output.
+
+/** Unique river mouth cells (deduplicated across all rivers in RIVER_CELLS). */
+const RIVER_MOUTHS: Array<{ gx: number; gz: number }> = (() => {
+  const seen   = new Set<string>();
+  const mouths: Array<{ gx: number; gz: number }> = [];
+  for (const c of RIVER_CELLS) {
+    const key = `${c.mouthGx}:${c.mouthGz}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mouths.push({ gx: c.mouthGx, gz: c.mouthGz });
+  }
+  return mouths;
+})();
+
+/** Per-cell source-strength field (0–1) — exponential decay with distance to
+ *  the nearest river mouth, mimicking advection-diffusion plumes from the
+ *  Delft3D reference. Computed once at module load. */
+const NUTRIENT_SOURCE_FIELD: number[][] = (() => {
+  const decayLen = 5; // grid units — larger = wider plumes
+  const out: number[][] = [];
+  for (let z = 0; z < GRID_D; z++) {
+    out[z] = [];
+    for (let x = 0; x < GRID_W; x++) {
+      if (!BAY_MASK[z]?.[x]) { out[z][x] = 0; continue; }
+      let best = Infinity;
+      for (const m of RIVER_MOUTHS) {
+        const d = Math.hypot(x - m.gx, z - m.gz);
+        if (d < best) best = d;
+      }
+      out[z][x] = Math.exp(-best / decayLen);
+    }
+  }
+  return out;
+})();
+
+/** Annual nutrient-pulse intensity (0–1) for a given week of the year.
+ *  Big spring/early-summer peak around late June (W24) plus a small autumn
+ *  rebound near late November (W46), matching the Delft3D reference frames. */
+function nutrientPulse(week: number, year: number = 2023): number {
+  const yearShift  = (year - 2023) * 1.5;            // small inter-annual jitter
+  const w          = week + yearShift;
+  const spring     = Math.exp(-Math.pow((w - 24) / 7, 2));        // σ ≈ 7 weeks
+  const autumn     = 0.35 * Math.exp(-Math.pow((w - 46) / 4, 2)); // σ ≈ 4 weeks
+  return Math.max(0.05, spring + autumn);
 }
 
 export function generateWeekData(week: number, year: number = 2023): number[][][] {
-  const yearShift = (year - 2023) * 0.29;
-  const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
-  const seasonalBase = Math.sin(t - Math.PI / 2) * 0.3 + 0.5;
+  const t       = (week / TOTAL_WEEKS) * Math.PI * 2 + (year - 2023) * 0.29;
+  const pulse   = nutrientPulse(week, year);
+  const ambient = 0.05; // baseline blue everywhere — open ocean far from mouths
 
   const data: number[][][] = [];
   for (let z = 0; z < GRID_D; z++) {
     data[z] = [];
     for (let x = 0; x < GRID_W; x++) {
       data[z][x] = [];
+      const sourceField = NUTRIENT_SOURCE_FIELD[z]?.[x] ?? 0;
+      // Small wobble so plumes have discrete-cell variability like the
+      // real Delft3D output (not perfectly smooth contours).
+      const wobble =
+        Math.sin(x * 0.7 + t) * 0.5 +
+        Math.cos(z * 0.5 + t * 1.1) * 0.5;
+
       for (let d = 0; d < DEPTH_LAYERS; d++) {
-        const depthFactor = 1 - d / DEPTH_LAYERS;
-        const landInfluence = Math.max(0, 1 - (x * 0.5 + z * 0.3) / 8);
-        const v = noise(x, z, t + d * 0.3, landInfluence * 0.4) * depthFactor;
-        const val = Math.min(1, Math.max(0, seasonalBase * 0.5 + v * 0.7 + landInfluence * 0.3));
-        data[z][x][d] = val;
+        // Surface layer (d=0) carries the strongest nutrient signal — deeper
+        // layers attenuate toward the open-water background. The reference
+        // frames are all "layer 1" (surface).
+        const surfaceWeight = Math.pow(1 - d / DEPTH_LAYERS, 1.5);
+        const val =
+          ambient +
+          sourceField * pulse * surfaceWeight +
+          wobble * 0.07 * sourceField * surfaceWeight;
+        data[z][x][d] = Math.min(1, Math.max(0, val));
       }
     }
   }
