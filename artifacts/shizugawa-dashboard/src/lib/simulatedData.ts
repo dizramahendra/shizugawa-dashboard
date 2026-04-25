@@ -628,35 +628,59 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
 // pulse) × (surface-layer weighting), with a small wobble term so the plume
 // has the discrete-cell variability of the real model output.
 
-/** Unique river mouth cells (deduplicated across all rivers in RIVER_CELLS). */
-const RIVER_MOUTHS: Array<{ gx: number; gz: number }> = (() => {
-  const seen   = new Set<string>();
-  const mouths: Array<{ gx: number; gz: number }> = [];
+/** Unique river mouth cells with a `weight` equal to the number of rivers
+ *  discharging there. Mouths shared by many rivers (e.g. the Shizugawa/
+ *  Togura/Oura cluster on the central western coast) carry proportionally
+ *  more freshwater + nutrient load — and bloom proportionally brighter. */
+const RIVER_MOUTHS: Array<{ gx: number; gz: number; weight: number }> = (() => {
+  const counts = new Map<string, { gx: number; gz: number; weight: number }>();
   for (const c of RIVER_CELLS) {
     const key = `${c.mouthGx}:${c.mouthGz}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    mouths.push({ gx: c.mouthGx, gz: c.mouthGz });
+    const cur = counts.get(key);
+    if (cur) {
+      cur.weight += 1 / 1; // each river adds 1; the mouth was already counted
+    } else {
+      counts.set(key, { gx: c.mouthGx, gz: c.mouthGz, weight: 1 });
+    }
   }
-  return mouths;
+  // RIVER_CELLS contains MANY cells per river (the spine + bands), so the raw
+  // count above grossly over-weights long rivers. Instead, count UNIQUE
+  // riverIds per mouth — that's the meaningful "how many rivers discharge
+  // here" metric.
+  const ridsByMouth = new Map<string, Set<string>>();
+  for (const c of RIVER_CELLS) {
+    const key = `${c.mouthGx}:${c.mouthGz}`;
+    let set = ridsByMouth.get(key);
+    if (!set) { set = new Set(); ridsByMouth.set(key, set); }
+    set.add(c.riverId);
+  }
+  for (const [key, m] of counts) {
+    m.weight = ridsByMouth.get(key)?.size ?? 1;
+  }
+  return Array.from(counts.values());
 })();
 
-/** Per-cell source-strength field (0–1) — exponential decay with distance to
- *  the nearest river mouth, mimicking advection-diffusion plumes from the
- *  Delft3D reference. Computed once at module load. */
+/** Per-cell source-strength field — sum over all river mouths of
+ *  (mouth_weight × exp(-d/decayLen)). Multi-river mouths produce stronger
+ *  blooms; nearby mouths overlap and compound, matching the Delft3D
+ *  reference where the Shizugawa/Togura/Oura cluster lights up brightest.
+ *  Computed once at module load. */
 const NUTRIENT_SOURCE_FIELD: number[][] = (() => {
-  const decayLen = 9; // grid units — larger = wider plumes (bigger bloom reach)
+  const decayLen     = 9;   // grid units — larger = wider plumes
+  const weightDamp   = 0.5; // softens the linear weight effect
+  const fieldNormDiv = 1.6; // normalizes peak field so values stay in [0, ~1]
   const out: number[][] = [];
   for (let z = 0; z < GRID_D; z++) {
     out[z] = [];
     for (let x = 0; x < GRID_W; x++) {
       if (!BAY_MASK[z]?.[x]) { out[z][x] = 0; continue; }
-      let best = Infinity;
+      let sum = 0;
       for (const m of RIVER_MOUTHS) {
-        const d = Math.hypot(x - m.gx, z - m.gz);
-        if (d < best) best = d;
+        const d  = Math.hypot(x - m.gx, z - m.gz);
+        const w  = Math.pow(m.weight, weightDamp); // sqrt-style damping
+        sum     += w * Math.exp(-d / decayLen);
       }
-      out[z][x] = Math.exp(-best / decayLen);
+      out[z][x] = sum / fieldNormDiv;
     }
   }
   return out;
