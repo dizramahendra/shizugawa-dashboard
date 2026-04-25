@@ -628,29 +628,29 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
 // pulse) × (surface-layer weighting), with a small wobble term so the plume
 // has the discrete-cell variability of the real model output.
 
-/** Returns the coordinates of the bay-edge cell (an in-bay cell adjacent to
- *  a non-bay neighbor) closest to (mx, mz). Used to "snap" river mouths,
- *  which are sometimes placed several cells offshore for value-sampling
- *  purposes, onto the actual coastline so blooms originate at the shore. */
+/** Projects a river mouth onto the actual coastline. We scan a small band of
+ *  rows around the mouth (±2) for the WESTMOST in-bay cell — i.e. the left
+ *  shore on that row — then pick the closest such cell. This biases the
+ *  snap toward the western coast (where most Shizugawa rivers discharge),
+ *  rather than the geometrically-nearest shore point which can be a southern
+ *  or northern stretch jutting closer to the declared mouth. Falls back to
+ *  the mouth itself if no row in the band has a bay cell. */
 function nearestCoastCell(mx: number, mz: number): { gx: number; gz: number } {
+  // If the mouth is on the eastern half of the bay (e.g. the NE niida/moriya
+  // outlet at gx=80), project to the eastmost cell instead.
+  const isEast = mx >= GRID_W * 0.55;
   let bestX = mx, bestZ = mz, bestD = Infinity;
-  for (let z = 0; z < GRID_D; z++) {
-    for (let x = 0; x < GRID_W; x++) {
-      if (!BAY_MASK[z]?.[x]) continue;
-      // Edge cell = at least one orthogonal neighbor is non-bay (or out of grid).
-      let edge = false;
-      const nbrs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-      for (const [dx, dz] of nbrs) {
-        const nx = x + dx, nz = z + dz;
-        if (nx < 0 || nx >= GRID_W || nz < 0 || nz >= GRID_D || !BAY_MASK[nz]?.[nx]) {
-          edge = true;
-          break;
-        }
-      }
-      if (!edge) continue;
-      const d = Math.hypot(x - mx, z - mz);
-      if (d < bestD) { bestD = d; bestX = x; bestZ = z; }
+  const rowSpan = 3;
+  for (let z = Math.max(0, mz - rowSpan); z <= Math.min(GRID_D - 1, mz + rowSpan); z++) {
+    let edgeX = -1;
+    if (isEast) {
+      for (let x = GRID_W - 1; x >= 0; x--) if (BAY_MASK[z]?.[x]) { edgeX = x; break; }
+    } else {
+      for (let x = 0; x < GRID_W; x++) if (BAY_MASK[z]?.[x]) { edgeX = x; break; }
     }
+    if (edgeX < 0) continue;
+    const d = Math.hypot(edgeX - mx, z - mz);
+    if (d < bestD) { bestD = d; bestX = edgeX; bestZ = z; }
   }
   return { gx: bestX, gz: bestZ };
 }
