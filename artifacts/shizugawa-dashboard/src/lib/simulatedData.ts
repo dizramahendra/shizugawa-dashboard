@@ -628,36 +628,58 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
 // pulse) × (surface-layer weighting), with a small wobble term so the plume
 // has the discrete-cell variability of the real model output.
 
-/** Unique river mouth cells with a `weight` equal to the number of rivers
- *  discharging there. Mouths shared by many rivers (e.g. the Shizugawa/
- *  Togura/Oura cluster on the central western coast) carry proportionally
- *  more freshwater + nutrient load — and bloom proportionally brighter. */
-const RIVER_MOUTHS: Array<{ gx: number; gz: number; weight: number }> = (() => {
-  const counts = new Map<string, { gx: number; gz: number; weight: number }>();
-  for (const c of RIVER_CELLS) {
-    const key = `${c.mouthGx}:${c.mouthGz}`;
-    const cur = counts.get(key);
-    if (cur) {
-      cur.weight += 1 / 1; // each river adds 1; the mouth was already counted
-    } else {
-      counts.set(key, { gx: c.mouthGx, gz: c.mouthGz, weight: 1 });
+/** Returns the coordinates of the bay-edge cell (an in-bay cell adjacent to
+ *  a non-bay neighbor) closest to (mx, mz). Used to "snap" river mouths,
+ *  which are sometimes placed several cells offshore for value-sampling
+ *  purposes, onto the actual coastline so blooms originate at the shore. */
+function nearestCoastCell(mx: number, mz: number): { gx: number; gz: number } {
+  let bestX = mx, bestZ = mz, bestD = Infinity;
+  for (let z = 0; z < GRID_D; z++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (!BAY_MASK[z]?.[x]) continue;
+      // Edge cell = at least one orthogonal neighbor is non-bay (or out of grid).
+      let edge = false;
+      const nbrs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (const [dx, dz] of nbrs) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 0 || nx >= GRID_W || nz < 0 || nz >= GRID_D || !BAY_MASK[nz]?.[nx]) {
+          edge = true;
+          break;
+        }
+      }
+      if (!edge) continue;
+      const d = Math.hypot(x - mx, z - mz);
+      if (d < bestD) { bestD = d; bestX = x; bestZ = z; }
     }
   }
-  // RIVER_CELLS contains MANY cells per river (the spine + bands), so the raw
-  // count above grossly over-weights long rivers. Instead, count UNIQUE
-  // riverIds per mouth — that's the meaningful "how many rivers discharge
-  // here" metric.
+  return { gx: bestX, gz: bestZ };
+}
+
+/** Unique river mouth cells with a `weight` equal to the number of distinct
+ *  riverIds discharging there, snapped to the nearest actual coastline cell.
+ *  Mouths shared by many rivers (e.g. the Shizugawa/Togura/Oura cluster on
+ *  the central western coast) carry proportionally more freshwater + nutrient
+ *  load and bloom brighter. Snapping ensures bloom centres sit on the shore
+ *  rather than in the middle of open water (some mouth coords in RIVER_CELLS
+ *  were chosen for value-sampling and sit a few cells offshore). */
+const RIVER_MOUTHS: Array<{ gx: number; gz: number; weight: number }> = (() => {
+  // Group rivers by their declared mouth, then snap each unique mouth to its
+  // nearest coastline cell.
   const ridsByMouth = new Map<string, Set<string>>();
+  const rawByKey    = new Map<string, { gx: number; gz: number }>();
   for (const c of RIVER_CELLS) {
     const key = `${c.mouthGx}:${c.mouthGz}`;
     let set = ridsByMouth.get(key);
     if (!set) { set = new Set(); ridsByMouth.set(key, set); }
     set.add(c.riverId);
+    if (!rawByKey.has(key)) rawByKey.set(key, { gx: c.mouthGx, gz: c.mouthGz });
   }
-  for (const [key, m] of counts) {
-    m.weight = ridsByMouth.get(key)?.size ?? 1;
+  const out: Array<{ gx: number; gz: number; weight: number }> = [];
+  for (const [key, raw] of rawByKey) {
+    const snap = nearestCoastCell(raw.gx, raw.gz);
+    out.push({ gx: snap.gx, gz: snap.gz, weight: ridsByMouth.get(key)?.size ?? 1 });
   }
-  return Array.from(counts.values());
+  return out;
 })();
 
 /** Per-cell source-strength field — sum over all river mouths of
