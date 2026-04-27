@@ -1,5 +1,5 @@
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
-import { Search, Map } from "lucide-react";
+import { Search, Map, X, Ruler, MapPin, Droplets, Maximize2, Trees, GitFork, Waves } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import TopNav from "@/components/TopNav";
 import MapLibreMap from "@/components/MapLibreMap";
@@ -28,6 +28,44 @@ const OCEAN_ENTRY = {
   sub: "Shizugawa · 32.8 km²",
   type: "ocean" as const,
 };
+
+// Static identification facts for the bay (single ocean entity in this app)
+const OCEAN_DETAILS = {
+  region:    "Shizugawa, Miyagi",
+  waterBody: "Shizugawa Bay (Pacific)",
+  area:      "32.8 km²",
+  depth:     "−5 to −40 m",
+  landUse:   "Coastal / Open Water",
+};
+
+// ── Reusable identification-card pieces ──────────────────────────────────────
+function PropRow({
+  icon, label, value,
+}: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 py-1.5">
+      <span className="w-4 h-4 flex items-center justify-center text-muted-foreground/70 flex-shrink-0">
+        {icon}
+      </span>
+      <span className="text-[11px] text-muted-foreground flex-1">{label}</span>
+      <span className="text-[11px] font-semibold text-foreground font-mono text-right">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function DeselectButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground border border-border hover:border-foreground/40 rounded-md px-2 py-1 transition-colors flex-shrink-0"
+    >
+      <X size={10} />
+      Deselect
+    </button>
+  );
+}
 
 // ── Shared chart constants ───────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -185,8 +223,17 @@ export default function BasinSelectionPage() {
 
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(searchParams.get("ws"));
-  const [selectedRiver, setSelectedRiver] = useState<string | null>(_initRiver);
-  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(_initCorridor);
+  // Selection state is mutually exclusive: at most one of corridor / ocean / river
+  // can be active. Enforce that at init so deep-links with conflicting params
+  // (e.g. ?river=...&ocean=1) collapse to a single canonical selection in
+  // the same priority order the render branches use: corridor > ocean > river.
+  const _initOcean = searchParams.get("ocean") === "1";
+  const _initCorridorOnly = _initCorridor;
+  const _initOceanOnly    = _initCorridorOnly ? false : _initOcean;
+  const _initRiverOnly    = (_initCorridorOnly || _initOceanOnly) ? null : _initRiver;
+  const [selectedRiver, setSelectedRiver] = useState<string | null>(_initRiverOnly);
+  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(_initCorridorOnly);
+  const [selectedOcean, setSelectedOcean] = useState<boolean>(_initOceanOnly);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
   const [tiltedIn, setTiltedIn] = useState(!fromCS);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,11 +262,13 @@ export default function BasinSelectionPage() {
       else next.delete("river");
       if (selectedCorridorId) next.set("corridor", selectedCorridorId);
       else next.delete("corridor");
+      if (selectedOcean) next.set("ocean", "1");
+      else next.delete("ocean");
       if (selectedWatershed) next.set("ws", selectedWatershed);
       else next.delete("ws");
       return next;
     }, { replace: true });
-  }, [selectedVariable, selectedRiver, selectedCorridorId, selectedWatershed]);
+  }, [selectedVariable, selectedRiver, selectedCorridorId, selectedOcean, selectedWatershed]);
 
   useEffect(() => {
     let tiltTimer: ReturnType<typeof setTimeout> | null = null;
@@ -325,17 +374,25 @@ export default function BasinSelectionPage() {
   }, [corridorObj, selectedCorridorId, selectedVariable, year]);
 
   const handleSelectOcean = useCallback(() => {
-    navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`);
-  }, [navigate, activeWS]);
+    setSelectedOcean(true);
+    setSelectedRiver(null);
+    setSelectedCorridorId(null);
+  }, []);
 
   const handleSelectRiver = useCallback((riverId: string | null) => {
     setSelectedRiver(riverId);
-    if (riverId) setSelectedCorridorId(null); // river selection clears corridor
+    if (riverId) {
+      setSelectedCorridorId(null); // river selection clears corridor
+      setSelectedOcean(false);
+    }
   }, []);
 
   const handleSelectCorridor = useCallback((corridorId: string | null) => {
     setSelectedCorridorId(corridorId);
-    if (corridorId) setSelectedRiver(null); // corridor selection clears river
+    if (corridorId) {
+      setSelectedRiver(null); // corridor selection clears river
+      setSelectedOcean(false);
+    }
   }, []);
 
   const wnameSuffix = activeWS ? `&wname=${encodeURIComponent(activeWS.name)}` : "";
@@ -512,29 +569,40 @@ export default function BasinSelectionPage() {
             {corridorObj ? (
               /* ── Corridor detail panel ── */
               <div className="px-4 py-4">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center border border-violet-200 flex-shrink-0">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500">
-                      <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
+                {/* Identification header */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-full bg-violet-50 flex items-center justify-center border border-violet-200 flex-shrink-0">
+                      <GitFork size={16} className="text-violet-500" />
+                    </div>
+                    <div className="text-sm font-semibold text-foreground leading-tight min-w-0">
+                      {corridorObj.name}
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">{corridorObj.name}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">{corridorObj.description}</div>
+                  <DeselectButton onClick={() => setSelectedCorridorId(null)} />
+                </div>
+
+                {/* Identification property panel */}
+                <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
+                  <p className="text-[11px] text-foreground/80 leading-relaxed mb-2 italic">
+                    {corridorObj.description}
+                  </p>
+                  <div className="border-t border-border/60 pt-1">
+                    <PropRow icon={<Ruler size={12} />}   label="Total Length" value={corridorObj.totalLength} />
+                    <PropRow icon={<GitFork size={12} />} label="Topology"
+                             value={<span className="capitalize">{corridorObj.topology}</span>} />
+                    <PropRow icon={<Waves size={12} />}   label="Segments"
+                             value={`${corridorObj.segments.length} reaches`} />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="bg-muted/40 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Total Length</div>
-                    <div className="text-sm font-semibold text-foreground font-mono">{corridorObj.totalLength}</div>
-                  </div>
-                  <div className="bg-violet-50 border border-violet-100 rounded-md p-2.5">
-                    <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Topology</div>
-                    <div className="text-sm font-semibold text-violet-700 capitalize">{corridorObj.topology}</div>
-                  </div>
-                </div>
+                {/* CTA — view this corridor in the 2D River Playback page */}
+                <button
+                  className="w-full py-2 rounded-md text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-colors cursor-pointer mb-4 flex items-center justify-center gap-1.5"
+                  onClick={() => navigate(`/river?river=${corridorObj.id}`)}
+                >
+                  View in 2D River Playback →
+                </button>
 
                 {/* Per-segment values */}
                 <div className="mb-2">
@@ -627,45 +695,83 @@ export default function BasinSelectionPage() {
                   );
                 })()}
 
+              </div>
+
+            ) : selectedOcean ? (
+              /* ── Ocean (Shizugawa Bay) detail panel ── */
+              <div className="px-4 py-4">
+                {/* Identification header */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-full bg-sky-50 flex items-center justify-center border border-sky-200 flex-shrink-0">
+                      <Waves size={16} className="text-sky-600" />
+                    </div>
+                    <div className="text-sm font-semibold text-foreground leading-tight min-w-0">
+                      Shizugawa Bay
+                    </div>
+                  </div>
+                  <DeselectButton onClick={() => setSelectedOcean(false)} />
+                </div>
+
+                {/* Identification property panel */}
+                <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
+                  <PropRow icon={<MapPin size={12} />}    label="Region"     value={OCEAN_DETAILS.region} />
+                  <PropRow icon={<Droplets size={12} />}  label="Water Body" value={OCEAN_DETAILS.waterBody} />
+                  <PropRow icon={<Maximize2 size={12} />} label="Area"       value={OCEAN_DETAILS.area} />
+                  <PropRow icon={<Waves size={12} />}     label="Depth"      value={OCEAN_DETAILS.depth} />
+                  <PropRow icon={<Trees size={12} />}     label="Land Use"   value={OCEAN_DETAILS.landUse} />
+                </div>
+
+                {/* CTA — open the 3D Ocean Playback page */}
                 <button
-                  className="w-full py-2 rounded-md text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-colors cursor-pointer mb-2"
-                  onClick={() => navigate(`/river?river=${corridorObj.id}`)}
+                  className="w-full py-2 rounded-md text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`)}
                 >
-                  View in 2D River →
-                </button>
-                <button
-                  className="w-full py-1.5 rounded-md text-xs text-muted-foreground border border-border hover:bg-muted/40 cursor-pointer"
-                  onClick={() => setSelectedCorridorId(null)}
-                >
-                  ← Back to full map
+                  View in 3D Ocean Playback →
                 </button>
               </div>
 
             ) : selectedRiverObj ? (
               /* ── Single-river detail panel ── */
               <div className="px-4 py-4">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-blue-500">
-                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">{selectedRiverObj.name}</div>
-                    <div className="text-xs text-muted-foreground">{selectedRiverObj.sub}</div>
-                  </div>
-                </div>
+                {(() => {
+                  // Parse "Sub-basin 6 · Minamisanriku · 7.1 km²" into pieces
+                  const parts = selectedRiverObj.sub.split(" · ");
+                  const region = parts[1] ?? "—";
+                  const area   = parts[2] ?? "—";
+                  return (
+                    <>
+                      {/* Identification header */}
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="w-9 h-9 rounded-md bg-slate-100 flex items-center justify-center border border-slate-300 flex-shrink-0">
+                            <span className="text-xs font-bold text-slate-700 font-mono">{selectedRiverObj.basin}</span>
+                          </div>
+                          <div className="text-sm font-semibold text-foreground leading-tight min-w-0 truncate">
+                            {selectedRiverObj.name}
+                          </div>
+                        </div>
+                        <DeselectButton onClick={() => setSelectedRiver(null)} />
+                      </div>
 
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="bg-muted/40 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Length</div>
-                    <div className="text-sm font-semibold text-foreground font-mono">{selectedRiverObj.length}</div>
-                  </div>
-                  <div className="bg-muted/40 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Week</div>
-                    <div className="text-sm font-semibold text-foreground font-mono">{weekLabel}</div>
-                  </div>
-                </div>
+                      {/* Identification property panel */}
+                      <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
+                        <PropRow icon={<GitFork size={12} />}   label="Sub-basin"    value={`#${selectedRiverObj.basin}`} />
+                        <PropRow icon={<MapPin size={12} />}    label="Region"       value={region} />
+                        <PropRow icon={<Maximize2 size={12} />} label="Area"         value={area} />
+                        <PropRow icon={<Ruler size={12} />}     label="Total Length" value={selectedRiverObj.length} />
+                      </div>
+
+                      {/* CTA — open the 2D River Playback page focused on this river */}
+                      <button
+                        className="w-full py-2 rounded-md text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-colors cursor-pointer mb-4"
+                        onClick={() => navigate(`/river?river=${selectedRiverObj.id}`)}
+                      >
+                        View in 2D River Playback →
+                      </button>
+                    </>
+                  );
+                })()}
 
                 <div className="mb-2">
                   <div className="panel-section-title">River Mean</div>
@@ -700,12 +806,6 @@ export default function BasinSelectionPage() {
                   </div>
                 )}
 
-                <button
-                  className="mt-3 w-full py-1.5 rounded-md text-xs text-muted-foreground border border-border hover:bg-muted/40 cursor-pointer"
-                  onClick={() => setSelectedRiver(null)}
-                >
-                  ← Back to full map
-                </button>
               </div>
             ) : (
               <>
