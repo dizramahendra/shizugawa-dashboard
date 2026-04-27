@@ -559,14 +559,18 @@ export const RIVER_CELLS: RiverCell[] = [
   // `extraSide` arg adds an asymmetric +1 offset to make even widths possible.
   // For 1-cell hairline (option 1), drop extraSide back to 0.
   // For 3-cell chunky (option 2), set halfWDelta=1, extraSide=0.
-  ...buildRiverWest(SPINE_RIVER2_MOUTH,    0, 0, 32, 48, "shizugawa", 1),     // basin 2  (river 2 SVG)
+  // Slug on each spine matches the map's MODEL_RIVER lookup so that the river
+  // labelled "X" in 3D is drawn at the same geographic position as basin X on
+  // the SVG mapview. Only the slug arg is touched — every spine's geometry,
+  // mouth coords and width parameters are unchanged.
+  ...buildRiverWest(SPINE_RIVER2_MOUTH,    0, 0, 32, 48, "oura", 1),          // basin 2  (river 2 SVG)
   ...buildRiverWest(SPINE_RIVER5_URASHIRO, 0, 0, 32, 48, "urashiro", 1),      // basin 5  (river 5 SVG)
-  ...buildRiverWest(SPINE_RIVER1_HEAD,     0, 0, 32, 48, "shizugawa1", 1),    // basin 1  (river 1 SVG)
+  ...buildRiverWest(SPINE_RIVER1_HEAD,     0, 0, 32, 48, "shizugawa", 1),     // basin 1  (river 1 SVG)
   ...buildRiverWest(SPINE_RIVER4_WEST, 0, 0, 32, 48,  "togura", 1),    // basin 4
-  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "oura", 1),      // basin 9
+  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "karakuwa2", 1), // basin 9
   ...buildRiverWest(SPINE_RIVER6_WEST, 0, 0, 32, 22,  "iriya", 1),     // basin 6
   ...buildRiver(SPINE_RIVER8_NORTH,    0, 0, 80, 80,  "niida", 1),     // basin 8
-  ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "karakuwa2", 1), // basin 10
+  ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "tomaya", 1),    // basin 10
   ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya", 1),       // basin 24 (all-negative cx — buildRiver no longer clips them)
   ...buildRiverWest(SPINE_RIVER13_SW,  0, 0, 24, 12,  "hachiman", 1),  // basin 13
 
@@ -575,12 +579,12 @@ export const RIVER_CELLS: RiverCell[] = [
   // mainstem's bay-edge cell so values are sampled from the true outlet.
   ...buildRiverWest(SPINE_RIVER7_OKAWA,        0, 0, 32, 48, "okawa", 1),     // basin 7,  off togura
   ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   0, 0, 24, 12, "motoyoshi", 1), // basin 14, off hachiman
-  ...buildRiverWest(SPINE_RIVER17_SAKURA,      0, 0, 32, 50, "sakura", 1),    // basin 17, off oura
-  ...buildRiverWest(SPINE_RIVER18_ORITATE,     0, 0, 32, 50, "oritate", 1),   // basin 18, off oura
+  ...buildRiverWest(SPINE_RIVER17_SAKURA,      0, 0, 32, 50, "oritate", 1),   // basin 17, off oura
+  ...buildRiverWest(SPINE_RIVER18_ORITATE,     0, 0, 32, 50, "kitakami", 1),  // basin 18, off oura
   ...buildRiver(SPINE_RIVER20_MORIYA,          0, 0, 80, 80, "moriya", 1),    // basin 20, off niida
-  ...buildRiver(SPINE_RIVER12_SHISHIORI,       0, 0, 24, 12, "shishiori", 1), // basin 12, off karakuwa2
-  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     0, 0, 32, 48, "onagawa", 1),   // basin 15, off shizugawa
-  ...buildRiverWest(SPINE_RIVER16_MITOBE,      0, 0, 32, 48, "mitobe", 1),    // basin 16, off shizugawa
+  ...buildRiver(SPINE_RIVER12_SHISHIORI,       0, 0, 24, 12, "onagawa", 1),   // basin 12, off karakuwa2
+  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     0, 0, 32, 48, "mitobe", 1),    // basin 15, off shizugawa
+  ...buildRiverWest(SPINE_RIVER16_MITOBE,      0, 0, 32, 48, "sakura", 1),    // basin 16, off shizugawa
 ]
   // Drop any river cell that falls inside the bay polygon. Without this,
   // mouth gap-fill points + lateral half-widths spill several cells past the
@@ -596,25 +600,25 @@ export const RIVER_CELLS: RiverCell[] = [
 // Map view does.
 export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   // Mainstems
-  shizugawa1:{ name: "Shizugawa",       subBasin: "Sub-basin 1"  },
   shizugawa: { name: "Shizugawa",       subBasin: "Sub-basin 1"  },
-  urashiro:  { name: "Urashiro",        subBasin: "Sub-basin 5"  },
+  oura:      { name: "Oura",            subBasin: "Sub-basin 2"  },
   togura:    { name: "Togura",          subBasin: "Sub-basin 4"  },
+  urashiro:  { name: "Urashiro",        subBasin: "Sub-basin 5"  },
   iriya:     { name: "Iriya",           subBasin: "Sub-basin 6"  },
   niida:     { name: "Niida",           subBasin: "Sub-basin 8"  },
-  oura:      { name: "Oura",            subBasin: "Sub-basin 2"  },
   karakuwa2: { name: "Karakuwa East",   subBasin: "Sub-basin 9"  },
+  tomaya:    { name: "Tomaya",          subBasin: "Sub-basin 10" },
   hachiman:  { name: "Hachiman",        subBasin: "Sub-basin 13" },
   oya:       { name: "Oya",             subBasin: "Sub-basin 24" },
   // SVG-traced tributary forks
   okawa:     { name: "Okawa",           subBasin: "Sub-basin 7"  },
+  onagawa:   { name: "Onagawa",         subBasin: "Sub-basin 12" },
   motoyoshi: { name: "Motoyoshi",       subBasin: "Sub-basin 14" },
+  mitobe:    { name: "Mitobe",          subBasin: "Sub-basin 15" },
   sakura:    { name: "Sakura",          subBasin: "Sub-basin 16" },
   oritate:   { name: "Oritate",         subBasin: "Sub-basin 17" },
+  kitakami:  { name: "Kitakami",        subBasin: "Sub-basin 18" },
   moriya:    { name: "Moriya",          subBasin: "Sub-basin 20" },
-  shishiori: { name: "Shishiori",       subBasin: "Sub-basin 11" },
-  onagawa:   { name: "Onagawa",         subBasin: "Sub-basin 12" },
-  mitobe:    { name: "Mitobe",          subBasin: "Sub-basin 15" },
 };
 
 // ── Nutrient field generator (Delft3D-reference-shaped) ───────────────────────
