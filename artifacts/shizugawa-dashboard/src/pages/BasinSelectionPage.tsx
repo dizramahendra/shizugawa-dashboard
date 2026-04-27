@@ -170,7 +170,7 @@ function MultiLineChart({
 
 const ALL_ITEMS = [
   OCEAN_ENTRY,
-  ...RIVERS.map((r) => ({ id: r.id, name: r.name, sub: r.sub, type: "river" as const })),
+  ...RIVERS.map((r) => ({ id: r.id, name: r.name, sub: r.sub, basin: r.basin, type: "river" as const })),
 ];
 
 export default function BasinSelectionPage() {
@@ -797,9 +797,11 @@ export default function BasinSelectionPage() {
                         onClick={handleSelectOcean}
                         data-testid="basin-item-ocean"
                       >
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
-                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-primary">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0 border border-sky-200">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-sky-600">
+                            <path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M2 7c2-2 4-2 6 0s4 2 6 0 4-2 6 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.45" />
                           </svg>
                         </div>
                         <div className="flex-1 min-w-0">
@@ -831,11 +833,8 @@ export default function BasinSelectionPage() {
                           onClick={() => handleSelectRiver(isActive ? null : item.id)}
                           data-testid={`river-item-${item.id}`}
                         >
-                          <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 border border-blue-200">
-                            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-blue-500">
-                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5" />
-                              <path d="M4 15s2-2 5-2 5 2 5 2" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-                            </svg>
+                          <div className="w-8 flex items-center justify-center flex-shrink-0 text-base font-bold text-foreground tabular-nums">
+                            {(item as { basin?: number }).basin ?? ""}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
@@ -855,8 +854,11 @@ export default function BasinSelectionPage() {
                   <>
                     <div className="px-4 pt-4 pb-1 flex items-center gap-1.5">
                       <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-violet-500">
-                        <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <path d="M4 20c0-6 4-8 8-8s8-2 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <path d="M4 12c0-2 2-4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <circle cx="4" cy="20" r="1.5" fill="currentColor"/>
+                        <circle cx="20" cy="4" r="1.5" fill="currentColor"/>
+                        <circle cx="4" cy="12" r="1.5" fill="currentColor"/>
                       </svg>
                       <span className="panel-section-title">Multi-basin Corridors</span>
                     </div>
@@ -875,8 +877,11 @@ export default function BasinSelectionPage() {
                         >
                           <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center flex-shrink-0 border border-violet-200">
                             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500">
-                              <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                              <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                              <path d="M5 20c0-6 4-8 8-8s7-2 7-8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                              <path d="M5 12c0-2 2-3 4-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                              <circle cx="5" cy="20" r="1.6" fill="currentColor"/>
+                              <circle cx="5" cy="12" r="1.6" fill="currentColor"/>
+                              <circle cx="20" cy="4" r="1.6" fill="currentColor"/>
                             </svg>
                           </div>
                           <div className="flex-1 min-w-0">
