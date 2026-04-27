@@ -630,19 +630,12 @@ export default function PlaybackPage() {
                 <div className="panel-section-title">Basin Mean</div>
                 <div className="text-[9px] text-muted-foreground mt-0.5">Depth-integrated · all water columns</div>
               </div>
-              <div className="rounded-md border border-primary/20 bg-primary/5 p-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
-                  <div className="text-xl font-mono font-bold text-primary leading-none">
-                    {basinMean ?? "—"}
-                    <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
-                  </div>
+              <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{variable.label}</div>
+                <div className="text-xl font-mono font-bold text-primary leading-none">
+                  {basinMean ?? "—"}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
                 </div>
-                <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-primary/30 flex-shrink-0">
-                  <ellipse cx="12" cy="12" rx="10" ry="4" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M2 12c0 4 4.5 7 10 7s10-3 10-7" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M2 12V8m20 4V8" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2"/>
-                </svg>
               </div>
             </div>
 
