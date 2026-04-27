@@ -1131,8 +1131,16 @@ function SliceIndicator({ mode, level, sliceDir, showCutPlane }: SliceIndicatorP
 // while still framing the entire bay. Note: the scene Z axis is flipped via
 // `<group scale={[1,1,-1]}>`, so a NEGATIVE world-Z position is on the NORTH
 // side of the rendered bay (gz=95), and POSITIVE world-Z is the SOUTH side.
+//
+// Both the short ("n"/"s"/"e"/"w") and long ("north"/...) forms are accepted
+// because PlaybackPage stores the URL-friendly short code in state while
+// older code paths may pass the long form.
 const CAMERA_PRESETS: Record<string, [number, number, number]> = {
   top:   [  0,  92,   8],
+  n:     [  0,  50, -75],
+  s:     [  0,  50,  75],
+  e:     [ 75,  50,   0],
+  w:     [-75,  50,   0],
   north: [  0,  50, -75],
   south: [  0,  50,  75],
   east:  [ 75,  50,   0],
@@ -1175,25 +1183,31 @@ function CameraController({
         raf = requestAnimationFrame(apply);
         return;
       }
-      // Use OrbitControls' "saved home" state machine (position0/target0 +
-      // reset()) as the primary path — it's the documented way to teleport
-      // the camera and it bypasses any drift/damping/zoom-state OrbitControls
-      // is keeping internally. We update position0/target0 in place since
-      // they're THREE.Vector3 instances on the controls object.
+      // Disable OrbitControls during the move so it can't fight the new
+      // position via internal sphericalDelta / dampening / scale state that
+      // may have been left over from prior user interaction.
+      const wasEnabled = controls.enabled;
+      controls.enabled = false;
+
+      // Reset OrbitControls' internal accumulators by re-creating the home
+      // state and calling reset(). This is the documented way to teleport
+      // the camera. position0 / target0 are Vector3 instances on the
+      // controls object — mutate them in place.
       controls.target0?.set?.(0, 0, 0);
       controls.position0?.set?.(pos[0], pos[1], pos[2]);
-      // zoom0 / minZoom / maxZoom apply only to OrthographicCamera. We use
-      // PerspectiveCamera so we just leave zoom alone.
-      if (typeof controls.reset === "function") {
-        controls.reset();
-      }
-      // Belt-and-suspenders: also write directly to the live state, in case
-      // reset() is unavailable or no-ops on this build.
+      if (typeof controls.reset === "function") controls.reset();
+
+      // Belt-and-suspenders: write directly to the live camera + target,
+      // then call update() so OrbitControls re-derives its spherical state
+      // from the new (clean) camera position.
       controls.target.set(0, 0, 0);
       camera.position.set(pos[0], pos[1], pos[2]);
+      camera.up.set(0, 1, 0);
       camera.lookAt(0, 0, 0);
       camera.updateProjectionMatrix();
       controls.update();
+
+      controls.enabled = wasEnabled;
       invalidate?.();
     };
     apply();

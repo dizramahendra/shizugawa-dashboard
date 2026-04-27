@@ -115,8 +115,18 @@ export default function PlaybackPage() {
   // primary visual on first paint. Pass `?ui=1` to deep-link with UI visible.
   const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
   const _initView = searchParams.get("view");
+  // Accept both short ("n") and long ("north") forms for backwards-compat
+  // with any older deep links, then normalise to the short code that the
+  // rest of the app uses.
+  const _viewAlias: Record<string, string> = {
+    top: "top",
+    n: "n", north: "n",
+    s: "s", south: "s",
+    e: "e", east:  "e",
+    w: "w", west:  "w",
+  };
   const [cameraPreset, setCameraPreset] = useState(
-    (["top","n","s","e","w"].includes(_initView ?? "")) ? (_initView as string) : "top"
+    _viewAlias[_initView ?? ""] ?? "top"
   );
   // Counter that bumps on every preset-button click so the 3D camera
   // re-applies the preset even when the user clicks the same button twice
