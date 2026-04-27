@@ -873,8 +873,7 @@ export const RIVER_COLS = 120; // along-stream axis (x)
 export const RIVER_ROWS = 22;  // cross-stream axis (z)
 
 export const RIVERS = [
-  { id: "shizugawa1",name: "Shizugawa Upper",basin: 1,  sub: "Sub-basin 1 · Minamisanriku · 6.4 km²",    length: "4.2 km"  },
-  { id: "shizugawa", name: "Shizugawa",      basin: 1,  sub: "Sub-basin 1 · Minamisanriku · 25.0 km²",   length: "18.4 km" },
+  { id: "shizugawa", name: "Shizugawa",      basin: 1,  sub: "Sub-basin 1 · Minamisanriku · 31.4 km²",   length: "22.6 km" },
   { id: "oura",      name: "Oura",           basin: 2,  sub: "Sub-basin 2 · Minamisanriku · 8.7 km²",    length: "6.2 km"  },
   { id: "karakuwa",  name: "Karakuwa",       basin: 3,  sub: "Sub-basin 3 · Kesennuma · 12.4 km²",       length: "9.1 km"  },
   { id: "togura",    name: "Togura",         basin: 4,  sub: "Sub-basin 4 · Minamisanriku · 10.3 km²",   length: "7.8 km"  },
