@@ -3,8 +3,10 @@ import { Search, Map } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import TopNav from "@/components/TopNav";
 import MapLibreMap from "@/components/MapLibreMap";
-import TimeWindowControl from "@/components/TimeWindowControl";
+import WeekRangePicker from "@/components/WeekRangePicker";
 import PlaybackControls from "@/components/PlaybackControls";
+import { usePlayback } from "@/context/PlaybackContext";
+import { YEARS } from "@/lib/weekUtils";
 import {
   RIVERS,
   WATERSHEDS,
@@ -189,12 +191,16 @@ export default function BasinSelectionPage() {
   const [tiltedIn, setTiltedIn] = useState(!fromCS);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [week, setWeek] = useState(0);
+  // Shared playback window: same context the River + Ocean Playback pages use,
+  // so a range selected on one page persists across the others.
+  const { year, setYear, weekRange, setWeekRange } = usePlayback();
+  const [startWeek, endWeek] = weekRange;
+  // Initialise `week` from the shared range so a deep-link / cross-page nav
+  // never paints an out-of-range frame on first render.
+  const [week, setWeek] = useState(weekRange[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selectedVariable, setSelectedVariable] = useState(_initVariable ?? "nitrogen");
-  const [startWeek, setStartWeek] = useState(0);
-  const [endWeek, setEndWeek] = useState(TOTAL_WEEKS - 1);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pause = useCallback(() => setIsPlaying(false), []);
@@ -250,7 +256,7 @@ export default function BasinSelectionPage() {
   }, [startWeek, endWeek, week]);
 
   const activeWS = WATERSHEDS.find((w) => w.id === selectedWatershed) ?? null;
-  const { label: weekLabel } = getWeekLabel(week);
+  const { label: weekLabel } = getWeekLabel(week, year);
   const variable = VARIABLE_OPTIONS.find((v) => v.id === selectedVariable) ?? VARIABLE_OPTIONS[0];
 
   const lowerSearch = search.toLowerCase();
@@ -265,7 +271,7 @@ export default function BasinSelectionPage() {
 
   const reachMean = useMemo(() => {
     if (!selectedRiver) return null;
-    const data = generateRiverData(week, selectedRiver);
+    const data = generateRiverData(week, selectedRiver, year);
     let sum = 0, count = 0;
     for (let row = 0; row < RIVER_ROWS; row++) {
       for (let col = 0; col < RIVER_COLS; col++) {
@@ -274,7 +280,7 @@ export default function BasinSelectionPage() {
       }
     }
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
-  }, [selectedRiver, week, selectedVariable]);
+  }, [selectedRiver, week, selectedVariable, year]);
 
   // Corridor derived state
   const corridorObj = useMemo(
@@ -289,22 +295,22 @@ export default function BasinSelectionPage() {
   );
   const corridorMeans = useMemo(
     () => corridorObj && selectedCorridorId
-      ? getCompositeSegmentMeans(week, selectedCorridorId, selectedVariable)
+      ? getCompositeSegmentMeans(week, selectedCorridorId, selectedVariable, year)
       : null,
-    [corridorObj, selectedCorridorId, week, selectedVariable]
+    [corridorObj, selectedCorridorId, week, selectedVariable, year]
   );
 
   // 52-week time series for single river (recomputes only when river or variable changes)
   const riverTimeSeries = useMemo(() => {
     if (!selectedRiver) return null;
     return Array.from({ length: TOTAL_WEEKS }, (_, w) => {
-      const grid = generateRiverData(w, selectedRiver);
+      const grid = generateRiverData(w, selectedRiver, year);
       let s = 0, c = 0;
       for (let r = 0; r < RIVER_ROWS; r++)
         for (let col = 0; col < RIVER_COLS; col++) { s += grid[r]?.[col] ?? 0; c++; }
       return c > 0 ? valueToConcentration(s / c, selectedVariable) : 0;
     });
-  }, [selectedRiver, selectedVariable]);
+  }, [selectedRiver, selectedVariable, year]);
 
   // Per-segment 52-week time series for corridor
   const corridorTimeSeries = useMemo(() => {
@@ -312,11 +318,11 @@ export default function BasinSelectionPage() {
     const nSeg = corridorObj.segments.length;
     const series: number[][] = Array.from({ length: nSeg }, () => []);
     for (let w = 0; w < TOTAL_WEEKS; w++) {
-      const means = getCompositeSegmentMeans(w, selectedCorridorId, selectedVariable);
+      const means = getCompositeSegmentMeans(w, selectedCorridorId, selectedVariable, year);
       for (let i = 0; i < nSeg; i++) series[i].push(means[i] ?? 0);
     }
     return series;
-  }, [corridorObj, selectedCorridorId, selectedVariable]);
+  }, [corridorObj, selectedCorridorId, selectedVariable, year]);
 
   const handleSelectOcean = useCallback(() => {
     navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`);
@@ -401,8 +407,33 @@ export default function BasinSelectionPage() {
               ))}
             </select>
 
+            <div className="w-px h-5 bg-border" />
+
+            {/* Year dropdown — same control as the playback pages */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium">Year</span>
+              <select
+                value={year}
+                onChange={e => { setYear(Number(e.target.value)); setWeek(0); pause(); }}
+                className="h-7 px-2 pr-6 text-[11px] font-mono bg-white border border-border rounded-md shadow-sm text-foreground cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-primary"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' viewBox='0 0 10 6'%3E%3Cpath stroke='%2364748b' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M1 1l4 4 4-4'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
+              >
+                {YEARS.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Calendar date-range picker — identical mechanism to the
+                River + Ocean Playback pages */}
+            <WeekRangePicker
+              year={year}
+              weekRange={weekRange}
+              onChange={r => { setWeekRange(r); pause(); }}
+            />
+
             <div className="ml-auto flex items-center gap-3 text-xs">
-              <span className="font-mono text-foreground">{weekLabel} · 2023–2024</span>
+              <span className="font-mono text-foreground">{weekLabel} · {year}</span>
               <div className="flex items-center gap-1.5">
                 {isPlaying
                   ? <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
@@ -438,17 +469,11 @@ export default function BasinSelectionPage() {
             />
           </div>
 
-          <TimeWindowControl
-            startWeek={startWeek}
-            endWeek={endWeek}
-            onStartChange={(w) => { setStartWeek(w); if (week < w) setWeek(w); }}
-            onEndChange={(w) => { setEndWeek(w); if (week > w) setWeek(w); }}
-          />
-
           <PlaybackControls
             week={week}
             isPlaying={isPlaying}
             speed={speed}
+            year={year}
             onPlay={() => setIsPlaying(true)}
             onPause={pause}
             onSeek={handleSeek}
