@@ -453,24 +453,6 @@ export default function RiverPlaybackPage() {
               )}
             </div>
 
-            {/* 2. Playback status / time */}
-            <div className="px-4 py-4">
-              <div className="panel-section-title mb-3">Playback Status</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-muted/40 rounded-md p-2.5">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Current week</div>
-                  <div className="text-sm font-semibold text-foreground font-mono">{weekLabel}</div>
-                </div>
-                <div className="bg-muted/40 rounded-md p-2.5">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Progress</div>
-                  <div className="text-sm font-semibold text-foreground font-mono">{week + 1}/{TOTAL_WEEKS}w</div>
-                </div>
-              </div>
-              <div className="mt-2 w-full h-1 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-blue-400 rounded-full transition-all duration-150" style={{ width: `${(week / (TOTAL_WEEKS - 1)) * 100}%` }} />
-              </div>
-            </div>
-
             {/* 3b. River/Corridor Mean — spatial average across all reach cells */}
             <div className="px-4 py-4">
               <div className="mb-2">

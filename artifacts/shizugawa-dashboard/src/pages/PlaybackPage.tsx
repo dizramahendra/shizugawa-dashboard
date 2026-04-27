@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Leaf, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
 import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, PIXEL_PALETTE, MeasureId } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, PIXEL_PALETTE, MeasureId } from "@/lib/simulatedData";
 import DecarbInspector, { SelectedPixel } from "@/components/DecarbInspector";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
@@ -312,7 +312,6 @@ export default function PlaybackPage() {
     return count > 0 ? valueToConcentration(sum / count, selectedVariable) : null;
   }, [weekData, selectedVariable]);
 
-  const { label: weekLabel } = getWeekLabel(week, year);
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
@@ -616,24 +615,12 @@ export default function PlaybackPage() {
                 </div>
               </div>
 
-              <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
+              <div className="bg-muted/40 rounded-lg p-3 border border-border/60">
                 <PropRow icon={<MapPin size={12} />}    label="Region"     value={OCEAN_DETAILS.region} />
                 <PropRow icon={<Droplets size={12} />}  label="Water Body" value={OCEAN_DETAILS.waterBody} />
                 <PropRow icon={<Maximize2 size={12} />} label="Area"       value={OCEAN_DETAILS.area} />
                 <PropRow icon={<Waves size={12} />}     label="Depth"      value={OCEAN_DETAILS.depth} />
                 <PropRow icon={<Trees size={12} />}     label="Land Use"   value={OCEAN_DETAILS.landUse} />
-              </div>
-
-              {/* Page-specific: current playback time */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-muted/40 rounded-md p-2.5">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Week</div>
-                  <div className="text-sm font-semibold text-foreground font-mono">{weekLabel}</div>
-                </div>
-                <div className="bg-muted/40 rounded-md p-2.5">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Progress</div>
-                  <div className="text-sm font-semibold text-foreground font-mono">{week + 1}/{TOTAL_WEEKS}w</div>
-                </div>
               </div>
             </div>
 
