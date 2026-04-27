@@ -596,25 +596,25 @@ export const RIVER_CELLS: RiverCell[] = [
 // Map view does.
 export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   // Mainstems
-  shizugawa1:{ name: "Shizugawa Upper",  subBasin: "Sub-basin 1"  },
-  shizugawa: { name: "Shizugawa River", subBasin: "Sub-basin 1"  },
-  urashiro:  { name: "Urashiro River",  subBasin: "Sub-basin 5"  },
-  togura:    { name: "Togura River",    subBasin: "Sub-basin 4"  },
-  iriya:     { name: "Iriya River",     subBasin: "Sub-basin 6"  },
-  niida:     { name: "Niida River",     subBasin: "Sub-basin 8"  },
-  oura:      { name: "Oura River",      subBasin: "Sub-basin 2"  },
+  shizugawa1:{ name: "Shizugawa",       subBasin: "Sub-basin 1"  },
+  shizugawa: { name: "Shizugawa",       subBasin: "Sub-basin 1"  },
+  urashiro:  { name: "Urashiro",        subBasin: "Sub-basin 5"  },
+  togura:    { name: "Togura",          subBasin: "Sub-basin 4"  },
+  iriya:     { name: "Iriya",           subBasin: "Sub-basin 6"  },
+  niida:     { name: "Niida",           subBasin: "Sub-basin 8"  },
+  oura:      { name: "Oura",            subBasin: "Sub-basin 2"  },
   karakuwa2: { name: "Karakuwa East",   subBasin: "Sub-basin 9"  },
-  hachiman:  { name: "Hachiman River",  subBasin: "Sub-basin 13" },
-  oya:       { name: "Oya River",       subBasin: "Sub-basin 24" },
+  hachiman:  { name: "Hachiman",        subBasin: "Sub-basin 13" },
+  oya:       { name: "Oya",             subBasin: "Sub-basin 24" },
   // SVG-traced tributary forks
-  okawa:     { name: "Okawa River",     subBasin: "Sub-basin 7"  },
-  motoyoshi: { name: "Motoyoshi River", subBasin: "Sub-basin 14" },
-  sakura:    { name: "Sakura River",    subBasin: "Sub-basin 16" },
-  oritate:   { name: "Oritate River",   subBasin: "Sub-basin 17" },
-  moriya:    { name: "Moriya River",    subBasin: "Sub-basin 20" },
-  shishiori: { name: "Shishiori River", subBasin: "Sub-basin 11" },
-  onagawa:   { name: "Onagawa River",   subBasin: "Sub-basin 12" },
-  mitobe:    { name: "Mitobe River",    subBasin: "Sub-basin 15" },
+  okawa:     { name: "Okawa",           subBasin: "Sub-basin 7"  },
+  motoyoshi: { name: "Motoyoshi",       subBasin: "Sub-basin 14" },
+  sakura:    { name: "Sakura",          subBasin: "Sub-basin 16" },
+  oritate:   { name: "Oritate",         subBasin: "Sub-basin 17" },
+  moriya:    { name: "Moriya",          subBasin: "Sub-basin 20" },
+  shishiori: { name: "Shishiori",       subBasin: "Sub-basin 11" },
+  onagawa:   { name: "Onagawa",         subBasin: "Sub-basin 12" },
+  mitobe:    { name: "Mitobe",          subBasin: "Sub-basin 15" },
 };
 
 // ── Nutrient field generator (Delft3D-reference-shaped) ───────────────────────
