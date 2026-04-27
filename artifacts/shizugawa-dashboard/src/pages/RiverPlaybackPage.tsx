@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import NorthArrow from "@/components/NorthArrow";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, GitFork, Ruler, MapPin, Maximize2, Waves } from "lucide-react";
+import { PropRow, parseRiverSub } from "@/components/IdentificationCard";
 import {
   TOTAL_WEEKS,
   VARIABLE_OPTIONS,
@@ -363,41 +364,42 @@ export default function RiverPlaybackPage() {
 
           <div className="flex-1 overflow-y-auto divide-y divide-border">
 
-            {/* 1. River / corridor context */}
+            {/* 1. Identification card — same shape as the Map Viewport sidebar */}
             <div className="px-4 py-4">
               {composite ? (
                 <>
-                  {/* Composite corridor header */}
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center border border-violet-200 flex-shrink-0">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500">
-                        <path d="M3 17c2-4 5-6 7-5s4 5 7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        <path d="M3 12c3-3 5-1 7 1s4 4 8 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
+                  {/* Header */}
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-9 h-9 rounded-full bg-violet-50 flex items-center justify-center border border-violet-200 flex-shrink-0">
+                      <GitFork size={16} className="text-violet-500" />
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">{composite.name}</div>
-                      <div className="text-[10px] text-muted-foreground leading-snug mt-0.5">{composite.description}</div>
+                    <div className="text-sm font-semibold text-foreground leading-tight min-w-0">
+                      {composite.name}
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="bg-muted/40 rounded-md p-2.5">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Total Length</div>
-                      <div className="text-sm font-semibold text-foreground font-mono">{composite.totalLength}</div>
-                    </div>
-                    <div className="bg-violet-50 border border-violet-100 rounded-md p-2.5">
-                      <div className="text-[10px] text-violet-400 uppercase tracking-wide mb-0.5">Topology</div>
-                      <div className="text-sm font-semibold text-violet-700 capitalize">{composite.topology}</div>
+
+                  {/* Property panel */}
+                  <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
+                    <p className="text-[11px] text-foreground/80 leading-relaxed mb-2 italic">
+                      {composite.description}
+                    </p>
+                    <div className="border-t border-border/60 pt-1">
+                      <PropRow icon={<Ruler size={12} />}   label="Total Length" value={composite.totalLength} />
+                      <PropRow icon={<GitFork size={12} />} label="Topology"
+                               value={<span className="capitalize">{composite.topology}</span>} />
+                      <PropRow icon={<Waves size={12} />}   label="Segments"
+                               value={`${composite.segments.length} reaches`} />
                     </div>
                   </div>
-                  {/* Segment chips */}
+
+                  {/* Segment chips — kept; useful per-segment colour key */}
                   {(() => {
                     const UPPER_BORDERS = ["#93c5fd", "#c4b5fd"];
                     const UPPER_BG      = ["#eff6ff", "#f5f3ff"];
                     const UPPER_COLORS  = ["#2563eb", "#7c3aed"];
                     let ui = 0;
                     return (
-                      <div className="mt-2 flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {composite.segments.map(seg => {
                           const isLower = seg.role === "lower";
                           const border = isLower ? "#5eead4" : UPPER_BORDERS[ui % 2];
@@ -424,29 +426,30 @@ export default function RiverPlaybackPage() {
                   })()}
                 </>
               ) : (
-                <>
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-blue-500">
-                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">{river!.name}</div>
-                      <div className="text-xs text-muted-foreground">{river!.sub}</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="bg-muted/40 rounded-md p-2.5">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Length</div>
-                      <div className="text-sm font-semibold text-foreground font-mono">{river!.length}</div>
-                    </div>
-                    <div className="bg-muted/40 rounded-md p-2.5">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">View</div>
-                      <div className="text-sm font-semibold text-foreground">2D Grid</div>
-                    </div>
-                  </div>
-                </>
+                (() => {
+                  const { region, area } = parseRiverSub(river!.sub);
+                  return (
+                    <>
+                      {/* Header */}
+                      <div className="flex items-center gap-2.5 mb-3">
+                        <div className="w-9 h-9 rounded-md bg-slate-100 flex items-center justify-center border border-slate-300 flex-shrink-0">
+                          <span className="text-xs font-bold text-slate-700 font-mono">{river!.basin}</span>
+                        </div>
+                        <div className="text-sm font-semibold text-foreground leading-tight min-w-0 truncate">
+                          {river!.name}
+                        </div>
+                      </div>
+
+                      {/* Property panel */}
+                      <div className="bg-muted/40 rounded-lg p-3 border border-border/60">
+                        <PropRow icon={<GitFork size={12} />}   label="Sub-basin"    value={`#${river!.basin}`} />
+                        <PropRow icon={<MapPin size={12} />}    label="Region"       value={region} />
+                        <PropRow icon={<Maximize2 size={12} />} label="Area"         value={area} />
+                        <PropRow icon={<Ruler size={12} />}     label="Total Length" value={river!.length} />
+                      </div>
+                    </>
+                  );
+                })()
               )}
             </div>
 

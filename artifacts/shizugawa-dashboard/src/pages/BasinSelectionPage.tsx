@@ -1,5 +1,6 @@
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
-import { Search, Map, X, Ruler, MapPin, Droplets, Maximize2, Trees, GitFork, Waves } from "lucide-react";
+import { Search, Map, Ruler, MapPin, Maximize2, GitFork, Waves } from "lucide-react";
+import { PropRow, DeselectButton, parseRiverSub } from "@/components/IdentificationCard";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import TopNav from "@/components/TopNav";
 import MapLibreMap from "@/components/MapLibreMap";
@@ -28,44 +29,6 @@ const OCEAN_ENTRY = {
   sub: "Shizugawa · 32.8 km²",
   type: "ocean" as const,
 };
-
-// Static identification facts for the bay (single ocean entity in this app)
-const OCEAN_DETAILS = {
-  region:    "Shizugawa, Miyagi",
-  waterBody: "Shizugawa Bay (Pacific)",
-  area:      "32.8 km²",
-  depth:     "−5 to −40 m",
-  landUse:   "Coastal / Open Water",
-};
-
-// ── Reusable identification-card pieces ──────────────────────────────────────
-function PropRow({
-  icon, label, value,
-}: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2.5 py-1.5">
-      <span className="w-4 h-4 flex items-center justify-center text-muted-foreground/70 flex-shrink-0">
-        {icon}
-      </span>
-      <span className="text-[11px] text-muted-foreground flex-1">{label}</span>
-      <span className="text-[11px] font-semibold text-foreground font-mono text-right">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function DeselectButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground border border-border hover:border-foreground/40 rounded-md px-2 py-1 transition-colors flex-shrink-0"
-    >
-      <X size={10} />
-      Deselect
-    </button>
-  );
-}
 
 // ── Shared chart constants ───────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -223,17 +186,13 @@ export default function BasinSelectionPage() {
 
   const [search, setSearch] = useState("");
   const [selectedWatershed, setSelectedWatershed] = useState<string | null>(searchParams.get("ws"));
-  // Selection state is mutually exclusive: at most one of corridor / ocean / river
-  // can be active. Enforce that at init so deep-links with conflicting params
-  // (e.g. ?river=...&ocean=1) collapse to a single canonical selection in
-  // the same priority order the render branches use: corridor > ocean > river.
-  const _initOcean = searchParams.get("ocean") === "1";
-  const _initCorridorOnly = _initCorridor;
-  const _initOceanOnly    = _initCorridorOnly ? false : _initOcean;
-  const _initRiverOnly    = (_initCorridorOnly || _initOceanOnly) ? null : _initRiver;
+  // Selection state is mutually exclusive: river OR corridor (or neither).
+  // Enforce at init so deep-links with both params collapse to a single
+  // canonical selection in the same priority order the render branches use:
+  // corridor > river.
+  const _initRiverOnly = _initCorridor ? null : _initRiver;
   const [selectedRiver, setSelectedRiver] = useState<string | null>(_initRiverOnly);
-  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(_initCorridorOnly);
-  const [selectedOcean, setSelectedOcean] = useState<boolean>(_initOceanOnly);
+  const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(_initCorridor);
   const [isTiltingOut, setIsTiltingOut] = useState(false);
   const [tiltedIn, setTiltedIn] = useState(!fromCS);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -262,13 +221,13 @@ export default function BasinSelectionPage() {
       else next.delete("river");
       if (selectedCorridorId) next.set("corridor", selectedCorridorId);
       else next.delete("corridor");
-      if (selectedOcean) next.set("ocean", "1");
-      else next.delete("ocean");
+      // Drop legacy ?ocean=1 from any pre-revert deep-link
+      next.delete("ocean");
       if (selectedWatershed) next.set("ws", selectedWatershed);
       else next.delete("ws");
       return next;
     }, { replace: true });
-  }, [selectedVariable, selectedRiver, selectedCorridorId, selectedOcean, selectedWatershed]);
+  }, [selectedVariable, selectedRiver, selectedCorridorId, selectedWatershed]);
 
   useEffect(() => {
     let tiltTimer: ReturnType<typeof setTimeout> | null = null;
@@ -374,25 +333,17 @@ export default function BasinSelectionPage() {
   }, [corridorObj, selectedCorridorId, selectedVariable, year]);
 
   const handleSelectOcean = useCallback(() => {
-    setSelectedOcean(true);
-    setSelectedRiver(null);
-    setSelectedCorridorId(null);
-  }, []);
+    navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`);
+  }, [navigate, activeWS]);
 
   const handleSelectRiver = useCallback((riverId: string | null) => {
     setSelectedRiver(riverId);
-    if (riverId) {
-      setSelectedCorridorId(null); // river selection clears corridor
-      setSelectedOcean(false);
-    }
+    if (riverId) setSelectedCorridorId(null); // river selection clears corridor
   }, []);
 
   const handleSelectCorridor = useCallback((corridorId: string | null) => {
     setSelectedCorridorId(corridorId);
-    if (corridorId) {
-      setSelectedRiver(null); // corridor selection clears river
-      setSelectedOcean(false);
-    }
+    if (corridorId) setSelectedRiver(null); // corridor selection clears river
   }, []);
 
   const wnameSuffix = activeWS ? `&wname=${encodeURIComponent(activeWS.name)}` : "";
@@ -697,48 +648,11 @@ export default function BasinSelectionPage() {
 
               </div>
 
-            ) : selectedOcean ? (
-              /* ── Ocean (Shizugawa Bay) detail panel ── */
-              <div className="px-4 py-4">
-                {/* Identification header */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="w-9 h-9 rounded-full bg-sky-50 flex items-center justify-center border border-sky-200 flex-shrink-0">
-                      <Waves size={16} className="text-sky-600" />
-                    </div>
-                    <div className="text-sm font-semibold text-foreground leading-tight min-w-0">
-                      Shizugawa Bay
-                    </div>
-                  </div>
-                  <DeselectButton onClick={() => setSelectedOcean(false)} />
-                </div>
-
-                {/* Identification property panel */}
-                <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
-                  <PropRow icon={<MapPin size={12} />}    label="Region"     value={OCEAN_DETAILS.region} />
-                  <PropRow icon={<Droplets size={12} />}  label="Water Body" value={OCEAN_DETAILS.waterBody} />
-                  <PropRow icon={<Maximize2 size={12} />} label="Area"       value={OCEAN_DETAILS.area} />
-                  <PropRow icon={<Waves size={12} />}     label="Depth"      value={OCEAN_DETAILS.depth} />
-                  <PropRow icon={<Trees size={12} />}     label="Land Use"   value={OCEAN_DETAILS.landUse} />
-                </div>
-
-                {/* CTA — open the 3D Ocean Playback page */}
-                <button
-                  className="w-full py-2 rounded-md text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/playback${activeWS ? `?watershed=${activeWS.id}&wname=${encodeURIComponent(activeWS.name)}` : ""}`)}
-                >
-                  View in 3D Ocean Playback →
-                </button>
-              </div>
-
             ) : selectedRiverObj ? (
               /* ── Single-river detail panel ── */
               <div className="px-4 py-4">
                 {(() => {
-                  // Parse "Sub-basin 6 · Minamisanriku · 7.1 km²" into pieces
-                  const parts = selectedRiverObj.sub.split(" · ");
-                  const region = parts[1] ?? "—";
-                  const area   = parts[2] ?? "—";
+                  const { region, area } = parseRiverSub(selectedRiverObj.sub);
                   return (
                     <>
                       {/* Identification header */}

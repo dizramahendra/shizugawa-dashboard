@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Leaf } from "lucide-react";
+import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Leaf, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
+import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
 import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, getWeekLabel, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, PIXEL_PALETTE, MeasureId } from "@/lib/simulatedData";
 import DecarbInspector, { SelectedPixel } from "@/components/DecarbInspector";
 import { usePlayback } from "@/context/PlaybackContext";
@@ -604,20 +605,27 @@ export default function PlaybackPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-border">
-            {/* Location + timestamp */}
+            {/* Identification card — same shape as the Map Viewport sidebar */}
             <div className="px-4 py-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-primary">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-9 h-9 rounded-full bg-sky-50 flex items-center justify-center border border-sky-200 flex-shrink-0">
+                  <Waves size={16} className="text-sky-600" />
                 </div>
-                <div>
-                  <div className="text-sm font-semibold text-foreground">Shizugawa Bay (Ocean)</div>
-                  <div className="text-xs text-muted-foreground">Shizugawa · 32.8 km²</div>
+                <div className="text-sm font-semibold text-foreground leading-tight min-w-0 truncate">
+                  Shizugawa Bay
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-3">
+
+              <div className="bg-muted/40 rounded-lg p-3 mb-3 border border-border/60">
+                <PropRow icon={<MapPin size={12} />}    label="Region"     value={OCEAN_DETAILS.region} />
+                <PropRow icon={<Droplets size={12} />}  label="Water Body" value={OCEAN_DETAILS.waterBody} />
+                <PropRow icon={<Maximize2 size={12} />} label="Area"       value={OCEAN_DETAILS.area} />
+                <PropRow icon={<Waves size={12} />}     label="Depth"      value={OCEAN_DETAILS.depth} />
+                <PropRow icon={<Trees size={12} />}     label="Land Use"   value={OCEAN_DETAILS.landUse} />
+              </div>
+
+              {/* Page-specific: current playback time */}
+              <div className="grid grid-cols-2 gap-2">
                 <div className="bg-muted/40 rounded-md p-2.5">
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Week</div>
                   <div className="text-sm font-semibold text-foreground font-mono">{weekLabel}</div>
