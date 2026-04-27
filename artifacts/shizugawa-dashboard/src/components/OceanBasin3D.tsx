@@ -1126,12 +1126,17 @@ function SliceIndicator({ mode, level, sliceDir, showCutPlane }: SliceIndicatorP
 }
 
 // ── Camera presets ────────────────────────────────────────────────────────────
+// All side views sit ~50 units high and 75 units back from origin, giving a
+// clear ~33° elevation angle that's visibly different from the top-down view
+// while still framing the entire bay. Note: the scene Z axis is flipped via
+// `<group scale={[1,1,-1]}>`, so a NEGATIVE world-Z position is on the NORTH
+// side of the rendered bay (gz=95), and POSITIVE world-Z is the SOUTH side.
 const CAMERA_PRESETS: Record<string, [number, number, number]> = {
-  top:   [0,  92,  8],
-  north: [0,  22, -72],
-  south: [0,  22,  72],
-  east:  [72, 22,   0],
-  west:  [-72, 22,  0],
+  top:   [  0,  92,   8],
+  north: [  0,  50, -75],
+  south: [  0,  50,  75],
+  east:  [ 75,  50,   0],
+  west:  [-75,  50,   0],
 };
 
 /** Moves camera + OrbitControls target whenever `preset` changes OR when the
@@ -1164,17 +1169,31 @@ function CameraController({
       if (cancelled) return;
       const pos = CAMERA_PRESETS[preset];
       if (!pos) return;
-      if (!orbitRef.current) {
+      const controls = orbitRef.current;
+      if (!controls) {
         // OrbitControls hasn't mounted yet on first paint — retry next frame.
         raf = requestAnimationFrame(apply);
         return;
       }
+      // Use OrbitControls' "saved home" state machine (position0/target0 +
+      // reset()) as the primary path — it's the documented way to teleport
+      // the camera and it bypasses any drift/damping/zoom-state OrbitControls
+      // is keeping internally. We update position0/target0 in place since
+      // they're THREE.Vector3 instances on the controls object.
+      controls.target0?.set?.(0, 0, 0);
+      controls.position0?.set?.(pos[0], pos[1], pos[2]);
+      // zoom0 / minZoom / maxZoom apply only to OrthographicCamera. We use
+      // PerspectiveCamera so we just leave zoom alone.
+      if (typeof controls.reset === "function") {
+        controls.reset();
+      }
+      // Belt-and-suspenders: also write directly to the live state, in case
+      // reset() is unavailable or no-ops on this build.
+      controls.target.set(0, 0, 0);
       camera.position.set(pos[0], pos[1], pos[2]);
       camera.lookAt(0, 0, 0);
       camera.updateProjectionMatrix();
-      orbitRef.current.target.set(0, 0, 0);
-      orbitRef.current.update();
-      // Force a re-render in case the loop was demand-driven.
+      controls.update();
       invalidate?.();
     };
     apply();
