@@ -5,6 +5,11 @@ export default function NorthArrow({ className = "" }: { className?: string }) {
       style={{ backdropFilter: "blur(4px)" }}
       title="North is up"
     >
+      <span
+        style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", lineHeight: 1, color: "#1e293b" }}
+      >
+        N
+      </span>
       <svg width="22" height="30" viewBox="0 0 22 30" fill="none" aria-hidden>
         {/* North half — solid dark */}
         <polygon points="11,1 17,15 11,11 5,15" fill="#1e293b" />
@@ -13,11 +18,6 @@ export default function NorthArrow({ className = "" }: { className?: string }) {
         {/* Center pivot */}
         <circle cx="11" cy="15" r="1.8" fill="#1e293b" />
       </svg>
-      <span
-        style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", lineHeight: 1, color: "#1e293b" }}
-      >
-        N
-      </span>
     </div>
   );
 }
