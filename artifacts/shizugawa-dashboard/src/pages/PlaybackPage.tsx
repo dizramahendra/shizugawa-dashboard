@@ -118,6 +118,15 @@ export default function PlaybackPage() {
   const [cameraPreset, setCameraPreset] = useState(
     (["top","n","s","e","w"].includes(_initView ?? "")) ? (_initView as string) : "top"
   );
+  // Counter that bumps on every preset-button click so the 3D camera
+  // re-applies the preset even when the user clicks the same button twice
+  // (e.g. after manually orbiting). Without this, the CameraController guard
+  // would skip the second click.
+  const [cameraPresetTick, setCameraPresetTick] = useState(0);
+  const applyCameraPreset = useCallback((id: string) => {
+    setCameraPreset(id);
+    setCameraPresetTick((t) => t + 1);
+  }, []);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -359,7 +368,7 @@ export default function PlaybackPage() {
               return (
                 <button
                   key={id}
-                  onClick={() => setCameraPreset(id)}
+                  onClick={() => applyCameraPreset(id)}
                   title={label === "top" ? "Top-down view" : `View from ${label}`}
                   className={`px-2 py-1 text-[11px] font-mono rounded-sm transition-colors ${
                     cameraPreset === id
@@ -422,6 +431,7 @@ export default function PlaybackPage() {
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
               showAnnotations={showUI}
               cameraPreset={cameraPreset}
+              cameraPresetTick={cameraPresetTick}
               markerPixels={inspectTool === "carbon-sim" ? selectedPixels : undefined}
             />
 

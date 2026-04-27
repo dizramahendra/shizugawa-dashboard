@@ -1134,18 +1134,33 @@ const CAMERA_PRESETS: Record<string, [number, number, number]> = {
   west:  [-72, 22,  0],
 };
 
-/** Moves camera + OrbitControls target whenever `preset` changes. Must be inside <Canvas>.
- *  Uses useFrame instead of useEffect so it waits until OrbitControls has mounted (ref is set). */
-function CameraController({ preset, orbitRef }: { preset: string; orbitRef: { current: any } }) {
+/** Moves camera + OrbitControls target whenever `preset` changes OR when the
+ *  caller bumps `tick` (so re-clicking the same preset button after manually
+ *  orbiting still snaps the camera back). Must be inside <Canvas>. Uses
+ *  useFrame instead of useEffect so it waits until OrbitControls has mounted
+ *  (ref is set). */
+function CameraController({
+  preset,
+  tick,
+  orbitRef,
+}: {
+  preset: string;
+  tick: number;
+  orbitRef: { current: any };
+}) {
   const { camera } = useThree();
+  // Track the last (preset, tick) pair we successfully applied. Any change to
+  // either re-triggers application — including same-preset re-clicks, which
+  // bump only the tick.
   const appliedRef = useRef<string>("");
 
   useFrame(() => {
-    if (appliedRef.current === preset) return;   // already applied — skip every frame
+    const key = `${preset}:${tick}`;
+    if (appliedRef.current === key) return;      // already applied this request
     const pos = CAMERA_PRESETS[preset];
     if (!pos) return;
     if (!orbitRef.current) return;               // OrbitControls not mounted yet — try next frame
-    appliedRef.current = preset;
+    appliedRef.current = key;
     camera.position.set(pos[0], pos[1], pos[2]);
     orbitRef.current.target.set(0, 0, 0);
     orbitRef.current.update();
@@ -1168,6 +1183,7 @@ interface OceanBasin3DProps {
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
   cameraPreset?: string;
+  cameraPresetTick?: number;
   markerPixels?: { x: number; z: number; color: string }[];
 }
 
@@ -1192,6 +1208,7 @@ export default function OceanBasin3D({
   onCellHover,
   showAnnotations = true,
   cameraPreset = "top",
+  cameraPresetTick = 0,
   markerPixels,
 }: OceanBasin3DProps) {
   const markerMap = useMemo(() => {
@@ -1220,7 +1237,7 @@ export default function OceanBasin3D({
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"
     >
-      <CameraController preset={cameraPreset} orbitRef={orbitRef} />
+      <CameraController preset={cameraPreset} tick={cameraPresetTick} orbitRef={orbitRef} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[10, 15, 10]} intensity={0.7} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
