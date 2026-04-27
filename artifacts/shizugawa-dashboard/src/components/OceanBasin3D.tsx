@@ -1136,9 +1136,16 @@ const CAMERA_PRESETS: Record<string, [number, number, number]> = {
 
 /** Moves camera + OrbitControls target whenever `preset` changes OR when the
  *  caller bumps `tick` (so re-clicking the same preset button after manually
- *  orbiting still snaps the camera back). Must be inside <Canvas>. Uses
- *  useFrame instead of useEffect so it waits until OrbitControls has mounted
- *  (ref is set). */
+ *  orbiting still snaps the camera back). Must be inside <Canvas>.
+ *
+ *  Implementation notes:
+ *   - Uses useEffect on (preset, tick) so React schedules the apply exactly
+ *     once per request — no per-frame polling, no stale-closure issues.
+ *   - If OrbitControls' ref hasn't been populated yet on first paint, retries
+ *     via requestAnimationFrame until it is (cancellable on unmount/re-run).
+ *   - Calls camera.lookAt(0,0,0) explicitly in addition to controls.target so
+ *     the camera matrix is updated even if OrbitControls hasn't yet wired up
+ *     its internal state. */
 function CameraController({
   preset,
   tick,
@@ -1148,23 +1155,35 @@ function CameraController({
   tick: number;
   orbitRef: { current: any };
 }) {
-  const { camera } = useThree();
-  // Track the last (preset, tick) pair we successfully applied. Any change to
-  // either re-triggers application — including same-preset re-clicks, which
-  // bump only the tick.
-  const appliedRef = useRef<string>("");
+  const { camera, invalidate } = useThree();
 
-  useFrame(() => {
-    const key = `${preset}:${tick}`;
-    if (appliedRef.current === key) return;      // already applied this request
-    const pos = CAMERA_PRESETS[preset];
-    if (!pos) return;
-    if (!orbitRef.current) return;               // OrbitControls not mounted yet — try next frame
-    appliedRef.current = key;
-    camera.position.set(pos[0], pos[1], pos[2]);
-    orbitRef.current.target.set(0, 0, 0);
-    orbitRef.current.update();
-  });
+  useEffect(() => {
+    let cancelled = false;
+    let raf = 0;
+    const apply = () => {
+      if (cancelled) return;
+      const pos = CAMERA_PRESETS[preset];
+      if (!pos) return;
+      if (!orbitRef.current) {
+        // OrbitControls hasn't mounted yet on first paint — retry next frame.
+        raf = requestAnimationFrame(apply);
+        return;
+      }
+      camera.position.set(pos[0], pos[1], pos[2]);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+      orbitRef.current.target.set(0, 0, 0);
+      orbitRef.current.update();
+      // Force a re-render in case the loop was demand-driven.
+      invalidate?.();
+    };
+    apply();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, tick]);
 
   return null;
 }
