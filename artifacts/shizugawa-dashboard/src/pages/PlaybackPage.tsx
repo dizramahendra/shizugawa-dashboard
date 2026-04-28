@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Leaf, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
+import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
 import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, PIXEL_PALETTE, MeasureId } from "@/lib/simulatedData";
-import DecarbInspector, { SelectedPixel } from "@/components/DecarbInspector";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";
@@ -19,7 +18,7 @@ const COLOR_STOPS: Record<string, string[]> = {
 };
 
 type SliceTool   = "none" | "slice-h" | "slice-v";
-type InspectTool = "none" | "point-select" | "depth-graph" | "carbon-sim";
+type InspectTool = "none" | "point-select" | "depth-graph";
 type ToolState   = SliceTool | InspectTool;
 
 const sliceTools: { id: SliceTool; label: string; icon: typeof Crosshair; desc: string }[] = [
@@ -30,7 +29,6 @@ const sliceTools: { id: SliceTool; label: string; icon: typeof Crosshair; desc: 
 const inspectTools: { id: InspectTool; label: string; icon: typeof Crosshair; desc: string }[] = [
   { id: "point-select", label: "Point Inspection",        icon: Crosshair, desc: "Click any voxel to inspect its column" },
   { id: "depth-graph",  label: "Depth Profile",           icon: BarChart2, desc: "Concentration vs. depth chart" },
-  { id: "carbon-sim",   label: "Decarbonization sim",     icon: Leaf,      desc: "Compare HSI + seagrass-carbon for up to 4 cells with a measure" },
 ];
 
 // ── Mini-map constants (top-down bay view for vertical slice) ─────────────────
@@ -95,7 +93,7 @@ export default function PlaybackPage() {
   const _initPx = searchParams.get("px");
   const _initPz = searchParams.get("pz");
   // If px/pz are in the URL but no inspect tool, default to point-select
-  const _initInspect = (["none","point-select","depth-graph","carbon-sim"].includes(_initTool) ? _initTool : "none") as InspectTool;
+  const _initInspect = (["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool;
   const [inspectTool, setInspectTool] = useState<InspectTool>(
     _initInspect === "none" && _initPx !== null && _initPz !== null ? "point-select" : _initInspect
   );
@@ -107,11 +105,6 @@ export default function PlaybackPage() {
     return null;
   });
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; z: number } | null>(null);
-  // Multi-pixel selection state for the decarbonization simulator (max 4) —
-  // single project-area measure now lives at page level (not per-pixel).
-  const [selectedPixels, setSelectedPixels] = useState<SelectedPixel[]>([]);
-  const [decarbMeasure, setDecarbMeasure]   = useState<MeasureId>("none");
-  const [decarbAppliedAt, setDecarbAppliedAt] = useState<number>(0);
   // Default: UI hidden on the Ocean Playback 3D page so the bay reads as the
   // primary visual on first paint. Pass `?ui=1` to deep-link with UI visible.
   const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
@@ -256,30 +249,9 @@ export default function PlaybackPage() {
   }, [isPlaying, speed, weekRange]);
 
   const handleCellClick = (x: number, z: number) => {
-    if (inspectTool === "carbon-sim") {
-      // Toggle pixel into the multi-selection set (max 4, distinct colors).
-      // The measure is at the project-area level, not per-pixel.
-      setSelectedPixels((prev) => {
-        const id = `${x}:${z}`;
-        const idx = prev.findIndex((p) => p.id === id);
-        if (idx >= 0) return prev.filter((p) => p.id !== id);
-        if (prev.length >= 4) return prev;
-        const usedColors = new Set(prev.map((p) => p.color));
-        const color = PIXEL_PALETTE.find((c) => !usedColors.has(c)) ?? PIXEL_PALETTE[prev.length % PIXEL_PALETTE.length];
-        return [...prev, { id, x, z, color }];
-      });
-      return;
-    }
     setSelectedPoint({ x, z });
     if (inspectTool === "none") setInspectTool("point-select");
   };
-
-  const handleChangeMeasure = (m: MeasureId) => {
-    setDecarbMeasure(m);
-    setDecarbAppliedAt(week);
-  };
-  const handleRemovePixel = (id: string) =>
-    setSelectedPixels((prev) => prev.filter((p) => p.id !== id));
 
   const handleSeek = (w: number) => { setWeek(w); pause(); };
 
@@ -442,7 +414,6 @@ export default function PlaybackPage() {
               showAnnotations={showUI}
               cameraPreset={cameraPreset}
               cameraPresetTick={cameraPresetTick}
-              markerPixels={inspectTool === "carbon-sim" ? selectedPixels : undefined}
             />
 
             {/* Live coordinate HUD — top-right corner */}
@@ -696,21 +667,11 @@ export default function PlaybackPage() {
                   })}
                 </div>
                 {/* Prompt shown when an inspect tool is active but no voxel has been picked yet */}
-                {inspectTool !== "none" && inspectTool !== "carbon-sim" && !selectedPoint && (
+                {inspectTool !== "none" && !selectedPoint && (
                   <div className="mt-2 flex items-center gap-1.5 rounded-md bg-primary/8 border border-primary/20 px-2.5 py-2">
                     <Crosshair size={11} className="text-primary flex-shrink-0" />
                     <span className="text-[10px] text-primary leading-tight">
                       Click any voxel in the 3D view to inspect
-                    </span>
-                  </div>
-                )}
-                {inspectTool === "carbon-sim" && (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-emerald-50 border border-emerald-200 px-2.5 py-2">
-                    <Leaf size={11} className="text-emerald-700 flex-shrink-0" />
-                    <span className="text-[10px] text-emerald-800 leading-tight">
-                      {selectedPixels.length === 0
-                        ? "Click ocean cells to compare HSI + carbon (max 4)"
-                        : `${selectedPixels.length} of 4 cells selected — pick a measure for the project area`}
                     </span>
                   </div>
                 )}
@@ -879,22 +840,8 @@ export default function PlaybackPage() {
               </div>
             )}
 
-            {/* Decarbonization simulator inspector */}
-            {inspectTool === "carbon-sim" && (
-              <DecarbInspector
-                measure={decarbMeasure}
-                appliedAtWeek={decarbAppliedAt}
-                pixels={selectedPixels}
-                week={week}
-                weekRange={weekRange}
-                year={year}
-                onChangeMeasure={handleChangeMeasure}
-                onRemovePixel={handleRemovePixel}
-              />
-            )}
-
             {/* Selected column — visible whenever a single-point inspect tool is active */}
-            {selectedPoint && inspectTool !== "none" && inspectTool !== "carbon-sim" && (() => {
+            {selectedPoint && inspectTool !== "none" && (() => {
               const coords = gridToCoords(selectedPoint.x, selectedPoint.z, 0);
               return (
                 <div className="px-4 py-4">
