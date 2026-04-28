@@ -624,17 +624,23 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
 // ── Sub-basin metadata + steady-state indicator values ──────────────────────
 //
 // The Sub-basin tab compares 1–25 sub-basins on five primary indicators:
-//   forestC   — Forest carbon sequestration   (kg/ha,    healthy 300)
-//   soilC     — Soil organic-carbon stock     (kg/ha,    healthy 300)
-//   nitrogen  — Total nitrogen export load    (kg/day,   healthy 500)
-//   phosphorus— Total phosphorus export load  (kg/day,   healthy 250)
-//   waterFlow — Mean discharge at outlet      (m³/s,     healthy 100)
+//   forestC   — Forest carbon stock           (t C/ha)
+//   soilC     — Soil organic carbon stock     (t C/ha)
+//   nitrogen  — Total nitrogen export rate    (kg/ha/yr)
+//   phosphorus— Total phosphorus export rate  (kg/ha/yr)
+//   waterFlow — Mean discharge at outlet      (m³/s)
 //
-// Values are simulated steady-state annual means (no time dimension).  They
-// honour the spec's sanity checks: basins with no forest cover have zero
-// forestC; basins dominated by paddy / agricultural cover carry the highest
-// soilC; urban basins carry elevated N+P loads.  Numbers are deterministic so
-// the comparison view is reproducible across renders.
+// All four land indicators are now expressed per hectare so the same y-axis
+// envelope means the same thing across basins of different sizes.  The
+// comparison reference is *not* a fixed scientific health threshold; it is
+// the **regional baseline average** computed across all 25 sub-basins (see
+// `SUB_BASIN_BASELINE_AVG` below).  This shifts the view from "are we
+// healthy?" to "are we above or below the regional norm?", which is what
+// the Sub-basin tab is for.
+//
+// Values are simulated steady-state annual means (no time dimension) and
+// deterministic.  Sanity rules: urban basins ⇒ 0 forestC; agricultural
+// basins ⇒ highest soilC and the highest N + P export rates.
 export type SubBasinLandUse =
   | "forest"
   | "agricultural"
@@ -643,11 +649,11 @@ export type SubBasinLandUse =
   | "coastal";
 
 export interface SubBasinIndicators {
-  forestC:    number; // kg/ha
-  soilC:      number; // kg/ha
-  nitrogen:   number; // kg/day
-  phosphorus: number; // kg/day
-  waterFlow:  number; // m³/s
+  forestC:    number; // t C/ha    (stock)
+  soilC:      number; // t C/ha    (stock)
+  nitrogen:   number; // kg/ha/yr  (export rate)
+  phosphorus: number; // kg/ha/yr  (export rate)
+  waterFlow:  number; // m³/s      (mean discharge)
 }
 
 export interface SubBasinMeta {
@@ -665,29 +671,26 @@ export interface SubBasinIndicatorDef {
   id:        SubBasinIndicatorId;
   label:     string;
   shortLabel:string;
-  unit:      string;        // per-basin unit (rate or density)
+  unit:      string;        // per-basin unit (per-area density / rate)
   totalUnit: string;        // unit shown in the Aggregate view
-  healthy:   number;        // healthy threshold (per-basin units)
   /**
    * additive=true means values can be summed across basins directly
-   * (e.g. nitrogen load kg/day, water flow m³/s).
-   * additive=false means the value is a density and must be area-weighted
-   * to produce an aggregate (e.g. forest C kg/ha → total kg = density × area).
+   * (currently: water flow m³/s).
+   * additive=false means the value is a per-area density and must be
+   * area-weighted to produce an aggregate (forest C t/ha → total t,
+   * N kg/ha/yr → total kg/yr, etc).
    */
   additive:  boolean;
-  decimals:  number;
+  decimals:  number;        // decimals shown in per-basin display
 }
 
 export const SUB_BASIN_INDICATORS: SubBasinIndicatorDef[] = [
-  { id: "forestC",    label: "Forest Carbon Seq.", shortLabel: "Forest C", unit: "kg/ha",  totalUnit: "kg",     healthy: 300, additive: false, decimals: 0 },
-  { id: "soilC",      label: "Soil Organic C",     shortLabel: "Soil C",   unit: "kg/ha",  totalUnit: "kg",     healthy: 300, additive: false, decimals: 0 },
-  { id: "nitrogen",   label: "Nitrogen Load",      shortLabel: "Nitrogen", unit: "kg/day", totalUnit: "kg/day", healthy: 500, additive: true,  decimals: 0 },
-  { id: "phosphorus", label: "Phosphorus Load",    shortLabel: "Phosphorus", unit: "kg/day", totalUnit: "kg/day", healthy: 250, additive: true,  decimals: 0 },
-  { id: "waterFlow",  label: "Water Flow",         shortLabel: "Water Flow", unit: "m³/s",  totalUnit: "m³/s",  healthy: 100, additive: true,  decimals: 1 },
+  { id: "forestC",    label: "Forest Carbon Stock", shortLabel: "Forest C",   unit: "t/ha",     totalUnit: "t",     additive: false, decimals: 1 },
+  { id: "soilC",      label: "Soil Organic C",      shortLabel: "Soil C",     unit: "t/ha",     totalUnit: "t",     additive: false, decimals: 1 },
+  { id: "nitrogen",   label: "Nitrogen Export",     shortLabel: "Nitrogen",   unit: "kg/ha/yr", totalUnit: "kg/yr", additive: false, decimals: 1 },
+  { id: "phosphorus", label: "Phosphorus Export",   shortLabel: "Phosphorus", unit: "kg/ha/yr", totalUnit: "kg/yr", additive: false, decimals: 2 },
+  { id: "waterFlow",  label: "Water Flow",          shortLabel: "Water Flow", unit: "m³/s",     totalUnit: "m³/s",  additive: true,  decimals: 1 },
 ];
-
-export const SUB_BASIN_HEALTHY: Record<SubBasinIndicatorId, number> =
-  Object.fromEntries(SUB_BASIN_INDICATORS.map(i => [i.id, i.healthy])) as Record<SubBasinIndicatorId, number>;
 
 // 25-color categorical palette used to colour each selected sub-basin
 // consistently across the map polygon, the chip strip, and every chart bar.
@@ -751,40 +754,45 @@ function _indicatorsFor(seed: SubBasinSeed): SubBasinIndicators {
   const j = (salt: number, lo: number, hi: number) =>
     lo + _sbHash(seed.id, salt) * (hi - lo);
 
-  // Per-land-use baselines tuned to land in the [0, healthy×1.3] envelope so
-  // the bar / radar charts read clearly.  Sanity rules: urban basins have
-  // zero forestC; agricultural basins carry the highest soilC + N/P loads.
+  // Per-land-use ranges in the new units, tuned to realistic per-area values
+  // for a temperate Japanese coastal watershed.  Sanity rules: urban ⇒ 0
+  // forest C; agricultural ⇒ highest soil C + highest N/P export rates.
+  //
+  //   forestC     t C/ha      (carbon stock in standing biomass)
+  //   soilC       t C/ha      (organic carbon stock in topsoil)
+  //   nitrogen    kg/ha/yr    (annual export rate)
+  //   phosphorus  kg/ha/yr    (annual export rate)
   let forestC = 0, soilC = 0, nitrogen = 0, phosphorus = 0;
   switch (seed.landUse) {
     case "forest":
-      forestC    = j(1, 240, 360);
-      soilC      = j(2, 140, 220);
-      nitrogen   = j(3, 120, 240);
-      phosphorus = j(4,  60, 130);
+      forestC    = j(1, 80,  160);
+      soilC      = j(2, 60,  110);
+      nitrogen   = j(3,  1.5,  5);
+      phosphorus = j(4,  0.10, 0.30);
       break;
     case "agricultural":
-      forestC    = j(1,  40,  90);
-      soilC      = j(2, 320, 420);
-      nitrogen   = j(3, 460, 640);
-      phosphorus = j(4, 220, 320);
+      forestC    = j(1, 10,   30);
+      soilC      = j(2, 90,  170);
+      nitrogen   = j(3, 14,   28);
+      phosphorus = j(4,  0.80, 1.80);
       break;
     case "mixed":
-      forestC    = j(1, 140, 240);
-      soilC      = j(2, 200, 290);
-      nitrogen   = j(3, 280, 420);
-      phosphorus = j(4, 130, 210);
+      forestC    = j(1, 35,   75);
+      soilC      = j(2, 55,   95);
+      nitrogen   = j(3,  6,   12);
+      phosphorus = j(4,  0.30, 0.80);
       break;
     case "urban":
-      forestC    = 0;                    // sanity: no forest pixels → 0
-      soilC      = j(2,  80, 160);
-      nitrogen   = j(3, 480, 660);
-      phosphorus = j(4, 230, 320);
+      forestC    = 0;                       // sanity: no forest pixels → 0
+      soilC      = j(2, 25,   55);
+      nitrogen   = j(3, 10,   20);
+      phosphorus = j(4,  0.60, 1.40);
       break;
     case "coastal":
-      forestC    = j(1,  20,  80);
-      soilC      = j(2, 120, 200);
-      nitrogen   = j(3, 180, 320);
-      phosphorus = j(4,  90, 170);
+      forestC    = j(1,  8,   25);
+      soilC      = j(2, 35,   70);
+      nitrogen   = j(3,  3,    9);
+      phosphorus = j(4,  0.25, 0.75);
       break;
   }
 
@@ -793,10 +801,10 @@ function _indicatorsFor(seed: SubBasinSeed): SubBasinIndicators {
   const waterFlow = flowBase + j(5, -8, 14);
 
   return {
-    forestC:    Math.round(forestC),
-    soilC:      Math.round(soilC),
-    nitrogen:   Math.round(nitrogen),
-    phosphorus: Math.round(phosphorus),
+    forestC:    +forestC.toFixed(1),
+    soilC:      +soilC.toFixed(1),
+    nitrogen:   +nitrogen.toFixed(1),
+    phosphorus: +phosphorus.toFixed(2),
     waterFlow:  +waterFlow.toFixed(1),
   };
 }
@@ -811,31 +819,171 @@ export function getSubBasin(id: number): SubBasinMeta | undefined {
 }
 
 /**
+ * Regional baseline = simple arithmetic mean of each indicator across all 25
+ * sub-basins.  Used as the dashed reference line on every comparison chart
+ * so users can read each basin as "above / below the regional norm".
+ *
+ * Note: simple mean (not area-weighted) so the line represents "the typical
+ * sub-basin" — a planning benchmark, not a regional total proxy.
+ */
+export const SUB_BASIN_BASELINE_AVG: Record<SubBasinIndicatorId, number> = (() => {
+  const sums = { forestC: 0, soilC: 0, nitrogen: 0, phosphorus: 0, waterFlow: 0 };
+  for (const b of SUB_BASIN_META) {
+    sums.forestC    += b.indicators.forestC;
+    sums.soilC      += b.indicators.soilC;
+    sums.nitrogen   += b.indicators.nitrogen;
+    sums.phosphorus += b.indicators.phosphorus;
+    sums.waterFlow  += b.indicators.waterFlow;
+  }
+  const n = SUB_BASIN_META.length;
+  return {
+    forestC:    sums.forestC    / n,
+    soilC:      sums.soilC      / n,
+    nitrogen:   sums.nitrogen   / n,
+    phosphorus: sums.phosphorus / n,
+    waterFlow:  sums.waterFlow  / n,
+  };
+})();
+
+// ─── Decarbonization measures (land-side) ────────────────────────────────────
+//
+// Aggregate-only: applied uniformly to every selected sub-basin to answer
+// "if we apply this measure across the selection, what's the regional
+// impact?"  Coefficients are *simulated* multiplicative effects (1.0 = no
+// change) tuned from the watershed-management literature; swap with
+// calibrated values when the user delivers them.
+export type SubBasinMeasureId =
+  | "none"
+  | "afforestation"
+  | "riparian_buffer"
+  | "agri_bmp"
+  | "wetland"
+  | "no_till"
+  | "reduce_np";
+
+export interface SubBasinMeasure {
+  id:          SubBasinMeasureId;
+  label:       string;
+  shortLabel:  string;
+  description: string;
+  /** Multiplier per indicator; missing keys default to 1.0 (no change). */
+  effect: Partial<Record<SubBasinIndicatorId, number>>;
+}
+
+export const SUB_BASIN_MEASURES: SubBasinMeasure[] = [
+  {
+    id: "none",
+    label: "No measure (baseline)",
+    shortLabel: "Baseline",
+    description: "Current conditions, no intervention applied.",
+    effect: {},
+  },
+  {
+    id: "afforestation",
+    label: "Afforestation",
+    shortLabel: "Afforestation",
+    description: "Plant native broadleaf forest on bare or marginal land. Increases carbon stock and reduces nutrient runoff.",
+    effect: { forestC: 1.40, soilC: 1.10, nitrogen: 0.75, phosphorus: 0.80, waterFlow: 0.92 },
+  },
+  {
+    id: "riparian_buffer",
+    label: "Riparian buffer strips",
+    shortLabel: "Riparian buffer",
+    description: "Vegetated buffer strips along streams. Strips dissolved N and particulate P before runoff reaches the channel.",
+    effect: { forestC: 1.05, nitrogen: 0.65, phosphorus: 0.55, waterFlow: 0.96 },
+  },
+  {
+    id: "agri_bmp",
+    label: "Agricultural BMPs / cover crop",
+    shortLabel: "Agri BMP",
+    description: "Cover cropping + reduced fertilizer + precision application. Builds soil C and curbs nutrient export.",
+    effect: { soilC: 1.20, nitrogen: 0.70, phosphorus: 0.65 },
+  },
+  {
+    id: "wetland",
+    label: "Wetland restoration",
+    shortLabel: "Wetland",
+    description: "Restore in-basin wetlands. High N/P stripping efficiency and modest soil-C uplift.",
+    effect: { soilC: 1.10, nitrogen: 0.60, phosphorus: 0.50, waterFlow: 0.95 },
+  },
+  {
+    id: "no_till",
+    label: "No-till / reduced tillage",
+    shortLabel: "No-till",
+    description: "Eliminate soil disturbance. Strong soil-C accumulation and modest nutrient-export reduction.",
+    effect: { soilC: 1.30, nitrogen: 0.85, phosphorus: 0.85 },
+  },
+  {
+    id: "reduce_np",
+    label: "Reduce upstream N/P load",
+    shortLabel: "Reduce N/P",
+    description: "Direct upstream load reduction (sewage upgrades, fertilizer caps). Targets nutrients only.",
+    effect: { nitrogen: 0.50, phosphorus: 0.50 },
+  },
+];
+
+export function getSubBasinMeasure(id: string): SubBasinMeasure {
+  return SUB_BASIN_MEASURES.find(m => m.id === id) ?? SUB_BASIN_MEASURES[0];
+}
+
+/** Apply a measure's effect multipliers to a basin's indicators. */
+export function applyMeasure(
+  ind: SubBasinIndicators,
+  measureId: SubBasinMeasureId | string,
+): SubBasinIndicators {
+  const m = getSubBasinMeasure(measureId);
+  return {
+    forestC:    ind.forestC    * (m.effect.forestC    ?? 1),
+    soilC:      ind.soilC      * (m.effect.soilC      ?? 1),
+    nitrogen:   ind.nitrogen   * (m.effect.nitrogen   ?? 1),
+    phosphorus: ind.phosphorus * (m.effect.phosphorus ?? 1),
+    waterFlow:  ind.waterFlow  * (m.effect.waterFlow  ?? 1),
+  };
+}
+
+/**
  * Aggregate the 5 indicators across a set of selected sub-basins.
  *
- * Densities (forestC, soilC) are area-weighted: returned value is the
- * absolute total in kg over the combined area.  Flows / loads (nitrogen,
- * phosphorus, waterFlow) are summed directly because basins are independent
- * tributaries.  The unit shown in the Aggregate view shifts accordingly
- * (see `SubBasinIndicatorDef.totalUnit`).
+ * Per-area indicators (forestC t/ha, soilC t/ha, N kg/ha/yr, P kg/ha/yr) are
+ * area-weighted ⇒ returned in absolute units (t, t, kg/yr, kg/yr).  Water
+ * flow is summed directly (m³/s).
+ *
+ * When `measureId` is provided (and ≠ "none") the function returns BOTH the
+ * baseline aggregate (`baseValues`) and the post-measure aggregate
+ * (`values`) in a single pass, so the panel can render Before vs After
+ * without a second call.  When no measure is set, `values` and `baseValues`
+ * are identical.
  */
-export function aggregateSubBasins(ids: number[]): {
-  values:    Record<SubBasinIndicatorId, number>;
-  totalArea: number;
+export function aggregateSubBasins(
+  ids: number[],
+  measureId: SubBasinMeasureId | string = "none",
+): {
+  values:     Record<SubBasinIndicatorId, number>;
+  baseValues: Record<SubBasinIndicatorId, number>;
+  totalArea:  number;
 } {
   const basins = ids.map(getSubBasin).filter((b): b is SubBasinMeta => !!b);
   const totalArea = basins.reduce((s, b) => s + b.area_ha, 0);
-  const values: Record<SubBasinIndicatorId, number> = {
-    forestC: 0, soilC: 0, nitrogen: 0, phosphorus: 0, waterFlow: 0,
-  };
+
+  const values:     Record<SubBasinIndicatorId, number> = { forestC: 0, soilC: 0, nitrogen: 0, phosphorus: 0, waterFlow: 0 };
+  const baseValues: Record<SubBasinIndicatorId, number> = { forestC: 0, soilC: 0, nitrogen: 0, phosphorus: 0, waterFlow: 0 };
+
   for (const b of basins) {
-    values.forestC    += b.indicators.forestC    * b.area_ha; // density × area
-    values.soilC      += b.indicators.soilC      * b.area_ha;
-    values.nitrogen   += b.indicators.nitrogen;
-    values.phosphorus += b.indicators.phosphorus;
-    values.waterFlow  += b.indicators.waterFlow;
+    const measured = applyMeasure(b.indicators, measureId);
+    for (const ind of SUB_BASIN_INDICATORS) {
+      const baseV = b.indicators[ind.id];
+      const newV  = measured[ind.id];
+      if (ind.additive) {
+        baseValues[ind.id] += baseV;
+        values[ind.id]     += newV;
+      } else {
+        // per-area density / rate ⇒ multiply by area to get absolute totals
+        baseValues[ind.id] += baseV * b.area_ha;
+        values[ind.id]     += newV * b.area_ha;
+      }
+    }
   }
-  return { values, totalArea };
+  return { values, baseValues, totalArea };
 }
 
 // ── Nutrient field generator (Delft3D-reference-shaped) ───────────────────────

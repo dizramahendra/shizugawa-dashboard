@@ -42,16 +42,27 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
   - Playback speed control (0.5×, 1×, 2×, 4×)
   - Horizontal / vertical slice modes + depth graph
   - **Sub-basin tab (`/sub-basin`)**: multi-select 1–25 sub-basins on the map
-    and compare 5 primary indicators (Forest C kg/ha, Soil C kg/ha, Nitrogen
-    kg/day, Phosphorus kg/day, Water Flow m³/s).  Single selection ⇒ radar
-    chart fingerprint with healthy reference ring.  2+ selections ⇒ five
-    grouped bar charts (one per indicator) with healthy reference line.
-    Aggregate toggle collapses bars into a single "Total Regional Sum" per
-    indicator; densities (forestC, soilC) are area-weighted (unit shifts to
-    absolute kg) while loads/flows are summed directly.  Selection is
-    deep-linkable via `?ids=1,5,20&agg=1`.  Sanity rules baked into
-    `SUB_BASIN_META`: urban basins ⇒ 0 forestC, agricultural basins ⇒
-    high soilC + N/P loads.
+    and compare 5 primary indicators (Forest C **t/ha**, Soil C **t/ha**,
+    Nitrogen **kg/ha/yr**, Phosphorus **kg/ha/yr**, Water Flow **m³/s**) —
+    all four land indicators normalised per hectare so envelope means the
+    same thing across basins of different sizes.  Reference line on every
+    chart is the **regional baseline average across all 25 sub-basins**
+    (`SUB_BASIN_BASELINE_AVG`, simple arithmetic mean), not a fixed health
+    threshold.  Single selection ⇒ radar chart fingerprint + value-vs-avg
+    table; the dashed ring marks "1.0 × regional avg".  2+ selections ⇒
+    five stacked vertical-bar cards (one per indicator) with the avg
+    reference line and per-bar hover tooltips showing basin name, value,
+    and Δ vs avg.  **Aggregate** toggle collapses bars into "Total Regional
+    Sum"; per-area indicators are area-weighted (unit shifts to absolute t
+    or kg/yr) while waterFlow is summed directly.  Aggregate exposes two
+    extra controls: a **chart-type toggle** (Bars / Radar) and a
+    **decarbonization measure dropdown** (afforestation, riparian buffer,
+    agri BMPs, wetland, no-till, reduce N/P — all marked *(simulated)*).
+    With a measure picked, every aggregate chart switches to **Before vs
+    After** (paired bars + Δ% badge in the bars view; two overlaid
+    polygons in the radar view).  Sanity rules baked into `SUB_BASIN_META`:
+    urban basins ⇒ 0 forestC, agricultural basins ⇒ high soilC + N/P
+    export rates.  Full URL state: `?ids=1,5,20&agg=1&m=afforestation&view=radar`.
   - **Carbon Sequestration tab (`/carbon`)**: dedicated route with project-area
     decarbonization simulator focused on **seagrass (eelgrass / Zostera marina)
     carbon** — Shizugawa Bay's signature blue-carbon habitat. Single

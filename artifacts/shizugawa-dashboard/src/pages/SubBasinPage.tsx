@@ -3,23 +3,33 @@ import { useSearchParams } from "react-router-dom";
 import TopNav from "@/components/TopNav";
 import MapLibreMap from "@/components/MapLibreMap";
 import SubBasinComparisonPanel from "@/components/SubBasinComparisonPanel";
-import { SUB_BASIN_COLORS, SUB_BASIN_META } from "@/lib/simulatedData";
+import {
+  SUB_BASIN_COLORS,
+  SUB_BASIN_META,
+  SUB_BASIN_MEASURES,
+  type SubBasinMeasureId,
+} from "@/lib/simulatedData";
 
 /**
  * Sub-basin tab — multi-select 1–25 sub-basins on the map and compare their
  * five primary environmental indicators side-by-side.  See
  * `SubBasinComparisonPanel` for the visualisation contract.
  *
- * Selection is mirrored to the URL as `?ids=1,5,20` so a deep-link captures
- * the comparison set the user is looking at.  The `agg=1` flag toggles the
- * Total Regional Sum view.
+ * URL state:
+ *   ?ids=1,5,20      selected sub-basin ids (max 25, deduped)
+ *   ?agg=1           aggregate (regional sum) view
+ *   ?m=afforestation decarbonization measure (aggregate-only)
+ *   ?view=radar      switch aggregate from grouped bars to radar
  */
+
+const VALID_MEASURE_IDS = new Set<string>(SUB_BASIN_MEASURES.map(m => m.id));
+
 export default function SubBasinPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // ── Initial selection from URL (?ids=1,5,20) ──
-  // Defensively dedupe (preserving first-seen order) and clamp to 25 so a
-  // malformed deep-link like ?ids=1,1,1,2,... cannot inflate aggregate
+  // ── Initial state from URL ──
+  // Defensively dedupe ids (preserving first-seen order) and clamp to 25 so
+  // a malformed deep-link like ?ids=1,1,1,2,... cannot inflate aggregate
   // totals or render duplicate chips/charts.
   const initIds = useMemo(() => {
     const raw = searchParams.get("ids");
@@ -37,8 +47,20 @@ export default function SubBasinPage() {
     return out;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const initMeasure: SubBasinMeasureId = useMemo(() => {
+    const raw = searchParams.get("m");
+    if (raw && VALID_MEASURE_IDS.has(raw)) return raw as SubBasinMeasureId;
+    return "none";
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const initAggregateView: "bars" | "radar" = useMemo(() => {
+    return searchParams.get("view") === "radar" ? "radar" : "bars";
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [selectedIds, setSelectedIds] = useState<number[]>(initIds);
   const [aggregate, setAggregate]     = useState<boolean>(searchParams.get("agg") === "1");
+  const [measureId, setMeasureId]     = useState<SubBasinMeasureId>(initMeasure);
+  const [aggregateView, setAggregateView] = useState<"bars" | "radar">(initAggregateView);
 
   // Stable id→color mapping based on selection order, so a basin keeps the
   // same colour on the map and in every chart bar even as others are added.
@@ -61,11 +83,12 @@ export default function SubBasinPage() {
       const next = new URLSearchParams(p);
       if (selectedIds.length > 0) next.set("ids", selectedIds.join(","));
       else next.delete("ids");
-      if (aggregate) next.set("agg", "1");
-      else next.delete("agg");
+      if (aggregate) next.set("agg", "1"); else next.delete("agg");
+      if (measureId !== "none") next.set("m", measureId); else next.delete("m");
+      if (aggregateView === "radar") next.set("view", "radar"); else next.delete("view");
       return next;
     }, { replace: true });
-  }, [selectedIds, aggregate, setSearchParams]);
+  }, [selectedIds, aggregate, measureId, aggregateView, setSearchParams]);
 
   // ── Selection handlers ──
   const handleToggle = useCallback((id: number) => {
@@ -83,10 +106,22 @@ export default function SubBasinPage() {
   const handleClear = useCallback(() => {
     setSelectedIds([]);
     setAggregate(false);
+    setMeasureId("none");
+    setAggregateView("bars");
   }, []);
 
   const handleSelectAll = useCallback(() => {
     setSelectedIds(SUB_BASIN_META.map(b => b.id));
+  }, []);
+
+  // Turning aggregate OFF resets the aggregate-only sub-state so coming
+  // back to it is a clean default (no measure, bars).
+  const handleSetAggregate = useCallback((v: boolean) => {
+    setAggregate(v);
+    if (!v) {
+      setMeasureId("none");
+      setAggregateView("bars");
+    }
   }, []);
 
   // No-op river / ocean handlers (rivers + ocean are non-interactive in
@@ -157,7 +192,11 @@ export default function SubBasinPage() {
             selectedIds={selectedIds}
             colorFor={colorFor}
             aggregate={aggregate}
-            onSetAggregate={setAggregate}
+            measureId={measureId}
+            aggregateView={aggregateView}
+            onSetAggregate={handleSetAggregate}
+            onSetMeasure={setMeasureId}
+            onSetAggregateView={setAggregateView}
             onRemove={handleRemove}
             onClear={handleClear}
             onSelectAll={handleSelectAll}
