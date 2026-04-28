@@ -41,6 +41,17 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
   - Scientific color scales per variable
   - Playback speed control (0.5×, 1×, 2×, 4×)
   - Horizontal / vertical slice modes + depth graph
+  - **Sub-basin tab (`/sub-basin`)**: multi-select 1–25 sub-basins on the map
+    and compare 5 primary indicators (Forest C kg/ha, Soil C kg/ha, Nitrogen
+    kg/day, Phosphorus kg/day, Water Flow m³/s).  Single selection ⇒ radar
+    chart fingerprint with healthy reference ring.  2+ selections ⇒ five
+    grouped bar charts (one per indicator) with healthy reference line.
+    Aggregate toggle collapses bars into a single "Total Regional Sum" per
+    indicator; densities (forestC, soilC) are area-weighted (unit shifts to
+    absolute kg) while loads/flows are summed directly.  Selection is
+    deep-linkable via `?ids=1,5,20&agg=1`.  Sanity rules baked into
+    `SUB_BASIN_META`: urban basins ⇒ 0 forestC, agricultural basins ⇒
+    high soilC + N/P loads.
   - **Carbon Sequestration tab (`/carbon`)**: dedicated route with project-area
     decarbonization simulator focused on **seagrass (eelgrass / Zostera marina)
     carbon** — Shizugawa Bay's signature blue-carbon habitat. Single

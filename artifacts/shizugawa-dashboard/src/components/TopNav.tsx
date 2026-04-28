@@ -14,7 +14,8 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
   const isCS     = location.pathname.startsWith("/cross-section");
   const isRiver  = location.pathname.startsWith("/river");
   const isCarbon = location.pathname.startsWith("/carbon");
-  const isMap    = !isOcean && !isCS && !isRiver && !isCarbon;
+  const isSubBasin = location.pathname.startsWith("/sub-basin");
+  const isMap    = !isOcean && !isCS && !isRiver && !isCarbon && !isSubBasin;
 
   /*
    * Cross-section tab href:
@@ -104,6 +105,15 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
           onClick={handleMapTabClick}
         >
           Map Viewport
+        </NavLink>
+        <NavLink
+          to="/sub-basin"
+          className={`tab-item ${isSubBasin ? "tab-item-active" : ""}`}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-sm bg-amber-400 inline-block" />
+            Sub-basin
+          </span>
         </NavLink>
         {/* HIDDEN – uncomment to restore Cross-Section tab
         <NavLink

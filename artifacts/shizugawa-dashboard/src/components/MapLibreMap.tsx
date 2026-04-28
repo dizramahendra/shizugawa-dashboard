@@ -289,6 +289,14 @@ interface MapLibreMapProps {
   onSelectRiver: (id: string | null) => void;
   onSelectOcean: () => void;
   corridorSegments?: { rivers: CorridorRiverEntry[]; corridorId: string } | null;
+  // ── Sub-basin multi-select mode (used by the Sub-basin tab) ────────────
+  // When `subBasinMode` is true the rivers + ocean become non-interactive
+  // and the sub-basin polygons accept clicks; the parent owns the
+  // selection set and supplies a stable color per id.
+  subBasinMode?:    boolean;
+  selectedSubBasins?: number[];
+  subBasinColors?:    Record<number, string>;
+  onToggleSubBasin?:  (id: number) => void;
 }
 
 export default function MapLibreMap({
@@ -298,10 +306,19 @@ export default function MapLibreMap({
   onSelectRiver,
   onSelectOcean,
   corridorSegments,
+  subBasinMode = false,
+  selectedSubBasins,
+  subBasinColors,
+  onToggleSubBasin,
 }: MapLibreMapProps) {
   const navigate = useNavigate();
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
+  const [hoveredSubBasin, setHoveredSubBasin] = useState<number | null>(null);
+  const selectedSubBasinSet = useMemo(
+    () => new Set(selectedSubBasins ?? []),
+    [selectedSubBasins],
+  );
   const [showGrid, setShowGrid] = useState(false);
   const [vb, setVb] = useState({ x: 0, y: 0, w: SVG_W, h: SVG_H });
   const [showSoilLayer, setShowSoilLayer] = useState(false);
@@ -378,8 +395,9 @@ export default function MapLibreMap({
         preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", transition: "viewBox 0.6s ease" }}
       >
-        {/* Background layer — grayscale + dimmed when a river is selected */}
-        <g style={selectedRiver ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" } : { transition: "opacity 0.3s, filter 0.3s" }}>
+        {/* Background layer — grayscale + dimmed when a river is selected
+            (kept full-opacity in sub-basin mode so polygon fills read clearly) */}
+        <g style={(selectedRiver && !subBasinMode) ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" } : { transition: "opacity 0.3s, filter 0.3s" }}>
           {/* Geographic background from Figma (labels + rivers) */}
           <image
             href="/Sub-basin area.svg"
@@ -433,9 +451,32 @@ export default function MapLibreMap({
             );
           })()}
 
-          {/* Sub-basin fills — boundary lines only */}
+          {/* Sub-basin polygons — boundary-only normally; clickable + colored in subBasinMode */}
           {Object.entries(SUB_BASIN_PATHS).map(([idStr, d]) => {
             const id = Number(idStr);
+            if (subBasinMode) {
+              const isSel = selectedSubBasinSet.has(id);
+              const isHov = hoveredSubBasin === id;
+              const fillColor = isSel ? (subBasinColors?.[id] ?? "#3b82f6") : "#94a3b8";
+              const fillOpacity = isSel ? 0.55 : (isHov ? 0.18 : 0);
+              return (
+                <path
+                  key={id}
+                  d={d}
+                  fill={fillColor}
+                  fillOpacity={fillOpacity}
+                  stroke={isSel ? fillColor : "#64748b"}
+                  strokeWidth={isSel ? 1.4 : (isHov ? 1.0 : 0.6)}
+                  strokeOpacity={isSel ? 0.95 : 0.7}
+                  style={{ pointerEvents: "all", cursor: "pointer", transition: "fill-opacity 0.15s, stroke-width 0.15s" }}
+                  onMouseEnter={() => setHoveredSubBasin(id)}
+                  onMouseLeave={() => setHoveredSubBasin(prev => prev === id ? null : prev)}
+                  onClick={(e) => { e.stopPropagation(); onToggleSubBasin?.(id); }}
+                >
+                  <title>{`Sub-basin ${id}`}</title>
+                </path>
+              );
+            }
             return (
               <path key={id} d={d} fill="none"
                 stroke="#94a3b8" strokeWidth={0.6} strokeOpacity={0.6}
@@ -450,7 +491,10 @@ export default function MapLibreMap({
             stroke="#60a5c8"
             strokeWidth={hoveredOcean ? 2.5 : 1.5}
             strokeOpacity={0.9}
-            style={{ pointerEvents: selectedRiver ? "none" : "all", cursor: "pointer" }}
+            style={{
+              pointerEvents: (selectedRiver || subBasinMode) ? "none" : "all",
+              cursor: "pointer",
+            }}
             onMouseEnter={() => setHoveredOcean(true)}
             onMouseLeave={() => setHoveredOcean(false)}
             onClick={onSelectOcean}
@@ -535,7 +579,10 @@ export default function MapLibreMap({
 
               {/* Transparent wide hit zone */}
               <path d={d} stroke="transparent" strokeWidth={18} fill="none"
-                style={{ pointerEvents: corridorActive ? "none" : "all", cursor: "pointer" }}
+                style={{
+                  pointerEvents: (corridorActive || subBasinMode) ? "none" : "all",
+                  cursor: "pointer",
+                }}
                 onMouseEnter={() => setHoveredRiver(id)}
                 onMouseLeave={() => setHoveredRiver(null)}
                 onClick={() => onSelectRiver(modelId ?? null)}

@@ -621,6 +621,223 @@ export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
   moriya:    { name: "Moriya",          subBasin: "Sub-basin 20" },
 };
 
+// ── Sub-basin metadata + steady-state indicator values ──────────────────────
+//
+// The Sub-basin tab compares 1–25 sub-basins on five primary indicators:
+//   forestC   — Forest carbon sequestration   (kg/ha,    healthy 300)
+//   soilC     — Soil organic-carbon stock     (kg/ha,    healthy 300)
+//   nitrogen  — Total nitrogen export load    (kg/day,   healthy 500)
+//   phosphorus— Total phosphorus export load  (kg/day,   healthy 250)
+//   waterFlow — Mean discharge at outlet      (m³/s,     healthy 100)
+//
+// Values are simulated steady-state annual means (no time dimension).  They
+// honour the spec's sanity checks: basins with no forest cover have zero
+// forestC; basins dominated by paddy / agricultural cover carry the highest
+// soilC; urban basins carry elevated N+P loads.  Numbers are deterministic so
+// the comparison view is reproducible across renders.
+export type SubBasinLandUse =
+  | "forest"
+  | "agricultural"
+  | "mixed"
+  | "urban"
+  | "coastal";
+
+export interface SubBasinIndicators {
+  forestC:    number; // kg/ha
+  soilC:      number; // kg/ha
+  nitrogen:   number; // kg/day
+  phosphorus: number; // kg/day
+  waterFlow:  number; // m³/s
+}
+
+export interface SubBasinMeta {
+  id:         number;
+  name:       string;
+  area_ha:    number;
+  elevation:  number;       // mean elevation, m above sea level
+  landUse:    SubBasinLandUse;
+  indicators: SubBasinIndicators;
+}
+
+export type SubBasinIndicatorId = keyof SubBasinIndicators;
+
+export interface SubBasinIndicatorDef {
+  id:        SubBasinIndicatorId;
+  label:     string;
+  shortLabel:string;
+  unit:      string;        // per-basin unit (rate or density)
+  totalUnit: string;        // unit shown in the Aggregate view
+  healthy:   number;        // healthy threshold (per-basin units)
+  /**
+   * additive=true means values can be summed across basins directly
+   * (e.g. nitrogen load kg/day, water flow m³/s).
+   * additive=false means the value is a density and must be area-weighted
+   * to produce an aggregate (e.g. forest C kg/ha → total kg = density × area).
+   */
+  additive:  boolean;
+  decimals:  number;
+}
+
+export const SUB_BASIN_INDICATORS: SubBasinIndicatorDef[] = [
+  { id: "forestC",    label: "Forest Carbon Seq.", shortLabel: "Forest C", unit: "kg/ha",  totalUnit: "kg",     healthy: 300, additive: false, decimals: 0 },
+  { id: "soilC",      label: "Soil Organic C",     shortLabel: "Soil C",   unit: "kg/ha",  totalUnit: "kg",     healthy: 300, additive: false, decimals: 0 },
+  { id: "nitrogen",   label: "Nitrogen Load",      shortLabel: "Nitrogen", unit: "kg/day", totalUnit: "kg/day", healthy: 500, additive: true,  decimals: 0 },
+  { id: "phosphorus", label: "Phosphorus Load",    shortLabel: "Phosphorus", unit: "kg/day", totalUnit: "kg/day", healthy: 250, additive: true,  decimals: 0 },
+  { id: "waterFlow",  label: "Water Flow",         shortLabel: "Water Flow", unit: "m³/s",  totalUnit: "m³/s",  healthy: 100, additive: true,  decimals: 1 },
+];
+
+export const SUB_BASIN_HEALTHY: Record<SubBasinIndicatorId, number> =
+  Object.fromEntries(SUB_BASIN_INDICATORS.map(i => [i.id, i.healthy])) as Record<SubBasinIndicatorId, number>;
+
+// 25-color categorical palette used to colour each selected sub-basin
+// consistently across the map polygon, the chip strip, and every chart bar.
+export const SUB_BASIN_COLORS: string[] = [
+  "#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6",
+  "#ec4899","#14b8a6","#f97316","#6366f1","#84cc16",
+  "#06b6d4","#d946ef","#22c55e","#eab308","#a855f7",
+  "#0ea5e9","#f43f5e","#65a30d","#fb923c","#7c3aed",
+  "#0891b2","#be123c","#15803d","#b45309","#581c87",
+];
+
+// ─── Sub-basin records (1..25) ───────────────────────────────────────────────
+// Names follow RIVER_META where present; numbered "Sub-basin N" elsewhere.
+// Land-use rotation is hand-tuned so the radar / bar charts reveal a varied
+// envelope (forested upland → high forestC, agricultural → high soilC + N/P,
+// urban / coastal → 0 forestC + elevated N/P).
+type SubBasinSeed = {
+  id:        number;
+  name:      string;
+  area_ha:   number;
+  elevation: number;
+  landUse:   SubBasinLandUse;
+};
+
+const SUB_BASIN_SEEDS: SubBasinSeed[] = [
+  { id:  1, name: "Shizugawa",      area_ha: 1840, elevation: 145, landUse: "forest"       },
+  { id:  2, name: "Oura",           area_ha:  920, elevation:  98, landUse: "mixed"        },
+  { id:  3, name: "Kamaishi Inlet", area_ha:  410, elevation:  18, landUse: "coastal"      },
+  { id:  4, name: "Togura",         area_ha: 2240, elevation: 220, landUse: "forest"       },
+  { id:  5, name: "Urashiro",       area_ha: 1560, elevation: 175, landUse: "forest"       },
+  { id:  6, name: "Iriya",          area_ha:  680, elevation: 112, landUse: "mixed"        },
+  { id:  7, name: "Okawa",          area_ha: 1320, elevation:  88, landUse: "agricultural" },
+  { id:  8, name: "Niida",          area_ha: 1480, elevation: 134, landUse: "mixed"        },
+  { id:  9, name: "Karakuwa East",  area_ha:  790, elevation:  62, landUse: "coastal"      },
+  { id: 10, name: "Tomaya",         area_ha: 1110, elevation: 156, landUse: "forest"       },
+  { id: 11, name: "Shishiori",      area_ha:  540, elevation:  44, landUse: "urban"        },
+  { id: 12, name: "Onagawa",        area_ha:  860, elevation:  76, landUse: "mixed"        },
+  { id: 13, name: "Hachiman",       area_ha: 1690, elevation: 168, landUse: "forest"       },
+  { id: 14, name: "Motoyoshi",      area_ha: 1240, elevation:  92, landUse: "agricultural" },
+  { id: 15, name: "Mitobe",         area_ha:  720, elevation: 124, landUse: "forest"       },
+  { id: 16, name: "Sakura",         area_ha: 1080, elevation: 108, landUse: "mixed"        },
+  { id: 17, name: "Oritate",        area_ha:  640, elevation:  84, landUse: "agricultural" },
+  { id: 18, name: "Kitakami",       area_ha: 2480, elevation: 196, landUse: "forest"       },
+  { id: 19, name: "Sub-basin 19",   area_ha:  380, elevation:  56, landUse: "urban"        },
+  { id: 20, name: "Moriya",         area_ha: 1410, elevation: 142, landUse: "forest"       },
+  { id: 21, name: "Sub-basin 21",   area_ha:  590, elevation:  68, landUse: "agricultural" },
+  { id: 22, name: "Sub-basin 22",   area_ha:  830, elevation:  94, landUse: "mixed"        },
+  { id: 23, name: "Sub-basin 23",   area_ha:  470, elevation:  38, landUse: "coastal"      },
+  { id: 24, name: "Oya",            area_ha:  990, elevation: 118, landUse: "mixed"        },
+  { id: 25, name: "Kamaishi Upper", area_ha: 1350, elevation: 158, landUse: "forest"       },
+];
+
+// Tiny seeded PRNG so per-basin jitter is deterministic
+function _sbHash(id: number, salt: number): number {
+  let h = (id * 374761393 + salt * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+function _indicatorsFor(seed: SubBasinSeed): SubBasinIndicators {
+  const j = (salt: number, lo: number, hi: number) =>
+    lo + _sbHash(seed.id, salt) * (hi - lo);
+
+  // Per-land-use baselines tuned to land in the [0, healthy×1.3] envelope so
+  // the bar / radar charts read clearly.  Sanity rules: urban basins have
+  // zero forestC; agricultural basins carry the highest soilC + N/P loads.
+  let forestC = 0, soilC = 0, nitrogen = 0, phosphorus = 0;
+  switch (seed.landUse) {
+    case "forest":
+      forestC    = j(1, 240, 360);
+      soilC      = j(2, 140, 220);
+      nitrogen   = j(3, 120, 240);
+      phosphorus = j(4,  60, 130);
+      break;
+    case "agricultural":
+      forestC    = j(1,  40,  90);
+      soilC      = j(2, 320, 420);
+      nitrogen   = j(3, 460, 640);
+      phosphorus = j(4, 220, 320);
+      break;
+    case "mixed":
+      forestC    = j(1, 140, 240);
+      soilC      = j(2, 200, 290);
+      nitrogen   = j(3, 280, 420);
+      phosphorus = j(4, 130, 210);
+      break;
+    case "urban":
+      forestC    = 0;                    // sanity: no forest pixels → 0
+      soilC      = j(2,  80, 160);
+      nitrogen   = j(3, 480, 660);
+      phosphorus = j(4, 230, 320);
+      break;
+    case "coastal":
+      forestC    = j(1,  20,  80);
+      soilC      = j(2, 120, 200);
+      nitrogen   = j(3, 180, 320);
+      phosphorus = j(4,  90, 170);
+      break;
+  }
+
+  // Water flow scales with catchment area + a small jitter
+  const flowBase  = (seed.area_ha / 25);  // ≈ 16–100 m³/s for 400–2500 ha
+  const waterFlow = flowBase + j(5, -8, 14);
+
+  return {
+    forestC:    Math.round(forestC),
+    soilC:      Math.round(soilC),
+    nitrogen:   Math.round(nitrogen),
+    phosphorus: Math.round(phosphorus),
+    waterFlow:  +waterFlow.toFixed(1),
+  };
+}
+
+export const SUB_BASIN_META: SubBasinMeta[] = SUB_BASIN_SEEDS.map(s => ({
+  ...s,
+  indicators: _indicatorsFor(s),
+}));
+
+export function getSubBasin(id: number): SubBasinMeta | undefined {
+  return SUB_BASIN_META.find(b => b.id === id);
+}
+
+/**
+ * Aggregate the 5 indicators across a set of selected sub-basins.
+ *
+ * Densities (forestC, soilC) are area-weighted: returned value is the
+ * absolute total in kg over the combined area.  Flows / loads (nitrogen,
+ * phosphorus, waterFlow) are summed directly because basins are independent
+ * tributaries.  The unit shown in the Aggregate view shifts accordingly
+ * (see `SubBasinIndicatorDef.totalUnit`).
+ */
+export function aggregateSubBasins(ids: number[]): {
+  values:    Record<SubBasinIndicatorId, number>;
+  totalArea: number;
+} {
+  const basins = ids.map(getSubBasin).filter((b): b is SubBasinMeta => !!b);
+  const totalArea = basins.reduce((s, b) => s + b.area_ha, 0);
+  const values: Record<SubBasinIndicatorId, number> = {
+    forestC: 0, soilC: 0, nitrogen: 0, phosphorus: 0, waterFlow: 0,
+  };
+  for (const b of basins) {
+    values.forestC    += b.indicators.forestC    * b.area_ha; // density × area
+    values.soilC      += b.indicators.soilC      * b.area_ha;
+    values.nitrogen   += b.indicators.nitrogen;
+    values.phosphorus += b.indicators.phosphorus;
+    values.waterFlow  += b.indicators.waterFlow;
+  }
+  return { values, totalArea };
+}
+
 // ── Nutrient field generator (Delft3D-reference-shaped) ───────────────────────
 // The reference Delft3D animation shows nutrient hotspots emerging from the
 // river-mouth pixels along the western shoreline (and a smaller NE-corner

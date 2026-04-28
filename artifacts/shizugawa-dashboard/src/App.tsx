@@ -7,6 +7,7 @@ import PlaybackPage from "@/pages/PlaybackPage";
 // import CrossSectionPage from "@/pages/CrossSectionPage"; // HIDDEN – uncomment to restore
 import RiverPlaybackPage from "@/pages/RiverPlaybackPage";
 import CarbonPage from "@/pages/CarbonPage";
+import SubBasinPage from "@/pages/SubBasinPage";
 
 const queryClient = new QueryClient();
 
@@ -17,6 +18,7 @@ export default function App() {
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || "/"}>
           <Routes>
             <Route path="/" element={<BasinSelectionPage />} />
+            <Route path="/sub-basin" element={<SubBasinPage />} />
             <Route path="/playback" element={<PlaybackPage />} />
             {/* <Route path="/cross-section" element={<CrossSectionPage />} /> */}{/* HIDDEN – uncomment to restore */}
             <Route path="/river" element={<RiverPlaybackPage />} />
