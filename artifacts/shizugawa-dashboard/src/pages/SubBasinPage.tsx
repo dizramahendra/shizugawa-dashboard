@@ -19,8 +19,11 @@ import {
  *   ?ids=1,5,20      selected sub-basin ids (max 25, deduped)
  *   ?agg=1           aggregate (regional sum) view
  *   ?m=afforestation decarbonization measure (aggregate-only)
- *   ?view=radar      switch aggregate from grouped bars to radar
+ *   ?view=combined   single normalised bar chart (all 5 indicators on one axis)
+ *   ?view=radar      radar polygon view
  */
+
+type AggregateView = "bars" | "combined" | "radar";
 
 const VALID_MEASURE_IDS = new Set<string>(SUB_BASIN_MEASURES.map(m => m.id));
 
@@ -53,14 +56,17 @@ export default function SubBasinPage() {
     return "none";
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const initAggregateView: "bars" | "radar" = useMemo(() => {
-    return searchParams.get("view") === "radar" ? "radar" : "bars";
+  const initAggregateView: AggregateView = useMemo(() => {
+    const v = searchParams.get("view");
+    if (v === "radar")    return "radar";
+    if (v === "combined") return "combined";
+    return "bars";
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedIds, setSelectedIds] = useState<number[]>(initIds);
   const [aggregate, setAggregate]     = useState<boolean>(searchParams.get("agg") === "1");
   const [measureId, setMeasureId]     = useState<SubBasinMeasureId>(initMeasure);
-  const [aggregateView, setAggregateView] = useState<"bars" | "radar">(initAggregateView);
+  const [aggregateView, setAggregateView] = useState<AggregateView>(initAggregateView);
 
   // Stable id→color mapping based on selection order, so a basin keeps the
   // same colour on the map and in every chart bar even as others are added.
@@ -85,7 +91,7 @@ export default function SubBasinPage() {
       else next.delete("ids");
       if (aggregate) next.set("agg", "1"); else next.delete("agg");
       if (measureId !== "none") next.set("m", measureId); else next.delete("m");
-      if (aggregateView === "radar") next.set("view", "radar"); else next.delete("view");
+      if (aggregateView !== "bars") next.set("view", aggregateView); else next.delete("view");
       return next;
     }, { replace: true });
   }, [selectedIds, aggregate, measureId, aggregateView, setSearchParams]);

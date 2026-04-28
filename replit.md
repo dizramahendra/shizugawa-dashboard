@@ -55,9 +55,12 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
     and Δ vs avg.  **Aggregate** toggle collapses bars into "Total Regional
     Sum"; per-area indicators are area-weighted (unit shifts to absolute t
     or kg/yr) while waterFlow is summed directly.  Aggregate exposes two
-    extra controls: a **chart-type toggle** (Bars / Radar) and a
+    extra controls: a **chart-type toggle** (Bars / Combined / Radar) and a
     **decarbonization measure dropdown** (afforestation, riparian buffer,
     agri BMPs, wetland, no-till, reduce N/P — all marked *(simulated)*).
+    The **Combined** view normalises every indicator to "× regional avg"
+    so all five fit in a single bar chart with a shared y-axis (raw values
+    + units stay visible in the per-bar tooltip).
     With a measure picked, every aggregate chart switches to **Before vs
     After** (paired bars + Δ% badge in the bars view; two overlaid
     polygons in the radar view).  Sanity rules baked into `SUB_BASIN_META`:

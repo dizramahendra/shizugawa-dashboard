@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   X, Layers, BarChart3, Sigma, MapPin, Mountain, TreePine,
-  Hexagon, Sparkles, Info,
+  Hexagon, Sparkles, Info, Columns3,
 } from "lucide-react";
 import {
   SUB_BASIN_INDICATORS,
@@ -465,6 +465,229 @@ function AggregateBarChart({
   );
 }
 
+// ── Combined aggregate chart (all indicators in one normalised bar chart) ──
+//
+// All five indicators on a single shared y-axis ("× regional avg"), so
+// different units stay visually comparable at a glance.  One bar per
+// indicator; with a measure, the slot holds an overlaid pair (lighter
+// "Before" wide bar behind + darker "After" narrow bar in front).
+// Tooltip on every bar shows the raw value with its real unit, the
+// regional avg, and the ratio.
+
+const COMBINED_CHART_H = 210;
+const COMB_PAD_L = 32, COMB_PAD_R = 8, COMB_PAD_T = 18, COMB_PAD_B = 40;
+
+function CombinedAggregateChart({
+  values,
+  baseValues,
+  expectedSums,
+  hasMeasure,
+  measureLabel,
+  units,
+}: {
+  values:       Record<SubBasinIndicatorId, number>;
+  baseValues:   Record<SubBasinIndicatorId, number>;
+  expectedSums: Record<SubBasinIndicatorId, number>;
+  hasMeasure:   boolean;
+  measureLabel: string;
+  units:        Record<SubBasinIndicatorId, string>;
+}) {
+  const innerW = CHART_INNER_W - COMB_PAD_L - COMB_PAD_R;
+  const innerH = COMBINED_CHART_H - COMB_PAD_T - COMB_PAD_B;
+
+  const N      = SUB_BASIN_INDICATORS.length;
+  const slotW  = innerW / N;
+
+  // Y-axis: "× regional avg".  Auto-fit to data with a floor of 1.5×.
+  const ratios = SUB_BASIN_INDICATORS.flatMap(ind => {
+    const exp = expectedSums[ind.id];
+    if (!exp || !Number.isFinite(exp)) return [];
+    return [baseValues[ind.id] / exp, values[ind.id] / exp];
+  });
+  const maxRatio = Math.max(1.5, ...ratios) * 1.1;
+
+  const toY = (ratio: number) => COMB_PAD_T + innerH - (Math.max(0, ratio) / maxRatio) * innerH;
+
+  // Y-axis ticks: always 0, 0.5, 1.0, then 0.5 increments up to maxRatio.
+  const ticks: number[] = [0, 0.5, 1.0];
+  for (let t = 1.5; t <= maxRatio - 0.05; t += 0.5) ticks.push(t);
+
+  return (
+    <ChartHoverable
+      height={COMBINED_CHART_H}
+      render={({ setTip }) => (
+        <svg width={CHART_INNER_W} height={COMBINED_CHART_H} className="overflow-visible block">
+          {/* Y-axis title */}
+          <text x={2} y={COMB_PAD_T - 6} fontSize="8.5" fill="#64748b" fontWeight="600">
+            × regional avg
+          </text>
+
+          {/* Y axis grid + labels (baseline ring at 1.0× highlighted) */}
+          {ticks.map(t => {
+            const yy = toY(t);
+            const isBaseline = Math.abs(t - 1.0) < 1e-6;
+            return (
+              <g key={t}>
+                <line
+                  x1={COMB_PAD_L} y1={yy}
+                  x2={CHART_INNER_W - COMB_PAD_R} y2={yy}
+                  stroke={isBaseline ? REF_COLOR : "#e2e8f0"}
+                  strokeWidth={isBaseline ? 1.1 : 0.6}
+                  strokeDasharray={isBaseline ? "3 2" : undefined}
+                  opacity={isBaseline ? 0.75 : 1}
+                />
+                <text
+                  x={COMB_PAD_L - 4} y={yy + 3} textAnchor="end"
+                  fontSize="8"
+                  fill={isBaseline ? REF_COLOR_DARK : "#94a3b8"}
+                  fontFamily="monospace"
+                  fontWeight={isBaseline ? "600" : "400"}
+                >
+                  {t.toFixed(1)}×
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Per-indicator bars */}
+          {SUB_BASIN_INDICATORS.map((ind, i) => {
+            const exp     = expectedSums[ind.id];
+            const safeExp = exp && Number.isFinite(exp) ? exp : 1e-9;
+            const beforeR = baseValues[ind.id] / safeExp;
+            const afterR  = values[ind.id] / safeExp;
+            const slotX   = COMB_PAD_L + i * slotW;
+            const cx      = slotX + slotW / 2;
+
+            const wideW   = Math.min(slotW * 0.62, 38);
+            const narrowW = Math.max(8, wideW * 0.55);
+            const xWide   = cx - wideW / 2;
+            const xNarrow = cx - narrowW / 2;
+
+            const yBefore = toY(beforeR);
+            const yAfter  = toY(afterR);
+            const hBefore = Math.max(0.5, (COMB_PAD_T + innerH) - yBefore);
+            const hAfter  = Math.max(0.5, (COMB_PAD_T + innerH) - yAfter);
+
+            const tipNoMeasure = (
+              <div>
+                <div className="font-semibold mb-0.5">{ind.label}</div>
+                <div>Sum: <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span></div>
+                <div className="opacity-80 text-[9.5px]">
+                  Expected: <span className="font-mono">{fmt(exp, ind.decimals)} {units[ind.id]}</span>
+                </div>
+                <div className="opacity-80 text-[9.5px]">
+                  Ratio: <span className="font-mono">{afterR.toFixed(2)}× avg</span>
+                </div>
+              </div>
+            );
+
+            const tipBefore = (
+              <div>
+                <div className="font-semibold mb-0.5">{ind.label} · Before</div>
+                <div>Baseline: <span className="font-mono">{fmt(baseValues[ind.id], ind.decimals)} {units[ind.id]}</span></div>
+                <div className="opacity-80 text-[9.5px]">
+                  Ratio: <span className="font-mono">{beforeR.toFixed(2)}× avg</span>
+                </div>
+              </div>
+            );
+
+            const tipAfter = (
+              <div>
+                <div className="font-semibold mb-0.5">{ind.label} · After</div>
+                <div>With {measureLabel}: <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span></div>
+                <div className="opacity-80 text-[9.5px]">
+                  Ratio: <span className="font-mono">{afterR.toFixed(2)}× avg</span>
+                </div>
+                <div className="opacity-80 text-[9.5px]">
+                  Δ: <span className="font-mono">{fmtPctDelta(baseValues[ind.id], values[ind.id])}</span> vs Before
+                </div>
+              </div>
+            );
+
+            // Annotation y position — above whichever bar is taller.
+            const annotateY = Math.min(yBefore, yAfter) - 3;
+            const annotateLabel = hasMeasure
+              ? `${afterR.toFixed(2)}×`
+              : `${afterR.toFixed(2)}×`;
+
+            return (
+              <g key={ind.id}>
+                {hasMeasure ? (
+                  <>
+                    {/* Before — wider, lighter, behind */}
+                    <rect
+                      x={xWide} y={yBefore}
+                      width={wideW} height={hBefore}
+                      fill={BEFORE_FILL} fillOpacity="0.55" rx="2"
+                      onMouseEnter={() => setTip({ x: cx, y: yBefore, node: tipBefore })}
+                      onMouseLeave={() => setTip(null)}
+                      style={{ cursor: "pointer" }}
+                    />
+                    {/* After — narrower, darker, in front */}
+                    <rect
+                      x={xNarrow} y={yAfter}
+                      width={narrowW} height={hAfter}
+                      fill={AFTER_FILL} rx="2"
+                      onMouseEnter={() => setTip({ x: cx, y: yAfter, node: tipAfter })}
+                      onMouseLeave={() => setTip(null)}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </>
+                ) : (
+                  <rect
+                    x={xWide} y={yAfter}
+                    width={wideW} height={hAfter}
+                    fill={AFTER_FILL} rx="2"
+                    onMouseEnter={() => setTip({ x: cx, y: yAfter, node: tipNoMeasure })}
+                    onMouseLeave={() => setTip(null)}
+                    style={{ cursor: "pointer" }}
+                  />
+                )}
+
+                {/* Ratio annotation above bar */}
+                <text
+                  x={cx} y={annotateY} textAnchor="middle"
+                  fontSize="8.5" fill="#0f172a"
+                  fontFamily="monospace" fontWeight="700"
+                >
+                  {annotateLabel}
+                </text>
+
+                {/* X-axis label (indicator short label) */}
+                <text
+                  x={cx} y={COMB_PAD_T + innerH + 11} textAnchor="middle"
+                  fontSize="8.5" fill="#475569" fontWeight="600"
+                >
+                  {ind.shortLabel}
+                </text>
+                {/* Unit subtitle under x-axis label */}
+                <text
+                  x={cx} y={COMB_PAD_T + innerH + 22} textAnchor="middle"
+                  fontSize="7" fill="#94a3b8" fontFamily="monospace"
+                >
+                  {units[ind.id]}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Axis lines */}
+          <line
+            x1={COMB_PAD_L} y1={COMB_PAD_T}
+            x2={COMB_PAD_L} y2={COMB_PAD_T + innerH}
+            stroke="#cbd5e1" strokeWidth="1"
+          />
+          <line
+            x1={COMB_PAD_L} y1={COMB_PAD_T + innerH}
+            x2={CHART_INNER_W - COMB_PAD_R} y2={COMB_PAD_T + innerH}
+            stroke="#cbd5e1" strokeWidth="1"
+          />
+        </svg>
+      )}
+    />
+  );
+}
+
 // ── Aggregate radar chart (sum of selected vs. baseline ring) ──────────────
 
 function AggregateRadarChart({
@@ -754,10 +977,10 @@ interface Props {
   colorFor:    (id: number) => string;
   aggregate:   boolean;
   measureId:   SubBasinMeasureId;
-  aggregateView: "bars" | "radar";
+  aggregateView: "bars" | "combined" | "radar";
   onSetAggregate:    (v: boolean) => void;
   onSetMeasure:      (id: SubBasinMeasureId) => void;
-  onSetAggregateView:(v: "bars" | "radar") => void;
+  onSetAggregateView:(v: "bars" | "combined" | "radar") => void;
   onRemove:          (id: number) => void;
   onClear:           () => void;
   onSelectAll:       () => void;
@@ -888,8 +1111,21 @@ export default function SubBasinComparisonPanel({
                   ? "bg-foreground text-white border-foreground"
                   : "bg-white text-foreground border-border hover:bg-muted",
               ].join(" ")}
+              title="One card per indicator"
             >
               <BarChart3 size={11} /> Bars
+            </button>
+            <button
+              onClick={() => onSetAggregateView("combined")}
+              className={[
+                "text-[10.5px] px-2 py-1 rounded border flex items-center gap-1 cursor-pointer",
+                aggregateView === "combined"
+                  ? "bg-foreground text-white border-foreground"
+                  : "bg-white text-foreground border-border hover:bg-muted",
+              ].join(" ")}
+              title="All indicators in one chart, normalised to regional avg"
+            >
+              <Columns3 size={11} /> Combined
             </button>
             <button
               onClick={() => onSetAggregateView("radar")}
@@ -899,6 +1135,7 @@ export default function SubBasinComparisonPanel({
                   ? "bg-foreground text-white border-foreground"
                   : "bg-white text-foreground border-border hover:bg-muted",
               ].join(" ")}
+              title="Radar polygon (5 indicators)"
             >
               <Hexagon size={11} /> Radar
             </button>
@@ -1016,6 +1253,40 @@ export default function SubBasinComparisonPanel({
                 />
               </ChartCard>
             ))}
+
+            {/* Aggregate · combined view (all indicators on one chart) */}
+            {aggregate && aggregateView === "combined" && (
+              <div className="bg-white border border-border rounded-md p-2.5">
+                <div className="flex items-baseline justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-foreground">
+                    All indicators · normalised
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">
+                    1.0× = regional avg
+                  </span>
+                </div>
+                <CombinedAggregateChart
+                  values={aggResult.values}
+                  baseValues={aggResult.baseValues}
+                  expectedSums={expectedSums}
+                  hasMeasure={hasMeasure}
+                  measureLabel={measure.shortLabel}
+                  units={units}
+                />
+                {hasMeasure && (
+                  <div className="flex items-center gap-3 px-2 pt-1 text-[9.5px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-2 rounded-sm" style={{ background: BEFORE_FILL, opacity: 0.55 }} />
+                      Before
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ background: AFTER_FILL }} />
+                      After ({measure.shortLabel})
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Aggregate · radar view */}
             {aggregate && aggregateView === "radar" && (
