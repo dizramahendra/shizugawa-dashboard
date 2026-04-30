@@ -764,6 +764,7 @@ function AggregateRadarChart({
             const a = angleFor(i);
             const lx = cx + Math.cos(a) * labelR;
             const ly = cy + Math.sin(a) * labelR;
+            const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
             return (
               <g key={ind.id}>
                 <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
@@ -775,6 +776,14 @@ function AggregateRadarChart({
                   fontSize="8.5" fill="#334155" fontWeight="600"
                 >
                   {ind.shortLabel}
+                </text>
+                <text
+                  x={lx} y={ly + (Math.sin(a) >= 0 ? 11 : -11)}
+                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
+                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
+                  fontSize="7.5" fill="#64748b" fontFamily="monospace"
+                >
+                  avg {fmt(baseline, ind.decimals)} {ind.unit}
                 </text>
               </g>
             );
@@ -1290,36 +1299,77 @@ export default function SubBasinComparisonPanel({
 
             {/* Aggregate · radar view */}
             {aggregate && aggregateView === "radar" && (
-              <div className="bg-white border border-border rounded-md p-2.5">
-                <div className="flex items-baseline justify-between mb-1">
-                  <span className="text-[11px] font-semibold text-foreground">
-                    Regional fingerprint
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">
-                    sum normalised to baseline
-                  </span>
-                </div>
-                <AggregateRadarChart
-                  values={aggResult.values}
-                  baseValues={aggResult.baseValues}
-                  expectedSums={expectedSums}
-                  hasMeasure={hasMeasure}
-                  measureLabel={measure.shortLabel}
-                  units={units}
-                />
-                {hasMeasure && (
-                  <div className="flex items-center gap-3 px-2 pt-1 text-[9.5px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="w-3 h-1 rounded-sm" style={{ background: BEFORE_FILL, opacity: 0.5 }} />
-                      Before
+              <>
+                <div className="bg-white border border-border rounded-md p-2.5">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-[11px] font-semibold text-foreground">
+                      Regional fingerprint
                     </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-3 h-1 rounded-sm" style={{ background: AFTER_FILL }} />
-                      After ({measure.shortLabel})
+                    <span className="text-[9px] text-muted-foreground">
+                      1.0× ring = regional avg
                     </span>
                   </div>
-                )}
-              </div>
+                  <AggregateRadarChart
+                    values={aggResult.values}
+                    baseValues={aggResult.baseValues}
+                    expectedSums={expectedSums}
+                    hasMeasure={hasMeasure}
+                    measureLabel={measure.shortLabel}
+                    units={units}
+                  />
+                  {hasMeasure && (
+                    <div className="flex items-center gap-3 px-2 pt-1 text-[9.5px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-1 rounded-sm" style={{ background: BEFORE_FILL, opacity: 0.5 }} />
+                        Before
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-1 rounded-sm" style={{ background: AFTER_FILL }} />
+                        After ({measure.shortLabel})
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Compact value vs regional-avg table (matches the radar's normalisation) */}
+                <div className="bg-white border border-border rounded-md p-2.5">
+                  <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
+                    Indicator values vs regional avg
+                  </div>
+                  <div className="space-y-1">
+                    {SUB_BASIN_INDICATORS.map(ind => {
+                      const value    = aggResult.values[ind.id];
+                      const expected = expectedSums[ind.id];
+                      const delta    = expected > 0 ? (value - expected) / expected : 0;
+                      const positive = delta >= 0;
+                      return (
+                        <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
+                          <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
+                          <span className="font-mono text-foreground tabular-nums">
+                            {fmt(value, ind.decimals)}
+                          </span>
+                          <span className="text-muted-foreground text-[9.5px]">
+                            / {fmt(expected, ind.decimals)} {units[ind.id]}
+                          </span>
+                          <span
+                            className={[
+                              "text-[9.5px] font-mono w-10 text-right",
+                              positive ? "text-emerald-700" : "text-rose-700",
+                            ].join(" ")}
+                          >
+                            {positive ? "+" : "−"}{(Math.abs(delta) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
+                    {hasMeasure
+                      ? `After-measure sum (${measure.shortLabel}) vs expected sum if every selected basin were at the regional avg.`
+                      : "Current regional sum vs expected sum if every selected basin were at the regional avg."}
+                  </p>
+                </div>
+              </>
             )}
           </div>
         )}
