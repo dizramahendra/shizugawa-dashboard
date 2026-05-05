@@ -1132,10 +1132,15 @@ function SliceIndicator({ mode, level, sliceDir, showCutPlane }: SliceIndicatorP
 // `<group scale={[1,1,-1]}>`, so a NEGATIVE world-Z position is on the NORTH
 // side of the rendered bay (gz=95), and POSITIVE world-Z is the SOUTH side.
 //
+// `iso` is the default first-paint view: positioned south of the bay and
+// elevated ~50° so the depth structure of the basin reads as 3D immediately,
+// without being a flat top-down map or a flat side elevation.
+//
 // Both the short ("n"/"s"/"e"/"w") and long ("north"/...) forms are accepted
 // because PlaybackPage stores the URL-friendly short code in state while
 // older code paths may pass the long form.
 const CAMERA_PRESETS: Record<string, [number, number, number]> = {
+  iso:   [  0,  72,  62],
   top:   [  0,  92,   8],
   n:     [  0,  50, -75],
   s:     [  0,  50,  75],

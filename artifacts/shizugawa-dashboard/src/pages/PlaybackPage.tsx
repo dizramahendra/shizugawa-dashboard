@@ -114,6 +114,7 @@ export default function PlaybackPage() {
   // with any older deep links, then normalise to the short code that the
   // rest of the app uses.
   const _viewAlias: Record<string, string> = {
+    iso: "iso",
     top: "top",
     n: "n", north: "n",
     s: "s", south: "s",
@@ -121,7 +122,7 @@ export default function PlaybackPage() {
     w: "w", west:  "w",
   };
   const [cameraPreset, setCameraPreset] = useState(
-    _viewAlias[_initView ?? ""] ?? "top"
+    _viewAlias[_initView ?? ""] ?? "iso"
   );
   // Counter that bumps on every preset-button click so the 3D camera
   // re-applies the preset even when the user clicks the same button twice
@@ -177,8 +178,8 @@ export default function PlaybackPage() {
       if (showUI) next.set("ui", "1");
       else next.delete("ui");
 
-      // Camera view preset — only encode when not default top view
-      if (cameraPreset && cameraPreset !== "top") next.set("view", cameraPreset);
+      // Camera view preset — only encode when not default isometric view
+      if (cameraPreset && cameraPreset !== "iso") next.set("view", cameraPreset);
       else next.delete("view");
 
       return next;
@@ -346,19 +347,27 @@ export default function PlaybackPage() {
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-muted-foreground font-medium">View</span>
           <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
-            {(["top","N","S","E","W"] as const).map((label) => {
-              const id = label === "top" ? "top" : label.toLowerCase();
+            {(["iso","top","N","S","E","W"] as const).map((label) => {
+              const id = label === "top" || label === "iso" ? label : label.toLowerCase();
+              const display =
+                label === "top" ? "↑ Top" :
+                label === "iso" ? "◆ 3D"  :
+                label;
+              const tip =
+                label === "top" ? "Top-down view" :
+                label === "iso" ? "Default 3D perspective" :
+                `View from ${label}`;
               return (
                 <button
                   key={id}
                   onClick={() => applyCameraPreset(id)}
-                  title={label === "top" ? "Top-down view" : `View from ${label}`}
+                  title={tip}
                   className={`px-2 py-1 text-[11px] font-mono rounded-sm transition-colors ${
                     cameraPreset === id
                       ? "bg-white text-foreground shadow-sm font-semibold"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
-                >{label === "top" ? "↑ Top" : label}</button>
+                >{display}</button>
               );
             })}
           </div>
