@@ -396,6 +396,35 @@ export default function MapLibreMap({
         preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", transition: "viewBox 0.6s ease" }}
       >
+        {/* Top-level defs — filter that flattens the background SVG's rivers
+            (originally drawn in different blue/teal hues) to a single uniform
+            grey, while keeping near-white background pixels white. Without
+            this, `saturate(0)` alone preserves each river's original luminance,
+            so dark and light grey outlines bleed out from under the colored
+            data strokes inconsistently. */}
+        <defs>
+          <filter id="uniform-grey-rivers" x="0%" y="0%" width="100%" height="100%">
+            {/* Step 1: collapse RGB to luminance grey. */}
+            <feColorMatrix
+              in="SourceGraphic"
+              type="matrix"
+              values="0.299 0.587 0.114 0 0
+                      0.299 0.587 0.114 0 0
+                      0.299 0.587 0.114 0 0
+                      0     0     0     1 0"
+              result="grey"
+            />
+            {/* Step 2: posterize — anything below ~90% luminance (rivers, labels,
+                outlines) is mapped to a single mid-grey ≈ #a8a8a8; the brightest
+                bin (background paper) stays white. */}
+            <feComponentTransfer in="grey">
+              <feFuncR type="discrete" tableValues="0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 1" />
+              <feFuncG type="discrete" tableValues="0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 1" />
+              <feFuncB type="discrete" tableValues="0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 1" />
+            </feComponentTransfer>
+          </filter>
+        </defs>
+
         {/* Background layer — grayscale + dimmed when a river is selected
             (kept full-opacity in sub-basin mode so polygon fills read clearly) */}
         <g style={(selectedRiver && !subBasinMode) ? { filter: "grayscale(100%)", opacity: 0.18, transition: "opacity 0.3s, filter 0.3s" } : { transition: "opacity 0.3s, filter 0.3s" }}>
@@ -406,7 +435,7 @@ export default function MapLibreMap({
             width={SVG_W} height={SVG_H}
             preserveAspectRatio="xMidYMid meet"
             opacity={0.9}
-            style={{ filter: "saturate(0)" }}
+            style={{ filter: "url(#uniform-grey-rivers)" }}
           />
 
           {/* Soil layer — random pixel scatter, clipped to land */}
