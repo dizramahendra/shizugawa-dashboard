@@ -1,30 +1,26 @@
 import { createContext, useContext, useState, ReactNode } from "react";
-import { DEFAULT_YEAR, DAYS_PER_YEAR } from "@/lib/dayUtils";
+import { DEFAULT_YEAR } from "@/lib/weekUtils";
 
 interface PlaybackContextValue {
   year: number;
   setYear: (y: number) => void;
-  /** Inclusive day-of-year window [start, end] used by the scrubber. */
-  dayRange: [number, number];
-  setDayRange: (r: [number, number]) => void;
+  weekRange: [number, number];
+  setWeekRange: (r: [number, number]) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
 
-const FULL_YEAR_RANGE: [number, number] = [0, DAYS_PER_YEAR - 1];
-
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [year, setYear] = useState(DEFAULT_YEAR);
-  const [dayRange, setDayRange] = useState<[number, number]>(FULL_YEAR_RANGE);
+  const [weekRange, setWeekRange] = useState<[number, number]>([0, 51]);
 
   const handleSetYear = (y: number) => {
     setYear(y);
-    // Reset to the full year span any time the user switches calendar year.
-    setDayRange(FULL_YEAR_RANGE);
+    setWeekRange([0, 51]);
   };
 
   return (
-    <PlaybackContext.Provider value={{ year, setYear: handleSetYear, dayRange, setDayRange }}>
+    <PlaybackContext.Provider value={{ year, setYear: handleSetYear, weekRange, setWeekRange }}>
       {children}
     </PlaybackContext.Provider>
   );

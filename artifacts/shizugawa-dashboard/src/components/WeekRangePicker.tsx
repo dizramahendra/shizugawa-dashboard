@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
-import { dayToDate, dateToDay, formatDayRange, DAYS_PER_YEAR } from "@/lib/dayUtils";
+import { weekToDate, dateToWeek, formatWeekRange } from "@/lib/weekUtils";
 
 const DAY_HEADERS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS_FULL = [
@@ -24,18 +24,15 @@ function getMonthCells(y: number, m: number): Date[] {
 
 interface Props {
   year: number;
-  /** Inclusive day-of-year range [start, end]. */
-  dayRange: [number, number];
+  weekRange: [number, number];
   onChange: (range: [number, number]) => void;
 }
 
-const FULL_RANGE: [number, number] = [0, DAYS_PER_YEAR - 1];
-
-export default function DateRangePicker({ year, dayRange, onChange }: Props) {
+export default function WeekRangePicker({ year, weekRange, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [dm, setDm] = useState(() => new Date(year, 0, 1));
   const [pickStart, setPickStart] = useState<number | null>(null);
-  const [hoverDay, setHoverDay] = useState<number | null>(null);
+  const [hoverWeek, setHoverWeek] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setDm(new Date(year, 0, 1)); setPickStart(null); }, [year]);
@@ -51,24 +48,24 @@ export default function DateRangePicker({ year, dayRange, onChange }: Props) {
     return () => document.removeEventListener("mousedown", fn);
   }, [open]);
 
-  const rangeStart = pickStart !== null && hoverDay !== null ? Math.min(pickStart, hoverDay) : dayRange[0];
-  const rangeEnd   = pickStart !== null && hoverDay !== null ? Math.max(pickStart, hoverDay) : dayRange[1];
+  const rangeStart = pickStart !== null && hoverWeek !== null ? Math.min(pickStart, hoverWeek) : weekRange[0];
+  const rangeEnd   = pickStart !== null && hoverWeek !== null ? Math.max(pickStart, hoverWeek) : weekRange[1];
 
   const handleDayClick = (date: Date) => {
     if (date.getFullYear() !== year) return;
-    const d = dateToDay(date, year);
+    const w = dateToWeek(date, year);
     if (pickStart === null) {
-      setPickStart(d);
+      setPickStart(w);
     } else {
-      onChange([Math.min(pickStart, d), Math.max(pickStart, d)]);
+      onChange([Math.min(pickStart, w), Math.max(pickStart, w)]);
       setPickStart(null);
       setOpen(false);
     }
   };
 
   const cells = getMonthCells(dm.getFullYear(), dm.getMonth());
-  const isFullYear = dayRange[0] === FULL_RANGE[0] && dayRange[1] === FULL_RANGE[1];
-  const label = formatDayRange(dayRange[0], dayRange[1], year);
+  const isFullYear = weekRange[0] === 0 && weekRange[1] === 51;
+  const label = formatWeekRange(weekRange[0], weekRange[1], year);
 
   return (
     <div ref={ref} className="relative flex-shrink-0">
@@ -86,7 +83,7 @@ export default function DateRangePicker({ year, dayRange, onChange }: Props) {
         {!isFullYear && (
           <span
             className="ml-0.5 hover:text-destructive"
-            onClick={e => { e.stopPropagation(); onChange(FULL_RANGE); setPickStart(null); }}
+            onClick={e => { e.stopPropagation(); onChange([0, 51]); setPickStart(null); }}
           >
             <X size={10} />
           </span>
@@ -124,10 +121,10 @@ export default function DateRangePicker({ year, dayRange, onChange }: Props) {
             {cells.map((date, i) => {
               const inYear  = date.getFullYear() === year;
               const inMonth = date.getMonth() === dm.getMonth();
-              const d       = inYear ? dateToDay(date, year) : -1;
-              const inRange = inYear && d >= rangeStart && d <= rangeEnd;
-              const isBound = inYear && (d === rangeStart || d === rangeEnd);
-              const isPick  = pickStart !== null && d === pickStart;
+              const w       = inYear ? dateToWeek(date, year) : -1;
+              const inRange = inYear && w >= rangeStart && w <= rangeEnd;
+              const isBound = inYear && (w === rangeStart || w === rangeEnd);
+              const isPick  = pickStart !== null && w === pickStart;
 
               return (
                 <button
@@ -144,8 +141,8 @@ export default function DateRangePicker({ year, dayRange, onChange }: Props) {
                         ? "hover:bg-muted text-foreground"
                         : "",
                   ].join(" ")}
-                  onMouseEnter={() => inYear && inMonth && setHoverDay(d)}
-                  onMouseLeave={() => setHoverDay(null)}
+                  onMouseEnter={() => inYear && inMonth && setHoverWeek(w)}
+                  onMouseLeave={() => setHoverWeek(null)}
                   onClick={() => handleDayClick(date)}
                 >
                   {date.getDate()}
@@ -161,13 +158,13 @@ export default function DateRangePicker({ year, dayRange, onChange }: Props) {
                 ? "Click an end date…"
                 : isFullYear
                   ? "Click to start a range"
-                  : `${dayToDate(dayRange[0], year).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${dayToDate(dayRange[1], year).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                  : `Wk ${weekRange[0] + 1}–${weekRange[1] + 1} · ${weekToDate(weekRange[0], year).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${weekToDate(weekRange[1], year).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
               }
             </span>
             {!isFullYear && (
               <button
                 className="text-[9px] font-mono text-muted-foreground hover:text-destructive"
-                onClick={() => { onChange(FULL_RANGE); setPickStart(null); }}
+                onClick={() => { onChange([0, 51]); setPickStart(null); }}
               >Clear</button>
             )}
           </div>
