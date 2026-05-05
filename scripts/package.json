@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "build:reach-data": "tsx ./src/buildReachData.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "tsx": "catalog:"
+    "tsx": "catalog:",
+    "xlsx": "^0.18.5"
   }
 }

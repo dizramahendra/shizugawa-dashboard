@@ -29,7 +29,11 @@ export interface SelectedPoint {
 export const GRID_W = 112;
 export const GRID_D = 96;
 export const DEPTH_LAYERS = 8;
-export const TOTAL_WEEKS = 52;
+/** Days per playback year. The dashboard now operates at daily granularity to
+ *  mirror the SWAT outputRch dataset (2021–2023, all 365-day years). All
+ *  seasonal modulators below use `day / TOTAL_DAYS` so a full revolution
+ *  spans one calendar year. */
+export const TOTAL_DAYS = 365;
 
 // ── Bay outline polygon ───────────────────────────────────────────────────────
 // Shizugawa Bay coastline in normalised [0,1]×[0,1] space.
@@ -1077,22 +1081,23 @@ const NUTRIENT_SOURCE_FIELD: number[][] = (() => {
   return out;
 })();
 
-/** Annual nutrient-pulse intensity (0–1) for a given week of the year.
- *  Big spring/early-summer peak around late June (W24) plus a small autumn
- *  rebound near late November (W46), matching the Delft3D reference frames. */
-function nutrientPulse(week: number, year: number = 2023): number {
-  const yearShift  = (year - 2023) * 1.5;            // small inter-annual jitter
-  const w          = week + yearShift;
+/** Annual nutrient-pulse intensity (0–1) for a given day of the year.
+ *  Big spring/early-summer peak around mid-June (day ≈ 168, formerly week 24)
+ *  plus a small autumn rebound around mid-November (day ≈ 322, formerly
+ *  week 46), matching the Delft3D reference frames. */
+function nutrientPulse(day: number, year: number = 2023): number {
+  const yearShift  = (year - 2023) * 10;             // small inter-annual jitter (~1.5 weeks)
+  const d          = day + yearShift;
   // Spring pulse amplitude > 1 so cells a few grid units off the mouth still
   // clamp to deep red at the June peak, giving a visibly large bloom.
-  const spring     = 1.4 * Math.exp(-Math.pow((w - 24) / 7, 2));   // σ ≈ 7 weeks
-  const autumn     = 0.35 * Math.exp(-Math.pow((w - 46) / 4, 2));  // σ ≈ 4 weeks
+  const spring     = 1.4 * Math.exp(-Math.pow((d - 168) / 49, 2));   // σ ≈ 7 weeks (49 days)
+  const autumn     = 0.35 * Math.exp(-Math.pow((d - 322) / 28, 2));  // σ ≈ 4 weeks (28 days)
   return Math.max(0.05, spring + autumn);
 }
 
-export function generateWeekData(week: number, year: number = 2023): number[][][] {
-  const t       = (week / TOTAL_WEEKS) * Math.PI * 2 + (year - 2023) * 0.29;
-  const pulse   = nutrientPulse(week, year);
+export function generateDayData(day: number, year: number = 2023): number[][][] {
+  const t       = (day / TOTAL_DAYS) * Math.PI * 2 + (year - 2023) * 0.29;
+  const pulse   = nutrientPulse(day, year);
   const ambient = 0.05; // baseline blue everywhere — open ocean far from mouths
 
   const data: number[][][] = [];
@@ -1123,19 +1128,21 @@ export function generateWeekData(week: number, year: number = 2023): number[][][
   return data;
 }
 
-export interface WeekLabel {
-  week: number;
-  label: string;
-  monthLabel: string;
+/** Day-of-year label, e.g. "Jun 16" (legacy `getWeekLabel` removed — consumers
+ *  should import from `@/lib/dayUtils` directly for richer date formatting). */
+export interface DayLabel {
+  day: number;
+  label: string;       // "Jun 16"
+  monthLabel: string;  // "Jun"
 }
 
-export function getWeekLabel(week: number, year: number = 2023): WeekLabel {
+export function getDayLabel(day: number, year: number = 2023): DayLabel {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const date = new Date(new Date(year, 0, 1).getTime() + week * 7 * 86_400_000);
+  const date = new Date(year, 0, 1 + day);
   const m = months[date.getMonth()];
   return {
-    week,
-    label: `W${String(week + 1).padStart(2, "0")} ${m}`,
+    day,
+    label: `${m} ${date.getDate()}`,
     monthLabel: m,
   };
 }
@@ -1157,11 +1164,11 @@ export const VARIABLE_OPTIONS: VariableOption[] = [
 ];
 
 /**
- * Compute bay-ocean exchange intensity (0–1) for a given week.
+ * Compute bay-ocean exchange intensity (0–1) for a given day.
  * Based on the average value of the rightmost active cells in each row.
  */
-export function getBayOceanExchangeIntensity(week: number, year: number = 2023): number {
-  const data = generateWeekData(week, year);
+export function getBayOceanExchangeIntensity(day: number, year: number = 2023): number {
+  const data = generateDayData(day, year);
   // Rightmost active column per row in the BAY_MASK
   const edgeCols: number[] = [];
   for (let z = 0; z < GRID_D; z++) {
@@ -1182,11 +1189,11 @@ export function getBayOceanExchangeIntensity(week: number, year: number = 2023):
 }
 
 /**
- * Compute sediment elution intensity (0–1) for a given week.
+ * Compute sediment elution intensity (0–1) for a given day.
  * Based on the average bottom-two-layer values across all active cells.
  */
-export function getSedimentElutionIntensity(week: number, year: number = 2023): number {
-  const data = generateWeekData(week, year);
+export function getSedimentElutionIntensity(day: number, year: number = 2023): number {
+  const data = generateDayData(day, year);
   let sum = 0, count = 0;
   for (let z = 0; z < GRID_D; z++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -1433,16 +1440,16 @@ export function getCompositeRiver(id: string): CompositeRiver | undefined {
   return COMPOSITE_RIVERS.find(c => c.id === id);
 }
 
-/** Returns the spatial mean per segment at a given week (one value per segment). */
+/** Returns the spatial mean per segment at a given day (one value per segment). */
 export function getCompositeSegmentMeans(
-  week: number,
+  day: number,
   compositeId: string,
   variableId: string,
   year: number = 2023
 ): number[] {
   const comp = getCompositeRiver(compositeId);
   if (!comp) return [];
-  const data = generateCompositeRiverData(week, compositeId, year);
+  const data = generateDayCompositeRiverData(day, compositeId, year);
   return comp.segments.map(seg => {
     const rowS = seg.rowStart ?? 0;
     const rowE = seg.rowEnd ?? RIVER_ROWS - 1;
@@ -1465,17 +1472,17 @@ export function getCompositeSegmentMeans(
  * Convergent: left half has two horizontal row bands (upper1 top, upper2 bottom),
  *   right half is a single merged lower channel. Cosine blend bridges the transition.
  */
-export function generateCompositeRiverData(
-  week: number,
+export function generateDayCompositeRiverData(
+  day: number,
   compositeId: string,
   year: number = 2023
 ): number[][] {
   const comp = getCompositeRiver(compositeId);
-  if (!comp) return generateRiverData(week, "shizugawa", year);
+  if (!comp) return generateDayRiverData(day, "shizugawa", year);
 
   const BLEND_COLS = 8;
   const yearShift = (year - 2023) * 0.31;
-  const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
+  const t = (day / TOTAL_DAYS) * Math.PI * 2 + yearShift;
 
   const makeVal = (riverId: string, col: number, row: number): number => {
     const [phaseOffset, baseline, amplitude] = RIVER_PARAMS[riverId] ?? [0, 0.5, 0.3];
@@ -1527,10 +1534,24 @@ export function generateCompositeRiverData(
   return data;
 }
 
-/** Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given week */
-export function generateRiverData(week: number, riverId: string, year: number = 2023): number[][] {
+/**
+ * Generate a RIVER_ROWS × RIVER_COLS 2D grid of values for a given day.
+ *
+ * The simulated baseline gives a plausible spatial texture along the river
+ * corridor. When `realScalar` is provided (a normalized 0–1 fraction derived
+ * from the SWAT outputRch dataset for that reach + day), the entire grid is
+ * scaled toward that real value so storm days light the whole river up
+ * proportionally — this preserves the spatial detail while making the
+ * intensity faithful to the dataset.
+ */
+export function generateDayRiverData(
+  day: number,
+  riverId: string,
+  year: number = 2023,
+  realScalar: number | null = null,
+): number[][] {
   const yearShift = (year - 2023) * 0.31;
-  const t = (week / TOTAL_WEEKS) * Math.PI * 2 + yearShift;
+  const t = (day / TOTAL_DAYS) * Math.PI * 2 + yearShift;
 
   const [phaseOffset, baseline, amplitude] = RIVER_PARAMS[riverId] ?? [0, 0.5, 0.3];
   // Each river has its own seasonal peak; result spans its own baseline ± amplitude
@@ -1553,6 +1574,31 @@ export function generateRiverData(week: number, riverId: string, year: number = 
       data[row][col] = val;
     }
   }
+
+  // If we have a real-data scalar for this reach × day, gently bias the grid
+  // toward that intensity (keeps spatial texture, makes mean track the dataset).
+  if (realScalar !== null) {
+    const target = Math.max(0, Math.min(1, realScalar));
+    let sum = 0;
+    for (let row = 0; row < RIVER_ROWS; row++) {
+      for (let col = 0; col < RIVER_COLS; col++) sum += data[row][col];
+    }
+    const meanCurrent = sum / (RIVER_ROWS * RIVER_COLS);
+    if (meanCurrent > 0.001) {
+      const scale = target / meanCurrent;
+      for (let row = 0; row < RIVER_ROWS; row++) {
+        for (let col = 0; col < RIVER_COLS; col++) {
+          data[row][col] = Math.max(0, Math.min(1, data[row][col] * scale));
+        }
+      }
+    } else {
+      // Edge case: simulated baseline is essentially zero. Fall back to a flat field.
+      for (let row = 0; row < RIVER_ROWS; row++) {
+        for (let col = 0; col < RIVER_COLS; col++) data[row][col] = target;
+      }
+    }
+  }
+
   return data;
 }
 
@@ -1590,16 +1636,16 @@ export interface DecarbMeasure {
   channels: ChannelBoosts;
   /** Additive HSI offset at steady state (0–1) */
   hsiBoost: number;
-  /** Weeks for the measure to ramp from 0 → full effect */
-  rampWeeks: number;
+  /** Days for the measure to ramp from 0 → full effect */
+  rampDays: number;
 }
 
 export const DECARB_MEASURES: DecarbMeasure[] = [
-  { id: "none",                    label: "No measure (baseline)",      short: "Baseline",       desc: "Current trajectory — no decarbonization measure applied.",                                                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 0, oyster: 0 }, hsiBoost: 0,    rampWeeks: 1  },
-  { id: "plant-eelgrass",          label: "Plant eelgrass meadow",      short: "Eelgrass",       desc: "Replant Zostera marina across the project area — direct seagrass-carbon sequestration.",                                   carbonBoost: 2.4, channels: { seagrass: 2.4, macroalgae: 0, oyster: 0 }, hsiBoost: 0.20, rampWeeks: 18 },
-  { id: "restore-reef",            label: "Restore oyster reef",        short: "Oyster reef",    desc: "Rebuild oyster reef structure — filter-feeders clarify the water column so eelgrass beds expand and trap more carbon.",   carbonBoost: 0.8, channels: { seagrass: 0.8, macroalgae: 0, oyster: 0 }, hsiBoost: 0.18, rampWeeks: 10 },
-  { id: "reduce-runoff",           label: "Reduce upstream N/P load",   short: "Reduce runoff",  desc: "Cut nitrogen + phosphorus runoff from the watershed — improves light penetration and lets seagrass meadows thrive.",     carbonBoost: 1.0, channels: { seagrass: 1.0, macroalgae: 0, oyster: 0 }, hsiBoost: 0.16, rampWeeks: 24 },
-  { id: "tidal-flat-restoration",  label: "Restore tidal flats",        short: "Tidal flat",     desc: "Restore intertidal sediment flats — adjacent habitat lifts seagrass HSI and modestly boosts sequestration.",             carbonBoost: 0.5, channels: { seagrass: 0.5, macroalgae: 0, oyster: 0 }, hsiBoost: 0.12, rampWeeks: 16 },
+  { id: "none",                    label: "No measure (baseline)",      short: "Baseline",       desc: "Current trajectory — no decarbonization measure applied.",                                                                  carbonBoost: 0,   channels: { seagrass: 0,   macroalgae: 0, oyster: 0 }, hsiBoost: 0,    rampDays: 7   },
+  { id: "plant-eelgrass",          label: "Plant eelgrass meadow",      short: "Eelgrass",       desc: "Replant Zostera marina across the project area — direct seagrass-carbon sequestration.",                                   carbonBoost: 2.4, channels: { seagrass: 2.4, macroalgae: 0, oyster: 0 }, hsiBoost: 0.20, rampDays: 126 },
+  { id: "restore-reef",            label: "Restore oyster reef",        short: "Oyster reef",    desc: "Rebuild oyster reef structure — filter-feeders clarify the water column so eelgrass beds expand and trap more carbon.",   carbonBoost: 0.8, channels: { seagrass: 0.8, macroalgae: 0, oyster: 0 }, hsiBoost: 0.18, rampDays: 70  },
+  { id: "reduce-runoff",           label: "Reduce upstream N/P load",   short: "Reduce runoff",  desc: "Cut nitrogen + phosphorus runoff from the watershed — improves light penetration and lets seagrass meadows thrive.",     carbonBoost: 1.0, channels: { seagrass: 1.0, macroalgae: 0, oyster: 0 }, hsiBoost: 0.16, rampDays: 168 },
+  { id: "tidal-flat-restoration",  label: "Restore tidal flats",        short: "Tidal flat",     desc: "Restore intertidal sediment flats — adjacent habitat lifts seagrass HSI and modestly boosts sequestration.",             carbonBoost: 0.5, channels: { seagrass: 0.5, macroalgae: 0, oyster: 0 }, hsiBoost: 0.12, rampDays: 112 },
 ];
 
 export function getMeasure(id: MeasureId): DecarbMeasure {
@@ -1668,55 +1714,55 @@ const CHANNEL_SEASON_PHASE: Record<CarbonChannel, number> = {
  * from the existing N/P/flow simulation. High HSI = N + P in the safe band
  * AND moderate flow. Returns 0–1.
  */
-/** Internal: HSI given a precomputed weekly field. */
-function hsiFromField(data: number[][][], week: number, x: number, z: number): number {
+/** Internal: HSI given a precomputed daily field. */
+function hsiFromField(data: number[][][], day: number, x: number, z: number): number {
   const col = getColumnMean(data, x, z);
   const optimum = 0.45;
   const proximity = 1 - Math.min(1, Math.abs(col - optimum) / 0.5);
   const fitness  = 1 - seagrassSiteFitness(x, z) * 0.6;
-  const seasonal = 0.92 + 0.08 * Math.sin((week / TOTAL_WEEKS) * Math.PI * 2);
+  const seasonal = 0.92 + 0.08 * Math.sin((day / TOTAL_DAYS) * Math.PI * 2);
   return Math.max(0, Math.min(1, proximity * fitness * seasonal));
 }
 
-export function getBaselineHsi(week: number, year: number, x: number, z: number): number {
-  return hsiFromField(generateWeekData(week, year), week, x, z);
+export function getBaselineHsi(day: number, year: number, x: number, z: number): number {
+  return hsiFromField(generateDayData(day, year), day, x, z);
 }
 
 /**
  * Baseline seagrass carbon flux (tCO₂e/ha/yr) at an ocean cell for a given
- * week. Cells outside the seagrass-suitable belt get near-zero flux.
+ * day. Cells outside the seagrass-suitable belt get near-zero flux.
  */
-/** Internal: carbon flux given a precomputed weekly field. */
-function carbonFromField(data: number[][][], week: number, x: number, z: number): number {
+/** Internal: carbon flux given a precomputed daily field. */
+function carbonFromField(data: number[][][], day: number, x: number, z: number): number {
   const fit = 1 - seagrassSiteFitness(x, z);
   if (fit < 0.15) return 0;
-  const hsi = hsiFromField(data, week, x, z);
-  const seasonal = 0.6 + 0.4 * Math.sin((week / TOTAL_WEEKS) * Math.PI * 2 - 0.5);
+  const hsi = hsiFromField(data, day, x, z);
+  const seasonal = 0.6 + 0.4 * Math.sin((day / TOTAL_DAYS) * Math.PI * 2 - 0.5);
   return fit * hsi * 3.2 * seasonal;
 }
 
-export function getBaselineCarbonFlux(week: number, year: number, x: number, z: number): number {
-  return carbonFromField(generateWeekData(week, year), week, x, z);
+export function getBaselineCarbonFlux(day: number, year: number, x: number, z: number): number {
+  return carbonFromField(generateDayData(day, year), day, x, z);
 }
 
 /** Ramp factor 0→1 representing measure effectiveness over time. */
-function measureRamp(weeksApplied: number, rampWeeks: number): number {
-  if (weeksApplied <= 0) return 0;
-  return Math.min(1, weeksApplied / Math.max(1, rampWeeks));
+function measureRamp(daysApplied: number, rampDays: number): number {
+  if (daysApplied <= 0) return 0;
+  return Math.min(1, daysApplied / Math.max(1, rampDays));
 }
 
 /**
- * HSI under a decarbonization-measure scenario. `appliedAtWeek` is the
- * playback week at which the measure was switched on (0 = start of period).
+ * HSI under a decarbonization-measure scenario. `appliedAtDay` is the
+ * playback day at which the measure was switched on (0 = start of period).
  */
 export function getScenarioHsi(
-  week: number, year: number, x: number, z: number,
-  measureId: MeasureId, appliedAtWeek: number = 0,
+  day: number, year: number, x: number, z: number,
+  measureId: MeasureId, appliedAtDay: number = 0,
 ): number {
-  const baseline = getBaselineHsi(week, year, x, z);
+  const baseline = getBaselineHsi(day, year, x, z);
   if (measureId === "none") return baseline;
   const m = getMeasure(measureId);
-  const ramp = measureRamp(week - appliedAtWeek, m.rampWeeks);
+  const ramp = measureRamp(day - appliedAtDay, m.rampDays);
   return Math.max(0, Math.min(1, baseline + m.hsiBoost * ramp));
 }
 
@@ -1724,13 +1770,13 @@ export function getScenarioHsi(
  * Seagrass carbon flux under a measure scenario.
  */
 export function getScenarioCarbonFlux(
-  week: number, year: number, x: number, z: number,
-  measureId: MeasureId, appliedAtWeek: number = 0,
+  day: number, year: number, x: number, z: number,
+  measureId: MeasureId, appliedAtDay: number = 0,
 ): number {
-  const baseline = getBaselineCarbonFlux(week, year, x, z);
+  const baseline = getBaselineCarbonFlux(day, year, x, z);
   if (measureId === "none") return baseline;
   const m = getMeasure(measureId);
-  const ramp = measureRamp(week - appliedAtWeek, m.rampWeeks);
+  const ramp = measureRamp(day - appliedAtDay, m.rampDays);
   // "Plant eelgrass" can introduce flux on cells with low fitness too —
   // assume planting succeeds where HSI scenario is decent.
   const introduced = (measureId === "plant-eelgrass" && baseline === 0)
@@ -1740,46 +1786,46 @@ export function getScenarioCarbonFlux(
 }
 
 /**
- * Convenience: weekly time series of (baseline, scenario) values across the
- * playback range. Returns array length (toWeek - fromWeek + 1).
+ * Convenience: daily time series of (baseline, scenario) values across the
+ * playback range. Returns array length (toDay - fromDay + 1).
  */
 export function buildHsiSeries(
-  fromWeek: number, toWeek: number, year: number,
-  x: number, z: number, measureId: MeasureId, appliedAtWeek: number = 0,
-): { week: number; baseline: number; scenario: number }[] {
+  fromDay: number, toDay: number, year: number,
+  x: number, z: number, measureId: MeasureId, appliedAtDay: number = 0,
+): { day: number; baseline: number; scenario: number }[] {
   const m = getMeasure(measureId);
-  const out: { week: number; baseline: number; scenario: number }[] = [];
-  for (let w = fromWeek; w <= toWeek; w++) {
-    const data = generateWeekData(w, year);
-    const baseline = hsiFromField(data, w, x, z);
+  const out: { day: number; baseline: number; scenario: number }[] = [];
+  for (let d = fromDay; d <= toDay; d++) {
+    const data = generateDayData(d, year);
+    const baseline = hsiFromField(data, d, x, z);
     const scenario = measureId === "none"
       ? baseline
-      : Math.max(0, Math.min(1, baseline + m.hsiBoost * measureRamp(w - appliedAtWeek, m.rampWeeks)));
-    out.push({ week: w, baseline, scenario });
+      : Math.max(0, Math.min(1, baseline + m.hsiBoost * measureRamp(d - appliedAtDay, m.rampDays)));
+    out.push({ day: d, baseline, scenario });
   }
   return out;
 }
 
 export function buildCarbonSeries(
-  fromWeek: number, toWeek: number, year: number,
-  x: number, z: number, measureId: MeasureId, appliedAtWeek: number = 0,
-): { week: number; baselineRate: number; scenarioRate: number; baselineCum: number; scenarioCum: number }[] {
+  fromDay: number, toDay: number, year: number,
+  x: number, z: number, measureId: MeasureId, appliedAtDay: number = 0,
+): { day: number; baselineRate: number; scenarioRate: number; baselineCum: number; scenarioCum: number }[] {
   const m = getMeasure(measureId);
-  const weekFrac = 1 / TOTAL_WEEKS;
+  const dayFrac = 1 / TOTAL_DAYS;
   let bCum = 0, sCum = 0;
-  const out: { week: number; baselineRate: number; scenarioRate: number; baselineCum: number; scenarioCum: number }[] = [];
-  for (let w = fromWeek; w <= toWeek; w++) {
-    const data = generateWeekData(w, year);
-    const bRate = carbonFromField(data, w, x, z);
+  const out: { day: number; baselineRate: number; scenarioRate: number; baselineCum: number; scenarioCum: number }[] = [];
+  for (let d = fromDay; d <= toDay; d++) {
+    const data = generateDayData(d, year);
+    const bRate = carbonFromField(data, d, x, z);
     let sRate = bRate;
     if (measureId !== "none") {
-      const ramp = measureRamp(w - appliedAtWeek, m.rampWeeks);
+      const ramp = measureRamp(d - appliedAtDay, m.rampDays);
       const introduced = (measureId === "plant-eelgrass" && bRate === 0) ? ramp * 1.6 : 0;
       sRate = bRate * (1 + m.carbonBoost * ramp) + introduced;
     }
-    bCum += bRate * weekFrac;
-    sCum += sRate * weekFrac;
-    out.push({ week: w, baselineRate: bRate, scenarioRate: sRate, baselineCum: bCum, scenarioCum: sCum });
+    bCum += bRate * dayFrac;
+    sCum += sRate * dayFrac;
+    out.push({ day: d, baselineRate: bRate, scenarioRate: sRate, baselineCum: bCum, scenarioCum: sCum });
   }
   return out;
 }
@@ -1796,21 +1842,21 @@ export function gridToLonLat(x: number, z: number): { lon: number; lat: number }
   return { lon, lat };
 }
 
-/** Per-channel baseline carbon flux (tCO₂e/ha/yr) at a cell, given a precomputed weekly field. */
+/** Per-channel baseline carbon flux (tCO₂e/ha/yr) at a cell, given a precomputed daily field. */
 function channelBaselineRate(
   channel: CarbonChannel,
-  data: number[][][], week: number, x: number, z: number,
+  data: number[][][], day: number, x: number, z: number,
 ): number {
   const fit = CHANNEL_FITNESS[channel](x, z);
   if (fit < 0.15) return 0;
-  const hsi = hsiFromField(data, week, x, z);
+  const hsi = hsiFromField(data, day, x, z);
   const phase = CHANNEL_SEASON_PHASE[channel];
-  const seasonal = 0.6 + 0.4 * Math.sin((week / TOTAL_WEEKS) * Math.PI * 2 + phase);
+  const seasonal = 0.6 + 0.4 * Math.sin((day / TOTAL_DAYS) * Math.PI * 2 + phase);
   return fit * hsi * CHANNEL_MAX_FLUX[channel] * seasonal;
 }
 
 export interface BlueCarbonPoint {
-  week: number;
+  day: number;
   baselineRate: number;
   scenarioRate: number;
   baselineCum: number;
@@ -1822,15 +1868,15 @@ export interface BlueCarbonPoint {
 }
 
 /**
- * Weekly time series of blue-carbon flux + per-channel breakdown for one
+ * Daily time series of blue-carbon flux + per-channel breakdown for one
  * cell under a measure scenario. Channels: seagrass, macroalgae, oyster.
  */
 export function buildBlueCarbonSeries(
-  fromWeek: number, toWeek: number, year: number,
-  x: number, z: number, measureId: MeasureId, appliedAtWeek: number = 0,
+  fromDay: number, toDay: number, year: number,
+  x: number, z: number, measureId: MeasureId, appliedAtDay: number = 0,
 ): BlueCarbonPoint[] {
   const m = getMeasure(measureId);
-  const weekFrac = 1 / TOTAL_WEEKS;
+  const dayFrac = 1 / TOTAL_DAYS;
   // Seagrass is now the only blue-carbon channel modeled. The macroalgae and
   // oyster fields on ChannelBoosts are kept (typed as 0) for backward
   // compatibility with any persisted data shape.
@@ -1839,28 +1885,28 @@ export function buildBlueCarbonSeries(
   const cumScen  = { seagrass: 0, macroalgae: 0, oyster: 0 };
   let bCumTotal = 0, sCumTotal = 0;
   const out: BlueCarbonPoint[] = [];
-  for (let w = fromWeek; w <= toWeek; w++) {
-    const data = generateWeekData(w, year);
-    const ramp = measureRamp(w - appliedAtWeek, m.rampWeeks);
+  for (let d = fromDay; d <= toDay; d++) {
+    const data = generateDayData(d, year);
+    const ramp = measureRamp(d - appliedAtDay, m.rampDays);
     let bRateTotal = 0, sRateTotal = 0;
     const channelsRate: ChannelBoosts = { seagrass: 0, macroalgae: 0, oyster: 0 };
     for (const ch of channels) {
-      const bRate = channelBaselineRate(ch, data, w, x, z);
+      const bRate = channelBaselineRate(ch, data, d, x, z);
       const boost = m.channels[ch];
       // "introduced" capacity: a measure can produce flux on previously zero-fitness
       // cells (e.g. cultivating macroalgae where there is none today).
       const introduced = (bRate === 0 && boost > 0) ? ramp * 0.6 * boost : 0;
       const sRate = bRate * (1 + boost * ramp) + introduced;
       channelsRate[ch] = sRate;
-      cumBase[ch] += bRate * weekFrac;
-      cumScen[ch] += sRate * weekFrac;
+      cumBase[ch] += bRate * dayFrac;
+      cumScen[ch] += sRate * dayFrac;
       bRateTotal += bRate;
       sRateTotal += sRate;
     }
-    bCumTotal += bRateTotal * weekFrac;
-    sCumTotal += sRateTotal * weekFrac;
+    bCumTotal += bRateTotal * dayFrac;
+    sCumTotal += sRateTotal * dayFrac;
     out.push({
-      week: w,
+      day: d,
       baselineRate: bRateTotal, scenarioRate: sRateTotal,
       baselineCum:  bCumTotal,  scenarioCum:  sCumTotal,
       channelsRate, channelsCum: { ...cumScen },
