@@ -90,15 +90,31 @@ function MiniChart({ varDef, values, varDef2, values2, height, patId }: MiniChar
     </div>
   );
 
-  // Tooltip card — pinned to the side OPPOSITE the data points so it never
-  // covers the dashed hover line or the curves themselves. Vertical position
-  // is clamped so the card stays inside the chart bounds at top/bottom.
+  // Tooltip card — pinned just beyond the dot cluster on whichever side has
+  // more free space, so it never covers either colored data dot or the dashed
+  // hover line. With dual series, the dots can be far apart (one near each
+  // edge), so we compute the cluster's left/right bounds in % of SVG width
+  // (accounting for the PL left-padding) and place the card's near edge at
+  // dot ± a small gap. Vertical position is clamped to keep the card inside
+  // the chart bounds at the top and bottom.
   let tooltipNode: React.ReactNode = null;
   if (hovIdx !== null) {
     const x1 = values[hovIdx];
     const x2 = dual && values2 ? values2[hovIdx] : x1;
-    const meanX = (x1 + x2) / 2;
-    const cardOnLeft = meanX > 0.5;        // data on right → card on left
+    const leftN  = Math.min(x1, x2);
+    const rightN = Math.max(x1, x2);
+    // Dot positions as percentages of full SVG width (matches the rendered
+    // container, since the SVG fills it via width="100%").
+    const dotLeftPct  = ((PL + leftN  * IW) / SVG_W) * 100;
+    const dotRightPct = ((PL + rightN * IW) / SVG_W) * 100;
+    const spaceLeftPct  = dotLeftPct;
+    const spaceRightPct = 100 - dotRightPct;
+    const cardOnLeft = spaceLeftPct >= spaceRightPct;
+    const gapPct = 2;
+    const sideStyle: React.CSSProperties = cardOnLeft
+      ? { right: `${100 - dotLeftPct + gapPct}%` }   // card's right edge sits just left of leftmost dot
+      : { left:  `${dotRightPct + gapPct}%` };       // card's left edge sits just right of rightmost dot
+
     const yPct = (toY(hovIdx) / height) * 100;
     const fy = (toY(hovIdx) - ptTop) / IH; // 0 = top of plot, 1 = bottom
     let yTransform = "translateY(-50%)";
@@ -107,12 +123,11 @@ function MiniChart({ varDef, values, varDef2, values2, height, patId }: MiniChar
 
     tooltipNode = (
       <div
-        className="absolute pointer-events-none bg-white border border-border/60 rounded-md shadow-md px-2.5 py-1.5 z-10"
+        className="absolute pointer-events-none bg-white border border-border/60 rounded-md shadow-md px-2.5 py-1.5 z-10 whitespace-nowrap"
         style={{
           top: `${yPct}%`,
-          [cardOnLeft ? "left" : "right"]: "10%",
+          ...sideStyle,
           transform: yTransform,
-          minWidth: dual ? 130 : 110,
         }}
       >
         <div className="text-[11px] font-semibold text-foreground mb-1">
