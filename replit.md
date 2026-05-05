@@ -66,6 +66,12 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
     polygons in the radar view).  Sanity rules baked into `SUB_BASIN_META`:
     urban basins ⇒ 0 forestC, agricultural basins ⇒ high soilC + N/P
     export rates.  Full URL state: `?ids=1,5,20&agg=1&m=afforestation&view=radar`.
+    *Currently hidden from `TopNav` (commented out) but reachable by direct URL.*
+  - **Shared `<LegendOverlay>`** (`src/components/LegendOverlay.tsx`):
+    single component used by `PlaybackPage`, `MapLibreMap`, and
+    `RiverGrid2D` to render the bottom-left color-bar legend (Legend
+    header + unit, continuous color bar, evenly-spaced numeric ticks).
+    One source of truth for legend look-and-feel across all 3 views.
   - **Carbon Sequestration tab (`/carbon`)**: dedicated route with project-area
     decarbonization simulator focused on **seagrass (eelgrass / Zostera marina)
     carbon** — Shizugawa Bay's signature blue-carbon habitat. Single

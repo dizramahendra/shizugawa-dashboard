@@ -1,4 +1,5 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
+import LegendOverlay from "@/components/LegendOverlay";
 import {
   generateRiverData,
   generateCompositeRiverData,
@@ -577,32 +578,16 @@ export default function RiverGrid2D({
 
       {/* ── Legend ────────────────────────────────────────────── */}
       <div
-        className="absolute bg-white/95 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap z-10 pointer-events-none"
+        className="absolute z-10 pointer-events-none"
         style={{ bottom: X_AXIS_H + 12, left: Y_AXIS_W + 12 }}
       >
-        <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
-        <div className="flex flex-col gap-0.5">
-          <div className="flex rounded-sm overflow-hidden border border-border/30">
-            {stops.map((color, i) => {
-              const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
-              const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(1);
-              return <div key={i} style={{ backgroundColor: color, width: 22, height: 11 }} title={`${lo}–${hi} ${variable.unit}`} />;
-            })}
-          </div>
-          <div className="flex">
-            {stops.map((_, i) => {
-              const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(1);
-              return (
-                <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 22 }}>
-                  {lo}
-                </div>
-              );
-            })}
-          </div>
-          <div className="text-[7px] font-mono text-slate-400 text-right" style={{ width: stops.length * 22 }}>
-            {variable.unit}
-          </div>
-        </div>
+        <LegendOverlay
+          stops={stops}
+          min={variable.min}
+          max={variable.max}
+          unit={variable.unit}
+          decimals={variable.decimals ?? 1}
+        />
       </div>
 
       {/* ── Hint ──────────────────────────────────────────────── */}

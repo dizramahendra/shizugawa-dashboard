@@ -8,6 +8,7 @@ import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";
 import TopNav from "@/components/TopNav";
 import OceanBasin3D from "@/components/OceanBasin3D";
+import LegendOverlay from "@/components/LegendOverlay";
 import PlaybackControls from "@/components/PlaybackControls";
 import DepthGraph from "@/components/DepthGraph";
 
@@ -455,39 +456,15 @@ export default function PlaybackPage() {
             )}
 
             {/* Bottom-left: legend overlay (always visible, even when UI is hidden) */}
-            {(() => {
-              const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
-              return (
-                <div className="absolute bottom-3 left-3 z-10 pointer-events-none">
-                  <div className="bg-white/95 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap">
-                    <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex rounded-sm overflow-hidden border border-border/30">
-                        {stops.map((color, i) => {
-                          const dec = (variable as { decimals?: number }).decimals ?? 1;
-                          const lo = (variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(dec);
-                          const hi = (variable.min + ((i + 1) / stops.length) * (variable.max - variable.min)).toFixed(dec);
-                          return <div key={i} style={{ backgroundColor: color, width: 22, height: 11 }} title={`${lo}–${hi} ${variable.unit}`} />;
-                        })}
-                      </div>
-                      <div className="flex">
-                        {stops.map((_, i) => {
-                          const dec = (variable as { decimals?: number }).decimals ?? 1;
-                          return (
-                          <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 22 }}>
-                            {(variable.min + (i / stops.length) * (variable.max - variable.min)).toFixed(dec)}
-                          </div>
-                          );
-                        })}
-                      </div>
-                      <div className="text-[7px] font-mono text-slate-400 text-right" style={{ width: stops.length * 22 }}>
-                        {variable.unit}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            <div className="absolute bottom-3 left-3 z-10 pointer-events-none">
+              <LegendOverlay
+                stops={COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen}
+                min={variable.min}
+                max={variable.max}
+                unit={variable.unit}
+                decimals={variable.decimals ?? 1}
+              />
+            </div>
 
             {/* ── Vertical-slice mini-map overlay ────────────────────────────── */}
             {showUI && activeTool === "slice-v" && (

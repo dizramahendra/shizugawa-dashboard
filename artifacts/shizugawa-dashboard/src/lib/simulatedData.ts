@@ -1140,7 +1140,17 @@ export function getWeekLabel(week: number, year: number = 2023): WeekLabel {
   };
 }
 
-export const VARIABLE_OPTIONS = [
+export interface VariableOption {
+  id:         string;
+  label:      string;
+  unit:       string;
+  colorScale: string;
+  min:        number;
+  max:        number;
+  decimals:   number;
+}
+
+export const VARIABLE_OPTIONS: VariableOption[] = [
   { id: "nitrogen",   label: "Total Nitrogen",   unit: "mg/L", colorScale: "nitrogen",   min: 0.2,  max: 3.0, decimals: 2 },
   { id: "phosphorus", label: "Total Phosphorus", unit: "μg/L", colorScale: "phosphorus", min: 10,   max: 130, decimals: 0 },
   { id: "flow",       label: "Water Flow",       unit: "cm/s", colorScale: "flow",       min: 0,    max: 100, decimals: 1 },

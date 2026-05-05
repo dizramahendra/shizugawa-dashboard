@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
 import { generateRiverData, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
 import NorthArrow from "@/components/NorthArrow";
+import LegendOverlay from "@/components/LegendOverlay";
 
 const SVG_W = 465;
 const SVG_H = 586;
@@ -706,27 +707,16 @@ export default function MapLibreMap({
         const minVal = varOpt?.min ?? 0;
         const maxVal = varOpt?.max ?? 1;
         const unit   = varOpt?.unit ?? "";
+        const dec    = varOpt?.decimals ?? 1;
         return (
-          <div className="absolute bottom-3 left-3 flex flex-col gap-0.5 bg-white/90 backdrop-blur-sm border border-border rounded-md px-2.5 py-1.5 shadow-sm pointer-events-none">
-            <span className="text-[9px] text-muted-foreground font-medium">{variableLabel}</span>
-            <div className="flex rounded-sm overflow-hidden border border-border/20">
-              {stops.map((color, i) => {
-                const lo = (minVal + (i / stops.length) * (maxVal - minVal)).toFixed(1);
-                const hi = (minVal + ((i + 1) / stops.length) * (maxVal - minVal)).toFixed(1);
-                return <div key={i} style={{ backgroundColor: color, width: 26, height: 12 }} title={`${lo}–${hi} ${unit}`} />;
-              })}
-            </div>
-            <div className="flex">
-              {stops.map((_, i) => {
-                const lo = (minVal + (i / stops.length) * (maxVal - minVal)).toFixed(1);
-                return (
-                  <div key={i} className="text-[7px] font-mono text-slate-500 text-center" style={{ width: 26 }}>
-                    {lo}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="text-[7px] font-mono text-slate-400 text-right">{unit}</div>
+          <div className="absolute bottom-3 left-3 pointer-events-none">
+            <LegendOverlay
+              stops={stops}
+              min={minVal}
+              max={maxVal}
+              unit={unit}
+              decimals={dec}
+            />
           </div>
         );
       })()}
