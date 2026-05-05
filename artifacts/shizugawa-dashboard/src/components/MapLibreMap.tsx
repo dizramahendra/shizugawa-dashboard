@@ -8,6 +8,19 @@ import LegendOverlay from "@/components/LegendOverlay";
 const SVG_W = 465;
 const SVG_H = 586;
 
+// Background-SVG posterize: collapse all non-background pixels to one shade
+// of grey. The source SVG draws some rivers in nearly white tones (e.g.
+// #FEFEC3 ≈ luminance 0.97), so we use 100 bins with a high threshold —
+// only literal background (luminance ≥ 0.99) stays white; everything else,
+// including the lightest river strokes, snaps to UNIFORM_RIVER_GREY.
+const UNIFORM_RIVER_GREY = 0.52; // ≈ #858585 — slightly darker neutral mid-grey
+const UNIFORM_GREY_TABLE = (() => {
+  const bins = 100;
+  return Array.from({ length: bins }, (_, i) =>
+    i === bins - 1 ? "1" : String(UNIFORM_RIVER_GREY)
+  ).join(" ");
+})();
+
 const MODEL_RIVER: Record<number, string> = {
   1: "shizugawa", 2: "oura",      3: "karakuwa", 4: "togura",   5: "urashiro",
   6: "iriya",     7: "okawa",     8: "niida",    9: "karakuwa2", 10: "tomaya",
@@ -397,11 +410,12 @@ export default function MapLibreMap({
         style={{ display: "block", transition: "viewBox 0.6s ease" }}
       >
         {/* Top-level defs — filter that flattens the background SVG's rivers
-            (originally drawn in different blue/teal hues) to a single uniform
-            grey, while keeping near-white background pixels white. Without
-            this, `saturate(0)` alone preserves each river's original luminance,
-            so dark and light grey outlines bleed out from under the colored
-            data strokes inconsistently. */}
+            (originally drawn in different blue/teal/yellow hues) to a single
+            uniform grey, while keeping near-white background pixels white.
+            See UNIFORM_GREY_TABLE comments above for threshold reasoning:
+            the source SVG includes rivers as pale as #FEFEC3 (lum ≈ 0.97), so
+            a 10-bin threshold at 0.9 wasn't enough — those rivers fell into
+            the "white" bin and stayed white. Now 100 bins, threshold 0.99. */}
         <defs>
           <filter id="uniform-grey-rivers" x="0%" y="0%" width="100%" height="100%">
             {/* Step 1: collapse RGB to luminance grey. */}
@@ -414,13 +428,12 @@ export default function MapLibreMap({
                       0     0     0     1 0"
               result="grey"
             />
-            {/* Step 2: posterize — anything below ~90% luminance (rivers, labels,
-                outlines) is mapped to a single mid-grey ≈ #a8a8a8; the brightest
-                bin (background paper) stays white. */}
+            {/* Step 2: posterize — only the brightest 1% (true background)
+                stays white; everything else snaps to UNIFORM_RIVER_GREY. */}
             <feComponentTransfer in="grey">
-              <feFuncR type="discrete" tableValues="0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 1" />
-              <feFuncG type="discrete" tableValues="0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 1" />
-              <feFuncB type="discrete" tableValues="0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 0.66 1" />
+              <feFuncR type="discrete" tableValues={UNIFORM_GREY_TABLE} />
+              <feFuncG type="discrete" tableValues={UNIFORM_GREY_TABLE} />
+              <feFuncB type="discrete" tableValues={UNIFORM_GREY_TABLE} />
             </feComponentTransfer>
           </filter>
         </defs>
