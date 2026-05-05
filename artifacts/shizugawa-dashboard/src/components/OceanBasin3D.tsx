@@ -14,6 +14,9 @@ import {
   DEPTH_REAL_M,
   DEPTH_TOTAL_H,
   generateWeekData,
+  generateRiverData,
+  RIVER_COLS,
+  RIVER_ROWS,
   DashboardState,
 } from "@/lib/simulatedData";
 
@@ -834,26 +837,31 @@ function RiverGrid({
   sliceDir: SliceDir;
   sliceCutType: SliceCutType;
 }) {
-  const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
   // Hover state — which river group is under the pointer
   const [hoveredId, setHoveredId]  = useState<string | null>(null);
   const [hoverPos,  setHoverPos]   = useState<[number, number, number]>([0, 0, 0]);
 
-  // Uniform colour: mean surface value across all active bay cells so every
-  // river tile gets the same flat colour regardless of upstream position.
-  const uniformVal = useMemo(() => {
-    let sum = 0, cnt = 0;
-    for (let gz = 0; gz < GRID_D; gz++) {
-      for (let gx = 0; gx < GRID_W; gx++) {
-        if (BAY_MASK[gz]?.[gx]) { sum += data[gz]?.[gx]?.[0] ?? 0.5; cnt++; }
-      }
+  // Per-river colour cache: each unique riverId gets its own RGB derived from
+  // the same data the map viewport uses (`generateRiverData`), averaged across
+  // the river's midpoint cross-section. This mirrors MapLibreMap's `reachColors`
+  // logic exactly, so a given river shows the same shade in 2D and in 3D, and
+  // animates with `week` and `colorScale`. Previously every river shared one
+  // bay-mean tint and never differentiated.
+  const riverColors = useMemo(() => {
+    const out: Record<string, [number, number, number]> = {};
+    const uniqueIds = Array.from(new Set(RIVER_CELLS.map(c => c.riverId)));
+    const midCol = Math.min(RIVER_COLS - 1, Math.round(0.5 * (RIVER_COLS - 1)));
+    for (const rid of uniqueIds) {
+      const grid = generateRiverData(week, rid);
+      let sum = 0;
+      for (let row = 0; row < RIVER_ROWS; row++) sum += grid[row]?.[midCol] ?? 0;
+      const t = Math.max(0, Math.min(1, sum / RIVER_ROWS));
+      out[rid] = lerpColor(stops, t);
     }
-    return cnt > 0 ? sum / cnt : 0.5;
-  }, [data]);
-
-  const [ur, ug, ub] = lerpColor(stops, uniformVal);
+    return out;
+  }, [week, stops]);
 
   const elements: React.ReactNode[] = [];
 
@@ -866,10 +874,11 @@ function RiverGrid({
     if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
     const isHov = hoveredId === riverId;
+    const base = riverColors[riverId] ?? lerpColor(stops, 0.5);
     // Slightly brighten hovered river cells
     const [r, g, b] = isHov
-      ? [Math.min(1, ur + 0.25), Math.min(1, ug + 0.25), Math.min(1, ub + 0.25)]
-      : [ur, ug, ub];
+      ? [Math.min(1, base[0] + 0.25), Math.min(1, base[1] + 0.25), Math.min(1, base[2] + 0.25)]
+      : base;
 
     const px = offsetX + gx * STEP + CELL_W / 2;
     const pz = offsetZ + gz * STEP + CELL_W / 2;
