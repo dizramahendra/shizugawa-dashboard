@@ -445,11 +445,20 @@ export default function PlaybackPage() {
               );
             })()}
 
-            {/* Bottom-left: legend overlay (same system as Map & River views) */}
-            {showUI && (() => {
+            {/* Top-left: Orbit/Zoom hint (still toggles with Hide UI) */}
+            {showUI && (
+              <div className="absolute top-3 left-3 z-10 pointer-events-none">
+                <div className="bg-white/80 border border-border rounded-md px-2.5 py-1.5 shadow-sm">
+                  <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click water column to inspect depth</div>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom-left: legend overlay (always visible, even when UI is hidden) */}
+            {(() => {
               const stops = COLOR_STOPS[selectedVariable] ?? COLOR_STOPS.nitrogen;
               return (
-                <div className="absolute bottom-3 left-3 z-10 pointer-events-none flex flex-col gap-2">
+                <div className="absolute bottom-3 left-3 z-10 pointer-events-none">
                   <div className="bg-white/95 border border-border rounded-md px-3 py-2 shadow-sm flex items-center gap-3 whitespace-nowrap">
                     <span className="text-[10px] text-muted-foreground">{variable.label} ({variable.unit})</span>
                     <div className="flex flex-col gap-0.5">
@@ -475,9 +484,6 @@ export default function PlaybackPage() {
                         {variable.unit}
                       </div>
                     </div>
-                  </div>
-                  <div className="bg-white/80 border border-border rounded-md px-2.5 py-1.5 shadow-sm">
-                    <div className="text-[10px] text-muted-foreground font-mono">Orbit · Zoom · Click water column to inspect depth</div>
                   </div>
                 </div>
               );
