@@ -835,43 +835,70 @@ export default function PlaybackPage() {
             {/* Selected column — visible whenever a single-point inspect tool is active */}
             {selectedPoint && inspectTool !== "none" && (() => {
               const coords = gridToCoords(selectedPoint.x, selectedPoint.z, 0);
+              const copy = (text: string) => {
+                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                  navigator.clipboard.writeText(text).catch(() => {});
+                }
+              };
+              const CopyIcon = (
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-3.5 h-3.5">
+                  <rect x="5" y="5" width="8" height="8" rx="1.2" />
+                  <path d="M3 11V4a1 1 0 0 1 1-1h7" />
+                </svg>
+              );
               return (
                 <div className="px-4 py-4">
-                  <div className="panel-section-title mb-2 flex items-center gap-1.5">
-                    Selected Column
-                    <span className="ml-auto text-[9px] font-mono bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5">
-                      Surface → 99m
-                    </span>
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold text-foreground">Selected Water Column</div>
+                    <button
+                      onClick={() => setSelectedPoint(null)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-foreground border border-border rounded-md hover:bg-muted/60 transition-colors"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                        <line x1="3" y1="3" x2="13" y2="13" />
+                        <line x1="13" y1="3" x2="3" y2="13" />
+                      </svg>
+                      Deselect
+                    </button>
                   </div>
-                  <div className="bg-muted/40 rounded-md p-3 space-y-2">
-                    {/* Lat / Lon row */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-white rounded border border-border/60 p-1.5 text-center">
-                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Latitude</div>
-                        <div className="text-xs font-mono font-semibold text-foreground">{coords.lat}°N</div>
-                      </div>
-                      <div className="bg-white rounded border border-border/60 p-1.5 text-center">
-                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Longitude</div>
-                        <div className="text-xs font-mono font-semibold text-foreground">{coords.lon}°E</div>
+
+                  {/* Lat / Lon / Depth card */}
+                  <div className="bg-muted/40 rounded-md p-3 space-y-1.5 mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-24 text-xs text-muted-foreground">Lat.</div>
+                      <div className="flex-1 text-sm font-mono font-medium text-foreground">{coords.lat}°N</div>
+                      <button
+                        onClick={() => copy(`${coords.lat}°N`)}
+                        title="Copy latitude"
+                        className="text-muted-foreground hover:text-foreground p-0.5 transition-colors"
+                      >{CopyIcon}</button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-24 text-xs text-muted-foreground">Lon.</div>
+                      <div className="flex-1 text-sm font-mono font-medium text-foreground">{coords.lon}°E</div>
+                      <button
+                        onClick={() => copy(`${coords.lon}°E`)}
+                        title="Copy longitude"
+                        className="text-muted-foreground hover:text-foreground p-0.5 transition-colors"
+                      >{CopyIcon}</button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-24 text-xs text-muted-foreground">Column Depth</div>
+                      <div className="flex-1 text-sm font-mono font-medium text-foreground">0–99 m</div>
+                      <div className="w-3.5" aria-hidden />
+                    </div>
+                  </div>
+
+                  {/* Column-integrated total — kept as-is per spec */}
+                  {selectedValue !== null && (
+                    <div className="bg-muted/40 rounded-md p-3">
+                      <div className="text-xs text-muted-foreground">Column-Integrated {variable.label}</div>
+                      <div className="text-lg font-mono font-bold text-primary mt-0.5">
+                        {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
                       </div>
                     </div>
-                    {/* Integration depth badge */}
-                    <div className="bg-white rounded border border-border/60 p-1.5 flex items-center justify-between px-2">
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Integration</div>
-                      <div className="text-xs font-mono font-semibold text-foreground">
-                        All 8 layers
-                        <span className="text-muted-foreground font-normal ml-1 text-[9px]">(depth-weighted)</span>
-                      </div>
-                    </div>
-                    {selectedValue !== null && (
-                      <div className="pt-2 border-t border-border/40">
-                        <div className="text-xs text-muted-foreground">Column-Integrated {variable.label}</div>
-                        <div className="text-lg font-mono font-bold text-primary mt-0.5">
-                          {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })()}
