@@ -104,55 +104,60 @@ function PerBasinBreakdownList({
   return (
     <div className="bg-white border border-border rounded-md p-2.5">
       <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
-        Per-basin values vs regional avg
+        Per-indicator breakdown vs regional avg
       </div>
       <div className="space-y-2.5">
-        {basins.map((b, bIdx) => (
-          <div
-            key={b.id}
-            className={[
-              "space-y-1",
-              bIdx > 0 ? "pt-2 border-t border-border/60" : "",
-            ].join(" ")}
-          >
-            <div className="flex items-center gap-1.5 text-[10.5px]">
-              <span
-                className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                style={{ background: colorFor(b.id) }}
-              />
-              <span className="font-medium text-foreground truncate">{b.name}</span>
-              <span className="font-mono text-[9.5px] text-muted-foreground">#{b.id}</span>
+        {SUB_BASIN_INDICATORS.map((ind, iIdx) => {
+          const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+          // Sort basins descending by value so the best/worst stand out.
+          const sorted = [...basins].sort(
+            (a, b) => b.indicators[ind.id] - a.indicators[ind.id],
+          );
+          return (
+            <div
+              key={ind.id}
+              className={[
+                "space-y-1",
+                iIdx > 0 ? "pt-2 border-t border-border/60" : "",
+              ].join(" ")}
+            >
+              <div className="flex items-baseline gap-2 text-[10.5px]">
+                <span className="font-medium text-foreground">{ind.shortLabel}</span>
+                <span className="text-[9.5px] text-muted-foreground">
+                  regional avg {fmt(baseline, ind.decimals)} {ind.unit}
+                </span>
+              </div>
+              {sorted.map(b => {
+                const value    = b.indicators[ind.id];
+                const delta    = baseline > 0 ? (value - baseline) / baseline : 0;
+                const positive = delta >= 0;
+                return (
+                  <div key={b.id} className="flex items-center text-[10.5px] gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                      style={{ background: colorFor(b.id) }}
+                    />
+                    <span className="text-foreground/80 flex-1 truncate">{b.name}</span>
+                    <span className="font-mono text-foreground tabular-nums">
+                      {fmt(value, ind.decimals)}
+                    </span>
+                    <span
+                      className={[
+                        "text-[9.5px] font-mono w-12 text-right",
+                        positive ? "text-emerald-700" : "text-rose-700",
+                      ].join(" ")}
+                    >
+                      {positive ? "+" : "−"}{(Math.abs(delta) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            {SUB_BASIN_INDICATORS.map(ind => {
-              const value    = b.indicators[ind.id];
-              const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
-              const delta    = baseline > 0 ? (value - baseline) / baseline : 0;
-              const positive = delta >= 0;
-              return (
-                <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
-                  <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
-                  <span className="font-mono text-foreground tabular-nums">
-                    {fmt(value, ind.decimals)}
-                  </span>
-                  <span className="text-muted-foreground text-[9.5px]">
-                    / {fmt(baseline, ind.decimals)} {ind.unit}
-                  </span>
-                  <span
-                    className={[
-                      "text-[9.5px] font-mono w-10 text-right",
-                      positive ? "text-emerald-700" : "text-rose-700",
-                    ].join(" ")}
-                  >
-                    {positive ? "+" : "−"}{(Math.abs(delta) * 100).toFixed(0)}%
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+          );
+        })}
       </div>
       <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
-        Each basin's per-hectare values vs the regional average across all 25 sub-basins.
+        Per-hectare values vs the regional average across all 25 sub-basins; basins ranked highest → lowest in each indicator.
       </p>
     </div>
   );
