@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import {
   X, Layers, BarChart3, Sigma, MapPin, Mountain, TreePine,
   Hexagon, Sparkles, Info, Columns3,
@@ -165,6 +165,26 @@ export interface RadarPopoverRow {
   deltaPct?: number;
   /** Bold + tinted background (regional/header rows). */
   emphasis?: boolean;
+}
+
+/** Shared hover-state hook for all 3 radar variants: tracks the active axis
+ *  and provides mouse handlers for a transparent hit-area `<rect>`.  Keeps
+ *  the wedge-detection logic in one place so Single/Multi/Aggregate radars
+ *  all behave identically. */
+function useRadarAxisHover(cx: number, cy: number, R: number, N: number) {
+  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+  const onMouseMove = (e: MouseEvent<SVGRectElement>) => {
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt  = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const { x, y } = pt.matrixTransform(ctm.inverse());
+    setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
+  };
+  const onMouseLeave = () => setActiveAxis(null);
+  return { activeAxis, onMouseMove, onMouseLeave };
 }
 
 /** Map a cursor position (in svg coords) to the nearest axis index, or null
@@ -969,7 +989,7 @@ function AggregateRadarChart({
 
   const baselineRingR = (BASELINE_FRAC / MAX_FRAC) * R;
 
-  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+  const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
 
   // Build popover rows for the active axis: regional Before/After (or
   // Sum/Expected when no measure) at top, then per-basin contributors.
@@ -1124,17 +1144,8 @@ function AggregateRadarChart({
         <rect
           x={0} y={0} width={W} height={H}
           fill="transparent" pointerEvents="all"
-          onMouseMove={e => {
-            const svg = e.currentTarget.ownerSVGElement;
-            if (!svg) return;
-            const ctm = svg.getScreenCTM();
-            if (!ctm) return;
-            const pt  = svg.createSVGPoint();
-            pt.x = e.clientX; pt.y = e.clientY;
-            const { x, y } = pt.matrixTransform(ctm.inverse());
-            setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
-          }}
-          onMouseLeave={() => setActiveAxis(null)}
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
         />
 
         {/* Legend */}
@@ -1186,7 +1197,7 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   const basinPath = basinPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const baselineRingR = (BASELINE_FRAC / MAX_FRAC) * R;
 
-  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+  const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
 
   const popoverRows: RadarPopoverRow[] = activeAxis !== null
     ? (() => {
@@ -1274,17 +1285,8 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
         <rect
           x={0} y={0} width={W} height={H}
           fill="transparent" pointerEvents="all"
-          onMouseMove={e => {
-            const svg = e.currentTarget.ownerSVGElement;
-            if (!svg) return;
-            const ctm = svg.getScreenCTM();
-            if (!ctm) return;
-            const pt  = svg.createSVGPoint();
-            pt.x = e.clientX; pt.y = e.clientY;
-            const { x, y } = pt.matrixTransform(ctm.inverse());
-            setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
-          }}
-          onMouseLeave={() => setActiveAxis(null)}
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
         />
 
         {/* Legend */}
@@ -1362,7 +1364,7 @@ function MultiBasinRadar({
   const gridFracs: number[] = [1, 2, 3, 4, 5].map(i => (i / 5) * MAX_FRAC);
   const fillOpacity = Math.max(0.06, 0.22 / Math.max(1, basins.length * 0.35));
 
-  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+  const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
 
   const popoverRows: RadarPopoverRow[] = activeAxis !== null
     ? (() => {
@@ -1452,17 +1454,8 @@ function MultiBasinRadar({
         <rect
           x={0} y={0} width={W} height={H}
           fill="transparent" pointerEvents="all"
-          onMouseMove={e => {
-            const svg = e.currentTarget.ownerSVGElement;
-            if (!svg) return;
-            const ctm = svg.getScreenCTM();
-            if (!ctm) return;
-            const pt  = svg.createSVGPoint();
-            pt.x = e.clientX; pt.y = e.clientY;
-            const { x, y } = pt.matrixTransform(ctm.inverse());
-            setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
-          }}
-          onMouseLeave={() => setActiveAxis(null)}
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
         />
 
         {/* Legend */}
