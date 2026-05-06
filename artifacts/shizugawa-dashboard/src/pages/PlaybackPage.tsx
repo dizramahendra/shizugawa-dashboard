@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
 import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, DEPTH_REAL_M } from "@/lib/simulatedData";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";
@@ -70,6 +70,45 @@ function gridToCoords(x: number, z: number, depthLayer: number) {
     lon: lon.toFixed(4),
     depthM,
   };
+}
+
+// ── Voxel / column mass helpers ──────────────────────────────────────────
+// Bay span: 0.085° lon × 0.069° lat at lat ≈ 38.6°N
+//   E-W = 0.085 × 87.0 km/° ≈ 7.40 km  →  per voxel = 7400 m / 112 ≈ 66 m
+//   N-S = 0.069 × 110.96 km/° ≈ 7.66 km →  per voxel = 7660 m / 96  ≈ 80 m
+//   Cell area ≈ 5,300 m² per surface voxel.
+const CELL_AREA_M2 = (7400 / GRID_W) * (7660 / GRID_D); // ≈ 5,272 m²
+
+// Layer thickness in metres, derived from DEPTH_REAL_M (top of each layer)
+// with a 90 m bottom anchor for the deepest layer.
+const LAYER_THICKNESS_M: number[] = (() => {
+  const tops = [...DEPTH_REAL_M, 90];
+  return DEPTH_REAL_M.map((_, i) => tops[i + 1] - tops[i]);
+})();
+const VOXEL_VOLUME_M3 = LAYER_THICKNESS_M.map((t) => t * CELL_AREA_M2);
+
+/**
+ * Mass of nutrient inside a single voxel, in kilograms.
+ * Returns null for variables that aren't a concentration (e.g. flow).
+ *   Nitrogen   : value in mg/L  = g/m³        → mass_g  = conc · V  → /1000 → kg
+ *   Phosphorus : value in µg/L  = mg/m³       → mass_mg = conc · V  → /1e6  → kg
+ */
+function voxelMassKg(concentration: number, layerIdx: number, variableId: string): number | null {
+  const V = VOXEL_VOLUME_M3[layerIdx];
+  if (V === undefined) return null;
+  switch (variableId) {
+    case "nitrogen":   return (concentration * V) / 1000;     // g  → kg
+    case "phosphorus": return (concentration * V) / 1_000_000; // mg → kg
+    default:           return null;                            // flow has no mass
+  }
+}
+
+/** Format a kilogram value with auto-unit (kg / g / mg) and sensible precision. */
+function formatMass(kg: number): { value: string; unit: string } {
+  const abs = Math.abs(kg);
+  if (abs >= 1)        return { value: kg.toFixed(2),         unit: "kg" };
+  if (abs >= 0.001)    return { value: (kg * 1_000).toFixed(2),     unit: "g"  };
+  return                       { value: (kg * 1_000_000).toFixed(1), unit: "mg" };
 }
 
 export default function PlaybackPage() {
@@ -899,24 +938,56 @@ export default function PlaybackPage() {
                       </div>
 
                       {/* Headline metric — concentration in both modes, same units */}
-                      {(isVoxel ? voxelValue !== null : selectedValue !== null) && (
-                        <div className="bg-muted/40 rounded-md p-3">
-                          <div className="text-xs text-muted-foreground">
-                            {isVoxel
-                              ? `${variable.label} at this voxel`
-                              : `Column-mean ${variable.label}`}
+                      {(isVoxel ? voxelValue !== null : selectedValue !== null) && (() => {
+                        // Mass sub-line: voxel-mass for Voxel mode,
+                        // column-total (sum of all 8 layers) for Column mode.
+                        // Returns null for variables with no mass (e.g. flow).
+                        let massKg: number | null = null;
+                        if (isVoxel && voxelValue !== null) {
+                          massKg = voxelMassKg(voxelValue, voxelDepthIdx, selectedVariable);
+                        } else if (!isVoxel) {
+                          let total = 0;
+                          let any = false;
+                          for (let d = 0; d < DEPTH_REAL_M.length; d++) {
+                            const raw = weekData[selectedPoint.z]?.[selectedPoint.x]?.[d];
+                            if (raw === undefined) continue;
+                            const conc = valueToConcentration(raw, selectedVariable);
+                            const m = voxelMassKg(conc, d, selectedVariable);
+                            if (m !== null) { total += m; any = true; }
+                          }
+                          if (any) massKg = total;
+                        }
+                        const mass = massKg !== null ? formatMass(massKg) : null;
+                        return (
+                          <div className="bg-muted/40 rounded-md p-3">
+                            <div className="text-xs text-muted-foreground">
+                              {isVoxel
+                                ? `${variable.label} at this voxel`
+                                : `Column-mean ${variable.label}`}
+                            </div>
+                            <div className="text-lg font-mono font-bold text-primary mt-0.5">
+                              {isVoxel ? voxelValue : selectedValue}
+                              <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {isVoxel
+                                ? "Concentration at the selected cell"
+                                : "Depth-weighted mean across all 8 layers"}
+                            </div>
+                            {mass && (
+                              <div className="mt-2 pt-2 border-t border-border/60 flex items-baseline justify-between">
+                                <div className="text-[10px] text-muted-foreground">
+                                  {isVoxel ? "Voxel mass" : "Column total"}
+                                </div>
+                                <div className="text-sm font-mono font-semibold text-foreground">
+                                  {mass.value}
+                                  <span className="text-[10px] font-normal text-muted-foreground ml-1">{mass.unit}</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-lg font-mono font-bold text-primary mt-0.5">
-                            {isVoxel ? voxelValue : selectedValue}
-                            <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
-                            {isVoxel
-                              ? "Concentration at the selected cell"
-                              : "Depth-weighted mean across all 8 layers"}
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Voxel mode → radar; Column mode → depth graph */}
                       {isVoxel ? (
