@@ -146,6 +146,147 @@ function IndicatorBreakdownTable({
   );
 }
 
+// ── Radar axis-hover system (shared across all 3 radar variants) ──────────
+//
+// Hovering inside a 72° axis wedge opens a popover that lists every series'
+// value on that axis, sorted descending by raw value, with swatch + label +
+// value/unit + ±Δ% vs regional avg.  Same component used on single-basin,
+// per-basin compare, and aggregate regional radars so the interaction model
+// is identical.  Replaces the per-vertex dot tooltip (which doesn't scale
+// past ~3 basins because of overlapping vertices).
+
+export interface RadarPopoverRow {
+  label:     string;
+  color:     string;
+  value:     number;
+  formatted: string;
+  unit:      string;
+  /** Signed fraction (e.g. 0.42 = +42%). Hides the ± column when undefined. */
+  deltaPct?: number;
+  /** Bold + tinted background (regional/header rows). */
+  emphasis?: boolean;
+}
+
+/** Map a cursor position (in svg coords) to the nearest axis index, or null
+ *  when outside the chart disk (with a small tolerance for label area). */
+function axisIndexFromPoint(
+  px: number, py: number,
+  cx: number, cy: number,
+  R: number, N: number,
+): number | null {
+  const dx = px - cx, dy = py - cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist > R + 18) return null;
+  // atan2 returns 0 = +x. Shift so 0 = -y (top axis at index 0), CW.
+  let t = Math.atan2(dy, dx) + Math.PI / 2;
+  if (t < 0) t += Math.PI * 2;
+  const wedge = (Math.PI * 2) / N;
+  return Math.round(t / wedge) % N;
+}
+
+function RadarAxisPopover({
+  indicator,
+  baseline,
+  rows,
+  axisIdx,
+  N,
+  containerW,
+  cx, cy, R,
+}: {
+  indicator:  SubBasinIndicatorDef;
+  baseline:   number;
+  rows:       RadarPopoverRow[];
+  axisIdx:    number;
+  N:          number;
+  containerW: number;
+  cx: number; cy: number; R: number;
+}) {
+  // Sort header rows first (they encode regional/Before/After context),
+  // then rest by raw value descending so rank is read at a glance.
+  const headerRows  = rows.filter(r => r.emphasis);
+  const detailRows  = rows.filter(r => !r.emphasis).sort((a, b) => b.value - a.value);
+  const sortedRows  = [...headerRows, ...detailRows];
+
+  // Anchor at the outer end of the active axis, then flip horizontally so
+  // the popover never clips the panel edge (axes pointing right ⇒ popover
+  // on left of axis end, and vice versa).
+  const a = -Math.PI / 2 + (axisIdx / N) * Math.PI * 2;
+  const ax = cx + Math.cos(a) * (R + 6);
+  const ay = cy + Math.sin(a) * (R + 6);
+
+  const PW = 196;
+  const cosA = Math.cos(a);
+  const sinA = Math.sin(a);
+  const flipCenter = Math.abs(cosA) < 0.05;
+  const flipRight  = cosA < -0.05;
+
+  const left = flipCenter
+    ? Math.min(Math.max(ax - PW / 2, 4), containerW - PW - 4)
+    : flipRight
+      ? Math.min(ax + 6, containerW - PW - 4)
+      : Math.max(ax - PW - 6, 4);
+
+  const above = sinA > 0.3;
+  const top = above ? ay - 6 : ay + 4;
+  const transform = above ? "translateY(-100%)" : "none";
+
+  return (
+    <div
+      className="absolute z-30 pointer-events-none bg-white border border-slate-300 rounded-md shadow-lg text-[10px]"
+      style={{ left, top, width: PW, transform }}
+      role="tooltip"
+    >
+      <div className="px-2 py-1 border-b border-slate-200 bg-slate-50 rounded-t-md">
+        <div className="font-semibold text-slate-900 text-[10.5px] leading-tight">
+          {indicator.label}
+        </div>
+        <div className="text-[9px] text-slate-500 font-mono">
+          regional avg {fmt(baseline, indicator.decimals)} {indicator.unit}
+        </div>
+      </div>
+      <div className="px-1.5 py-1 space-y-0.5 max-h-[200px] overflow-y-auto">
+        {sortedRows.length === 0 && (
+          <div className="px-1 py-1 text-slate-400 italic">No data</div>
+        )}
+        {sortedRows.map((r, i) => (
+          <div
+            key={i}
+            className={[
+              "flex items-center gap-1.5 px-1 py-0.5 rounded",
+              r.emphasis ? "font-semibold bg-slate-100" : "",
+            ].join(" ")}
+          >
+            <span
+              className="inline-block w-2 h-2 rounded-sm shrink-0 border border-white/60"
+              style={{ background: r.color }}
+            />
+            <span className="flex-1 truncate text-slate-700">{r.label}</span>
+            <span className="font-mono tabular-nums text-slate-900">
+              {r.formatted}
+            </span>
+            <span className="font-mono text-[9px] text-slate-400 shrink-0">
+              {r.unit}
+            </span>
+            {r.deltaPct !== undefined && Number.isFinite(r.deltaPct) ? (
+              <span
+                className={[
+                  "font-mono tabular-nums w-9 text-right text-[9.5px] shrink-0",
+                  r.deltaPct >= 0 ? "text-emerald-600" : "text-rose-600",
+                ].join(" ")}
+              >
+                {r.deltaPct >= 0 ? "+" : "−"}
+                {Math.round(Math.abs(r.deltaPct) * 100)}%
+              </span>
+            ) : (
+              <span className="w-9 shrink-0" />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Hover tooltip primitive ────────────────────────────────────────────────
 
 interface TipState {
@@ -779,6 +920,8 @@ function AggregateRadarChart({
   hasMeasure,
   measureLabel,
   units,
+  basins,
+  colorFor,
 }: {
   values:       Record<SubBasinIndicatorId, number>;
   baseValues:   Record<SubBasinIndicatorId, number>;
@@ -786,6 +929,8 @@ function AggregateRadarChart({
   hasMeasure:   boolean;
   measureLabel: string;
   units:        Record<SubBasinIndicatorId, string>;
+  basins:       SubBasinMeta[];
+  colorFor:     (id: number) => string;
 }) {
   const W = RADAR_W;
   const H = RADAR_H;
@@ -824,120 +969,192 @@ function AggregateRadarChart({
 
   const baselineRingR = (BASELINE_FRAC / MAX_FRAC) * R;
 
+  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+
+  // Build popover rows for the active axis: regional Before/After (or
+  // Sum/Expected when no measure) at top, then per-basin contributors.
+  const popoverRows: RadarPopoverRow[] = activeAxis !== null
+    ? (() => {
+        const ind  = SUB_BASIN_INDICATORS[activeAxis];
+        const exp  = expectedSums[ind.id];
+        const base = SUB_BASIN_BASELINE_AVG[ind.id];
+        const out: RadarPopoverRow[] = [];
+        if (hasMeasure) {
+          const before = baseValues[ind.id];
+          const after  = values[ind.id];
+          out.push({
+            label: "Regional · Before",
+            color: BEFORE_FILL,
+            value: before,
+            formatted: fmt(before, ind.decimals),
+            unit: units[ind.id],
+            deltaPct: exp > 0 ? (before - exp) / exp : undefined,
+            emphasis: true,
+          });
+          out.push({
+            label: `Regional · After (${measureLabel})`,
+            color: AFTER_FILL,
+            value: after,
+            formatted: fmt(after, ind.decimals),
+            unit: units[ind.id],
+            deltaPct: before > 0 ? (after - before) / before : undefined,
+            emphasis: true,
+          });
+        } else {
+          const sum = values[ind.id];
+          out.push({
+            label: "Regional sum",
+            color: "#3b82f6",
+            value: sum,
+            formatted: fmt(sum, ind.decimals),
+            unit: units[ind.id],
+            deltaPct: exp > 0 ? (sum - exp) / exp : undefined,
+            emphasis: true,
+          });
+          out.push({
+            label: "Expected (avg × N)",
+            color: REF_COLOR,
+            value: exp,
+            formatted: fmt(exp, ind.decimals),
+            unit: units[ind.id],
+            emphasis: true,
+          });
+        }
+        for (const b of basins) {
+          const v = b.indicators[ind.id];
+          out.push({
+            label: `#${b.id} ${b.name}`,
+            color: colorFor(b.id),
+            value: v,
+            formatted: fmt(v, ind.decimals),
+            unit: ind.unit,
+            deltaPct: base > 0 ? (v - base) / base : undefined,
+          });
+        }
+        return out;
+      })()
+    : [];
+
   return (
-    <ChartHoverable
-      height={RADAR_H}
-      render={({ setTip }) => (
-        <svg width={W} height={H} className="block">
-          {/* 5 evenly spaced concentric rings */}
-          {[1, 2, 3, 4, 5].map(i => (
-            <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
-              fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
-          ))}
-          {/* Baseline reference ring */}
-          <circle cx={cx} cy={cy} r={baselineRingR}
-            fill="none" stroke={REF_COLOR} strokeWidth="1.1"
-            strokeDasharray="3 2" opacity="0.7" />
+    <div className="relative" style={{ width: W, height: H }}>
+      <svg width={W} height={H} className="block">
+        {/* 5 evenly spaced concentric rings */}
+        {[1, 2, 3, 4, 5].map(i => (
+          <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
+            fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+        ))}
+        {/* Baseline reference ring */}
+        <circle cx={cx} cy={cy} r={baselineRingR}
+          fill="none" stroke={REF_COLOR} strokeWidth="1.1"
+          strokeDasharray="3 2" opacity="0.7" />
 
-          {/* Axes + labels */}
-          {SUB_BASIN_INDICATORS.map((ind, i) => {
-            const outer = point(MAX_FRAC, i);
-            const labelR = R + 14;
-            const a = angleFor(i);
-            const lx = cx + Math.cos(a) * labelR;
-            const ly = cy + Math.sin(a) * labelR;
-            const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
-            return (
-              <g key={ind.id}>
-                <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
-                  stroke="#cbd5e1" strokeWidth="0.5" />
-                <text
-                  x={lx} y={ly}
-                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                  fontSize="8.5" fill="#334155" fontWeight="600"
-                >
-                  {ind.shortLabel}
-                </text>
-                <text
-                  x={lx} y={ly + (Math.sin(a) >= 0 ? 11 : -11)}
-                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                  fontSize="7.5" fill="#64748b" fontFamily="monospace"
-                >
-                  avg {fmt(baseline, ind.decimals)} {ind.unit}
-                </text>
-              </g>
-            );
-          })}
+        {/* Axes + labels (avg moved into popover header) */}
+        {SUB_BASIN_INDICATORS.map((ind, i) => {
+          const outer = point(MAX_FRAC, i);
+          const labelR = R + 14;
+          const a = angleFor(i);
+          const lx = cx + Math.cos(a) * labelR;
+          const ly = cy + Math.sin(a) * labelR;
+          const isActive = activeAxis === i;
+          return (
+            <g key={ind.id}>
+              <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
+                stroke={isActive ? "#0f172a" : "#cbd5e1"}
+                strokeWidth={isActive ? 1.2 : 0.5} />
+              <text
+                x={lx} y={ly}
+                textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
+                dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
+                fontSize="9" fill={isActive ? "#0f172a" : "#334155"}
+                fontWeight={isActive ? 700 : 600}
+              >
+                {ind.shortLabel}
+              </text>
+            </g>
+          );
+        })}
 
-          {/* Before polygon (light, only when measure active) */}
-          {hasMeasure && (
-            <polygon points={beforePath}
-              fill={BEFORE_FILL} fillOpacity="0.18"
-              stroke={BEFORE_FILL} strokeWidth="1.2"
-              strokeDasharray="3 2"
-              strokeLinejoin="round" />
-          )}
-
-          {/* Main polygon (current values; dark in measure mode, primary otherwise) */}
-          <polygon
-            points={afterPath}
-            fill={hasMeasure ? AFTER_FILL : "#3b82f6"} fillOpacity="0.22"
-            stroke={hasMeasure ? AFTER_FILL : "#3b82f6"} strokeWidth="1.6"
+        {/* Before polygon (only when measure active) */}
+        {hasMeasure && (
+          <polygon points={beforePath}
+            fill={BEFORE_FILL} fillOpacity="0.18"
+            stroke={BEFORE_FILL} strokeWidth="1.2"
+            strokeDasharray="3 2"
             strokeLinejoin="round"
-          />
+            style={{ pointerEvents: "none" }} />
+        )}
 
-          {/* Vertices (hoverable) on the After polygon */}
-          {SUB_BASIN_INDICATORS.map((ind, i) => {
-            const p = afterPts[i];
-            return (
-              <circle
-                key={ind.id} cx={p.x} cy={p.y} r="3.2"
-                fill={hasMeasure ? AFTER_FILL : "#3b82f6"}
-                stroke="white" strokeWidth="1.2"
-                onMouseEnter={() => setTip({
-                  x: p.x,
-                  y: p.y,
-                  node: (
-                    <div>
-                      <div className="font-semibold mb-0.5">{ind.label}</div>
-                      {hasMeasure ? (
-                        <>
-                          <div>Before: <span className="font-mono">{fmt(baseValues[ind.id], ind.decimals)} {units[ind.id]}</span></div>
-                          <div>After:  <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span></div>
-                          <div className="opacity-80 text-[9.5px]">
-                            Δ: {fmtPctDelta(baseValues[ind.id], values[ind.id])} ({measureLabel})
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div>Sum: <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span></div>
-                          <div className="opacity-80 text-[9.5px]">
-                            Expected: {fmt(expectedSums[ind.id], ind.decimals)} {units[ind.id]}
-                          </div>
-                          <div className="opacity-80 text-[9.5px]">
-                            Δ vs expected: {fmtPctDelta(expectedSums[ind.id], values[ind.id])}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ),
-                })}
-                onMouseLeave={() => setTip(null)}
-                style={{ cursor: "pointer" }}
-              />
-            );
-          })}
+        {/* Main polygon (current/After values) */}
+        <polygon
+          points={afterPath}
+          fill={hasMeasure ? AFTER_FILL : "#3b82f6"} fillOpacity="0.22"
+          stroke={hasMeasure ? AFTER_FILL : "#3b82f6"} strokeWidth="1.6"
+          strokeLinejoin="round"
+          style={{ pointerEvents: "none" }}
+        />
 
-          {/* Legend */}
-          <g transform={`translate(${cx - 70}, ${H - 18})`}>
-            <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
-            <text x="14" y="9" fontSize="8.5" fill="#334155">Avg of 25 (baseline ring)</text>
-          </g>
-        </svg>
+        {/* Decorative vertices (hover handled at axis level) */}
+        {SUB_BASIN_INDICATORS.map((ind, i) => {
+          const p = afterPts[i];
+          return (
+            <circle
+              key={ind.id} cx={p.x} cy={p.y} r="3.2"
+              fill={hasMeasure ? AFTER_FILL : "#3b82f6"}
+              stroke="white" strokeWidth="1.2"
+              style={{ pointerEvents: "none" }}
+            />
+          );
+        })}
+
+        {/* Active-axis vertex halos */}
+        {activeAxis !== null && (
+          <>
+            {hasMeasure && (
+              <circle cx={beforePts[activeAxis].x} cy={beforePts[activeAxis].y}
+                r="6.5" fill="none" stroke="white" strokeOpacity="0.85"
+                strokeWidth="2" style={{ pointerEvents: "none" }} />
+            )}
+            <circle cx={afterPts[activeAxis].x} cy={afterPts[activeAxis].y}
+              r="6.5" fill="none" stroke="white" strokeOpacity="0.85"
+              strokeWidth="2" style={{ pointerEvents: "none" }} />
+          </>
+        )}
+
+        {/* Hit area for axis-wedge hover */}
+        <rect
+          x={0} y={0} width={W} height={H}
+          fill="transparent" pointerEvents="all"
+          onMouseMove={e => {
+            const svg = e.currentTarget.ownerSVGElement;
+            if (!svg) return;
+            const ctm = svg.getScreenCTM();
+            if (!ctm) return;
+            const pt  = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            const { x, y } = pt.matrixTransform(ctm.inverse());
+            setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
+          }}
+          onMouseLeave={() => setActiveAxis(null)}
+        />
+
+        {/* Legend */}
+        <g transform={`translate(${cx - 70}, ${H - 18})`} style={{ pointerEvents: "none" }}>
+          <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
+          <text x="14" y="9" fontSize="8.5" fill="#334155">Avg of 25 (baseline ring)</text>
+        </g>
+      </svg>
+      {activeAxis !== null && (
+        <RadarAxisPopover
+          indicator={SUB_BASIN_INDICATORS[activeAxis]}
+          baseline={SUB_BASIN_BASELINE_AVG[SUB_BASIN_INDICATORS[activeAxis].id]}
+          rows={popoverRows}
+          axisIdx={activeAxis}
+          N={N}
+          containerW={W}
+          cx={cx} cy={cy} R={R}
+        />
       )}
-    />
+    </div>
   );
 }
 
@@ -952,8 +1169,6 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   const N = SUB_BASIN_INDICATORS.length;
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
-  // Each axis normalised to its own baseline avg (so the regional-avg basin
-  // would land exactly on the dashed ring).  Outer ring at 1.5×.
   const BASELINE_FRAC = 1.0;
   const MAX_FRAC      = 1.5;
 
@@ -971,94 +1186,125 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   const basinPath = basinPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const baselineRingR = (BASELINE_FRAC / MAX_FRAC) * R;
 
+  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+
+  const popoverRows: RadarPopoverRow[] = activeAxis !== null
+    ? (() => {
+        const ind = SUB_BASIN_INDICATORS[activeAxis];
+        const v = basin.indicators[ind.id];
+        const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+        return [
+          {
+            label: basin.name,
+            color,
+            value: v,
+            formatted: fmt(v, ind.decimals),
+            unit: ind.unit,
+            deltaPct: baseline > 0 ? (v - baseline) / baseline : undefined,
+            emphasis: true,
+          },
+          {
+            label: "Regional avg (25 basins)",
+            color: REF_COLOR,
+            value: baseline,
+            formatted: fmt(baseline, ind.decimals),
+            unit: ind.unit,
+            emphasis: true,
+          },
+        ];
+      })()
+    : [];
+
   return (
-    <ChartHoverable
-      height={RADAR_H}
-      render={({ setTip }) => (
-        <svg width={W} height={H} className="block">
-          {/* 5 evenly spaced concentric rings */}
-          {[1, 2, 3, 4, 5].map(i => (
-            <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
-              fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
-          ))}
-          {/* Baseline reference ring */}
-          <circle cx={cx} cy={cy} r={baselineRingR}
-            fill="none" stroke={REF_COLOR} strokeWidth="1.1"
-            strokeDasharray="3 2" opacity="0.7" />
+    <div className="relative" style={{ width: W, height: H }}>
+      <svg width={W} height={H} className="block">
+        {/* 5 evenly spaced concentric rings */}
+        {[1, 2, 3, 4, 5].map(i => (
+          <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
+            fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+        ))}
+        <circle cx={cx} cy={cy} r={baselineRingR}
+          fill="none" stroke={REF_COLOR} strokeWidth="1.1"
+          strokeDasharray="3 2" opacity="0.7" />
 
-          {/* Axes + labels */}
-          {SUB_BASIN_INDICATORS.map((ind, i) => {
-            const outer = point(MAX_FRAC, i);
-            const labelR = R + 14;
-            const a = angleFor(i);
-            const lx = cx + Math.cos(a) * labelR;
-            const ly = cy + Math.sin(a) * labelR;
-            const v  = basin.indicators[ind.id];
-            return (
-              <g key={ind.id}>
-                <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
-                  stroke="#cbd5e1" strokeWidth="0.5" />
-                <text
-                  x={lx} y={ly}
-                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                  fontSize="8.5" fill="#334155" fontWeight="600"
-                >
-                  {ind.shortLabel}
-                </text>
-                <text
-                  x={lx} y={ly + (Math.sin(a) >= 0 ? 11 : -11)}
-                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                  fontSize="7.5" fill="#64748b" fontFamily="monospace"
-                >
-                  {fmt(v, ind.decimals)} {ind.unit}
-                </text>
-              </g>
-            );
-          })}
+        {/* Axes + labels (value moved into popover header) */}
+        {SUB_BASIN_INDICATORS.map((ind, i) => {
+          const outer = point(MAX_FRAC, i);
+          const labelR = R + 14;
+          const a = angleFor(i);
+          const lx = cx + Math.cos(a) * labelR;
+          const ly = cy + Math.sin(a) * labelR;
+          const isActive = activeAxis === i;
+          return (
+            <g key={ind.id}>
+              <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
+                stroke={isActive ? "#0f172a" : "#cbd5e1"}
+                strokeWidth={isActive ? 1.2 : 0.5} />
+              <text
+                x={lx} y={ly}
+                textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
+                dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
+                fontSize="9" fill={isActive ? "#0f172a" : "#334155"}
+                fontWeight={isActive ? 700 : 600}
+              >
+                {ind.shortLabel}
+              </text>
+            </g>
+          );
+        })}
 
-          {/* Basin polygon */}
-          <polygon points={basinPath} fill={color} fillOpacity="0.28"
-            stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
-          {basinPts.map((p, i) => {
-            const ind = SUB_BASIN_INDICATORS[i];
-            const v = basin.indicators[ind.id];
-            const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
-            return (
-              <circle
-                key={i} cx={p.x} cy={p.y} r="3" fill={color}
-                stroke="white" strokeWidth="1.1"
-                onMouseEnter={() => setTip({
-                  x: p.x,
-                  y: p.y,
-                  node: (
-                    <div>
-                      <div className="font-semibold mb-0.5">{ind.label}</div>
-                      <div>This basin: <span className="font-mono">{fmt(v, ind.decimals)} {ind.unit}</span></div>
-                      <div className="opacity-80 text-[9.5px]">
-                        Avg of 25: <span className="font-mono">{fmt(baseline, ind.decimals)} {ind.unit}</span>
-                      </div>
-                      <div className="opacity-80 text-[9.5px]">
-                        Δ vs avg: {fmtPctDelta(baseline, v)}
-                      </div>
-                    </div>
-                  ),
-                })}
-                onMouseLeave={() => setTip(null)}
-                style={{ cursor: "pointer" }}
-              />
-            );
-          })}
+        {/* Basin polygon */}
+        <polygon points={basinPath} fill={color} fillOpacity="0.28"
+          stroke={color} strokeWidth="1.6" strokeLinejoin="round"
+          style={{ pointerEvents: "none" }} />
+        {basinPts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="3" fill={color}
+            stroke="white" strokeWidth="1.1"
+            style={{ pointerEvents: "none" }} />
+        ))}
 
-          {/* Legend */}
-          <g transform={`translate(${cx - 70}, ${H - 18})`}>
-            <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
-            <text x="14" y="9" fontSize="8.5" fill="#334155">Avg of 25 (baseline ring)</text>
-          </g>
-        </svg>
+        {/* Active-axis halo */}
+        {activeAxis !== null && (
+          <circle cx={basinPts[activeAxis].x} cy={basinPts[activeAxis].y}
+            r="6" fill="none" stroke="white" strokeOpacity="0.85"
+            strokeWidth="2" style={{ pointerEvents: "none" }} />
+        )}
+
+        {/* Hit area */}
+        <rect
+          x={0} y={0} width={W} height={H}
+          fill="transparent" pointerEvents="all"
+          onMouseMove={e => {
+            const svg = e.currentTarget.ownerSVGElement;
+            if (!svg) return;
+            const ctm = svg.getScreenCTM();
+            if (!ctm) return;
+            const pt  = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            const { x, y } = pt.matrixTransform(ctm.inverse());
+            setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
+          }}
+          onMouseLeave={() => setActiveAxis(null)}
+        />
+
+        {/* Legend */}
+        <g transform={`translate(${cx - 70}, ${H - 18})`} style={{ pointerEvents: "none" }}>
+          <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
+          <text x="14" y="9" fontSize="8.5" fill="#334155">Avg of 25 (baseline ring)</text>
+        </g>
+      </svg>
+      {activeAxis !== null && (
+        <RadarAxisPopover
+          indicator={SUB_BASIN_INDICATORS[activeAxis]}
+          baseline={SUB_BASIN_BASELINE_AVG[SUB_BASIN_INDICATORS[activeAxis].id]}
+          rows={popoverRows}
+          axisIdx={activeAxis}
+          N={N}
+          containerW={W}
+          cx={cx} cy={cy} R={R}
+        />
       )}
-    />
+    </div>
   );
 }
 
@@ -1079,9 +1325,6 @@ function MultiBasinRadar({
   const N = SUB_BASIN_INDICATORS.length;
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
-  // Auto-scale outer ring to fit the most extreme basin/indicator combo.
-  // Round up to the next 0.5× and never go below 1.5× so the dashed
-  // baseline ring (1.0×) always has visual breathing room.
   const allRatios = basins.flatMap(b =>
     SUB_BASIN_INDICATORS.map(ind => {
       const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
@@ -1102,7 +1345,6 @@ function MultiBasinRadar({
     return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
   };
 
-  // Per-basin geometry (one polygon per basin, all on shared axes).
   const basinPolygons = basins.map(b => {
     const pts = SUB_BASIN_INDICATORS.map((ind, i) => {
       const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
@@ -1117,111 +1359,132 @@ function MultiBasinRadar({
     };
   });
 
-  // 5 evenly spaced grid rings, regardless of MAX_FRAC.
   const gridFracs: number[] = [1, 2, 3, 4, 5].map(i => (i / 5) * MAX_FRAC);
-
-  // Translucent fill so overlapping polygons stay readable.  Scales down
-  // mildly with N so 10+ basins don't muddy into a single blob.
   const fillOpacity = Math.max(0.06, 0.22 / Math.max(1, basins.length * 0.35));
 
+  const [activeAxis, setActiveAxis] = useState<number | null>(null);
+
+  const popoverRows: RadarPopoverRow[] = activeAxis !== null
+    ? (() => {
+        const ind = SUB_BASIN_INDICATORS[activeAxis];
+        const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+        return basins.map(b => {
+          const v = b.indicators[ind.id];
+          return {
+            label: `#${b.id} ${b.name}`,
+            color: colorFor(b.id),
+            value: v,
+            formatted: fmt(v, ind.decimals),
+            unit: ind.unit,
+            deltaPct: baseline > 0 ? (v - baseline) / baseline : undefined,
+          };
+        });
+      })()
+    : [];
+
   return (
-    <ChartHoverable
-      height={RADAR_H}
-      render={({ setTip }) => (
-        <svg width={W} height={H} className="block">
-          {/* 5 evenly spaced concentric grid rings */}
-          {gridFracs.map((f, idx) => (
-            <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
-              fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
-          ))}
-          {/* Baseline reference ring */}
-          <circle cx={cx} cy={cy} r={baselineRingR}
-            fill="none" stroke={REF_COLOR} strokeWidth="1.1"
-            strokeDasharray="3 2" opacity="0.7" />
+    <div className="relative" style={{ width: W, height: H }}>
+      <svg width={W} height={H} className="block">
+        {gridFracs.map((f, idx) => (
+          <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
+            fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+        ))}
+        <circle cx={cx} cy={cy} r={baselineRingR}
+          fill="none" stroke={REF_COLOR} strokeWidth="1.1"
+          strokeDasharray="3 2" opacity="0.7" />
 
-          {/* Axes + labels */}
-          {SUB_BASIN_INDICATORS.map((ind, i) => {
-            const outer = point(MAX_FRAC, i);
-            const labelR = R + 14;
-            const a = angleFor(i);
-            const lx = cx + Math.cos(a) * labelR;
-            const ly = cy + Math.sin(a) * labelR;
-            const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
-            return (
-              <g key={ind.id}>
-                <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
-                  stroke="#cbd5e1" strokeWidth="0.5" />
-                <text
-                  x={lx} y={ly}
-                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                  fontSize="8.5" fill="#334155" fontWeight="600"
-                >
-                  {ind.shortLabel}
-                </text>
-                <text
-                  x={lx} y={ly + (Math.sin(a) >= 0 ? 11 : -11)}
-                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                  fontSize="7.5" fill="#64748b" fontFamily="monospace"
-                >
-                  avg {fmt(baseline, ind.decimals)} {ind.unit}
-                </text>
-              </g>
-            );
-          })}
+        {/* Axes + labels (avg moved into popover header) */}
+        {SUB_BASIN_INDICATORS.map((ind, i) => {
+          const outer = point(MAX_FRAC, i);
+          const labelR = R + 14;
+          const a = angleFor(i);
+          const lx = cx + Math.cos(a) * labelR;
+          const ly = cy + Math.sin(a) * labelR;
+          const isActive = activeAxis === i;
+          return (
+            <g key={ind.id}>
+              <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
+                stroke={isActive ? "#0f172a" : "#cbd5e1"}
+                strokeWidth={isActive ? 1.2 : 0.5} />
+              <text
+                x={lx} y={ly}
+                textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
+                dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
+                fontSize="9" fill={isActive ? "#0f172a" : "#334155"}
+                fontWeight={isActive ? 700 : 600}
+              >
+                {ind.shortLabel}
+              </text>
+            </g>
+          );
+        })}
 
-          {/* One polygon per basin */}
-          {basinPolygons.map(({ basin, color, path }) => (
-            <polygon key={basin.id} points={path}
-              fill={color} fillOpacity={fillOpacity}
-              stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
-          ))}
+        {/* One polygon per basin */}
+        {basinPolygons.map(({ basin, color, path }) => (
+          <polygon key={basin.id} points={path}
+            fill={color} fillOpacity={fillOpacity}
+            stroke={color} strokeWidth="1.4" strokeLinejoin="round"
+            style={{ pointerEvents: "none" }} />
+        ))}
 
-          {/* Hoverable vertices on every basin polygon */}
-          {basinPolygons.map(({ basin, color, pts }) =>
-            pts.map((p, i) => {
-              const ind = SUB_BASIN_INDICATORS[i];
-              const v = basin.indicators[ind.id];
-              const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
-              return (
-                <circle
-                  key={`${basin.id}-${i}`} cx={p.x} cy={p.y} r="2.6"
-                  fill={color} stroke="white" strokeWidth="1"
-                  onMouseEnter={() => setTip({
-                    x: p.x,
-                    y: p.y,
-                    node: (
-                      <div>
-                        <div className="font-semibold mb-0.5" style={{ color }}>{basin.name}</div>
-                        <div className="opacity-90">{ind.label}</div>
-                        <div>Value: <span className="font-mono">{fmt(v, ind.decimals)} {ind.unit}</span></div>
-                        <div className="opacity-80 text-[9.5px]">
-                          Avg of 25: <span className="font-mono">{fmt(baseline, ind.decimals)} {ind.unit}</span>
-                        </div>
-                        <div className="opacity-80 text-[9.5px]">
-                          Δ vs avg: {fmtPctDelta(baseline, v)}
-                        </div>
-                      </div>
-                    ),
-                  })}
-                  onMouseLeave={() => setTip(null)}
-                  style={{ cursor: "pointer" }}
-                />
-              );
-            }),
-          )}
+        {/* Decorative vertices */}
+        {basinPolygons.map(({ basin, color, pts }) =>
+          pts.map((p, i) => (
+            <circle
+              key={`${basin.id}-${i}`} cx={p.x} cy={p.y} r="2.6"
+              fill={color} stroke="white" strokeWidth="1"
+              style={{ pointerEvents: "none" }}
+            />
+          )),
+        )}
 
-          {/* Legend */}
-          <g transform={`translate(${cx - 78}, ${H - 18})`}>
-            <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
-            <text x="14" y="9" fontSize="8.5" fill="#334155">
-              Avg of 25 (baseline ring) · outer = {MAX_FRAC.toFixed(1)}×
-            </text>
-          </g>
-        </svg>
+        {/* Active-axis halos on every basin polygon */}
+        {activeAxis !== null && basinPolygons.map(({ basin, pts }) => {
+          const p = pts[activeAxis];
+          return (
+            <circle key={`halo-${basin.id}`} cx={p.x} cy={p.y} r="5.5"
+              fill="none" stroke="white" strokeOpacity="0.85"
+              strokeWidth="1.8" style={{ pointerEvents: "none" }} />
+          );
+        })}
+
+        {/* Hit area */}
+        <rect
+          x={0} y={0} width={W} height={H}
+          fill="transparent" pointerEvents="all"
+          onMouseMove={e => {
+            const svg = e.currentTarget.ownerSVGElement;
+            if (!svg) return;
+            const ctm = svg.getScreenCTM();
+            if (!ctm) return;
+            const pt  = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            const { x, y } = pt.matrixTransform(ctm.inverse());
+            setActiveAxis(axisIndexFromPoint(x, y, cx, cy, R, N));
+          }}
+          onMouseLeave={() => setActiveAxis(null)}
+        />
+
+        {/* Legend */}
+        <g transform={`translate(${cx - 78}, ${H - 18})`} style={{ pointerEvents: "none" }}>
+          <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
+          <text x="14" y="9" fontSize="8.5" fill="#334155">
+            Avg of 25 (baseline ring) · outer = {MAX_FRAC.toFixed(1)}×
+          </text>
+        </g>
+      </svg>
+      {activeAxis !== null && (
+        <RadarAxisPopover
+          indicator={SUB_BASIN_INDICATORS[activeAxis]}
+          baseline={SUB_BASIN_BASELINE_AVG[SUB_BASIN_INDICATORS[activeAxis].id]}
+          rows={popoverRows}
+          axisIdx={activeAxis}
+          N={N}
+          containerW={W}
+          cx={cx} cy={cy} R={R}
+        />
       )}
-    />
+    </div>
   );
 }
 
@@ -1599,6 +1862,8 @@ export default function SubBasinComparisonPanel({
                     hasMeasure={hasMeasure}
                     measureLabel={measure.shortLabel}
                     units={units}
+                    basins={basins}
+                    colorFor={colorFor}
                   />
                   {hasMeasure && (
                     <div className="flex items-center gap-3 px-2 pt-1 text-[9.5px] text-muted-foreground">

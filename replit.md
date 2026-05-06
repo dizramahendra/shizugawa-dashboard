@@ -73,7 +73,16 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
     profile views (Single-basin, Per-basin, Regional × Bars/Combined/Radar)
     and every one of them carries the same hoverable
     `BaselineBadge` ("ⓘ 1.0× = regional avg") for a consistent
-    explanation of the dashed/baseline reference.
+    explanation of the dashed/baseline reference.  Radar hover model is
+    **axis-anchored**: hovering anywhere in a 72° wedge highlights that
+    axis (bold label + dark spoke + white halos on every polygon's vertex
+    on that axis) and opens a shared `RadarAxisPopover` listing every
+    series' value on that axis, sorted descending, with swatch / label /
+    value+unit / ±Δ% vs regional avg; popover header carries the
+    indicator name + "regional avg X unit" so the inline avg sub-label
+    has been dropped from each axis.  Same `RadarAxisPopover` +
+    `axisIndexFromPoint` helpers are reused across `SingleBasinRadar`,
+    `MultiBasinRadar`, and `AggregateRadarChart`.
     With a measure picked, every aggregate chart switches to **Before vs
     After** (paired bars + Δ% badge in the bars view; two overlaid
     polygons in the radar view).  Sanity rules baked into `SUB_BASIN_META`:
