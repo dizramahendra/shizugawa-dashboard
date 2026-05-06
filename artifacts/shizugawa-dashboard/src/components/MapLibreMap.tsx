@@ -21,6 +21,43 @@ const UNIFORM_GREY_TABLE = (() => {
   ).join(" ");
 })();
 
+// Text-mask threshold: source SVG draws all labels with `fill="#101828"`
+// (luminance ≈ 0.07). Pixels in the bottom 20 of 100 luminance bins (lum < 0.20)
+// are treated as TEXT and routed to the text-only overlay below; the next
+// darkest non-text element (#0C6696, lum ≈ 0.32) is in bin 32 so won't trip.
+const TEXT_LUM_BINS = 20;
+// RGB of the dark colour used to re-render text crisply on top: ≈ #1f2937
+// (slate-800). Three-decimal floats keep the SVG attribute strings short.
+const TEXT_RGB = { r: 0.121, g: 0.161, b: 0.216 };
+
+// Bottom-layer alpha mask: drop the text bins so labels don't appear twice
+// once the text-only overlay is laid on top. Last bin (background) stays as
+// the source's own alpha (1 → opaque white, 0 → transparent canvas).
+const UNIFORM_GREY_ALPHA_TABLE = (() => {
+  const bins = 100;
+  return Array.from({ length: bins }, (_, i) =>
+    i < TEXT_LUM_BINS ? "0" : "1"
+  ).join(" ");
+})();
+
+// Text-only filter tables: keep only the bottom 20 luminance bins, force
+// them to TEXT_RGB, and drop everything else to fully transparent.
+const TEXT_ONLY_ALPHA_TABLE = (() => {
+  const bins = 100;
+  return Array.from({ length: bins }, (_, i) =>
+    i < TEXT_LUM_BINS ? "1" : "0"
+  ).join(" ");
+})();
+const makeTextChannelTable = (channelValue: number): string => {
+  const bins = 100;
+  return Array.from({ length: bins }, (_, i) =>
+    i < TEXT_LUM_BINS ? String(channelValue) : "0"
+  ).join(" ");
+};
+const TEXT_ONLY_R_TABLE = makeTextChannelTable(TEXT_RGB.r);
+const TEXT_ONLY_G_TABLE = makeTextChannelTable(TEXT_RGB.g);
+const TEXT_ONLY_B_TABLE = makeTextChannelTable(TEXT_RGB.b);
+
 const MODEL_RIVER: Record<number, string> = {
   1: "shizugawa", 2: "oura",      3: "karakuwa", 4: "togura",   5: "urashiro",
   6: "iriya",     7: "okawa",     8: "niida",    9: "karakuwa2", 10: "tomaya",
@@ -417,8 +454,12 @@ export default function MapLibreMap({
             a 10-bin threshold at 0.9 wasn't enough — those rivers fell into
             the "white" bin and stayed white. Now 100 bins, threshold 0.99. */}
         <defs>
+          {/* Bottom layer — rivers/lines as uniform grey, with text DROPPED
+              (alpha=0 for low-luminance bins) so labels can be re-laid as a
+              separate overlay with their own contrast. This is what gives the
+              user independent control: the rivers/lines dim with the parent
+              <g>, but the text overlay below sits outside that group. */}
           <filter id="uniform-grey-rivers" x="0%" y="0%" width="100%" height="100%">
-            {/* Step 1: collapse RGB to luminance grey. */}
             <feColorMatrix
               in="SourceGraphic"
               type="matrix"
@@ -428,12 +469,33 @@ export default function MapLibreMap({
                       0     0     0     1 0"
               result="grey"
             />
-            {/* Step 2: posterize — only the brightest 1% (true background)
-                stays white; everything else snaps to UNIFORM_RIVER_GREY. */}
             <feComponentTransfer in="grey">
               <feFuncR type="discrete" tableValues={UNIFORM_GREY_TABLE} />
               <feFuncG type="discrete" tableValues={UNIFORM_GREY_TABLE} />
               <feFuncB type="discrete" tableValues={UNIFORM_GREY_TABLE} />
+              <feFuncA type="discrete" tableValues={UNIFORM_GREY_ALPHA_TABLE} />
+            </feComponentTransfer>
+          </filter>
+          {/* Top layer — TEXT ONLY. Re-renders the source SVG keeping only
+              dark-luminance pixels (the labels), tinted to TEXT_RGB. Mounted
+              outside the dimmable <g>, so when a single river is drilled into
+              and the rest of the map fades to opacity 0.18, the labels stay
+              fully legible. */}
+          <filter id="text-only-overlay" x="0%" y="0%" width="100%" height="100%">
+            <feColorMatrix
+              in="SourceGraphic"
+              type="matrix"
+              values="0.299 0.587 0.114 0 0
+                      0.299 0.587 0.114 0 0
+                      0.299 0.587 0.114 0 0
+                      0     0     0     1 0"
+              result="grey"
+            />
+            <feComponentTransfer in="grey">
+              <feFuncR type="discrete" tableValues={TEXT_ONLY_R_TABLE} />
+              <feFuncG type="discrete" tableValues={TEXT_ONLY_G_TABLE} />
+              <feFuncB type="discrete" tableValues={TEXT_ONLY_B_TABLE} />
+              <feFuncA type="discrete" tableValues={TEXT_ONLY_ALPHA_TABLE} />
             </feComponentTransfer>
           </filter>
         </defs>
@@ -633,6 +695,19 @@ export default function MapLibreMap({
             </g>
           );
         })}
+
+        {/* Text-only overlay — second pass of the same source SVG, filtered to
+            keep only the dark-fill labels and re-tinted to TEXT_RGB. Mounted
+            outside the dimmable background <g> so labels stay fully crisp
+            regardless of selection state. `pointerEvents: none` keeps the
+            ocean/river/sub-basin click targets underneath fully interactive. */}
+        <image
+          href="/Sub-basin area.svg"
+          x={0} y={0}
+          width={SVG_W} height={SVG_H}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ filter: "url(#text-only-overlay)", pointerEvents: "none" }}
+        />
       </svg>
 
       {/* Pixel grid view overlay — CSS-grid based, fills any container shape */}
