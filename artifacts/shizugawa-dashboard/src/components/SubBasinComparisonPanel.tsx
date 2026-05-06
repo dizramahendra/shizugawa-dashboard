@@ -92,6 +92,72 @@ function BaselineBadge() {
 //
 // Used by the aggregate radar AND the aggregate combined bars view so the
 // two chart types of the same data show an identical companion table.
+/** Per-basin value-vs-regional-avg breakdown shown beneath the per-basin
+ *  compare radar.  Mirrors the single-basin and aggregate breakdown cards
+ *  but lists every selected basin in its own colour-keyed section. */
+function PerBasinBreakdownList({
+  basins, colorFor,
+}: {
+  basins:   SubBasinMeta[];
+  colorFor: (id: number) => string;
+}) {
+  return (
+    <div className="bg-white border border-border rounded-md p-2.5">
+      <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
+        Per-basin values vs regional avg
+      </div>
+      <div className="space-y-2.5">
+        {basins.map((b, bIdx) => (
+          <div
+            key={b.id}
+            className={[
+              "space-y-1",
+              bIdx > 0 ? "pt-2 border-t border-border/60" : "",
+            ].join(" ")}
+          >
+            <div className="flex items-center gap-1.5 text-[10.5px]">
+              <span
+                className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                style={{ background: colorFor(b.id) }}
+              />
+              <span className="font-medium text-foreground truncate">{b.name}</span>
+              <span className="font-mono text-[9.5px] text-muted-foreground">#{b.id}</span>
+            </div>
+            {SUB_BASIN_INDICATORS.map(ind => {
+              const value    = b.indicators[ind.id];
+              const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+              const delta    = baseline > 0 ? (value - baseline) / baseline : 0;
+              const positive = delta >= 0;
+              return (
+                <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
+                  <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
+                  <span className="font-mono text-foreground tabular-nums">
+                    {fmt(value, ind.decimals)}
+                  </span>
+                  <span className="text-muted-foreground text-[9.5px]">
+                    / {fmt(baseline, ind.decimals)} {ind.unit}
+                  </span>
+                  <span
+                    className={[
+                      "text-[9.5px] font-mono w-10 text-right",
+                      positive ? "text-emerald-700" : "text-rose-700",
+                    ].join(" ")}
+                  >
+                    {positive ? "+" : "−"}{(Math.abs(delta) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
+        Each basin's per-hectare values vs the regional average across all 25 sub-basins.
+      </p>
+    </div>
+  );
+}
+
 function IndicatorBreakdownTable({
   values,
   expectedSums,
@@ -1875,6 +1941,12 @@ export default function SubBasinComparisonPanel({
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Per-basin compare · radar breakdown table (one section per
+                selected basin, mirrors the aggregate radar's table). */}
+            {!aggregate && aggregateView === "radar" && (
+              <PerBasinBreakdownList basins={basins} colorFor={colorFor} />
             )}
 
             {/* Aggregate · bars view */}
