@@ -579,7 +579,7 @@ export default function PlaybackPage() {
         </div>
 
         {/* Right info panel */}
-        <div className="w-72 flex-shrink-0 border-l border-border flex flex-col bg-white overflow-hidden">
+        <div className="w-96 flex-shrink-0 border-l border-border flex flex-col bg-white overflow-hidden">
           {/* Back link */}
           <div
             className="flex items-center gap-1.5 px-4 py-2.5 border-b border-border cursor-pointer hover:bg-muted/40 transition-colors flex-shrink-0"
@@ -856,15 +856,15 @@ export default function PlaybackPage() {
                   </svg>
                 );
                 return (
-                  <div className="mt-3 rounded-md border border-border bg-card overflow-hidden">
-                    {/* Card header */}
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                  <div className="mt-3">
+                    {/* Header — no card chrome */}
+                    <div className="flex items-center justify-between mb-2">
                       <div className="text-xs font-semibold text-foreground">
                         {isVoxel ? "Selected Voxel" : "Selected Water Column"}
                       </div>
                       <button
                         onClick={() => setSelectedPoint(null)}
-                        className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] text-foreground border border-border rounded-md hover:bg-muted/60 transition-colors bg-white"
+                        className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] text-foreground border border-border rounded-md hover:bg-muted/60 transition-colors"
                       >
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
                           <line x1="3" y1="3" x2="13" y2="13" />
@@ -874,7 +874,7 @@ export default function PlaybackPage() {
                       </button>
                     </div>
 
-                    <div className="p-3 space-y-2">
+                    <div className="space-y-2">
                       {/* Lat / Lon / Depth */}
                       <div className="bg-muted/40 rounded-md p-3 space-y-1.5">
                         <div className="flex items-center gap-2">

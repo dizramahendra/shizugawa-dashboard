@@ -72,9 +72,9 @@ export default function VoxelRadar({ depthLabel }: { depthLabel?: string } = {})
   const FILL = "#0ea5e9"; // sky-500 — matches the ocean theme
 
   return (
-    <div className="bg-white border border-border rounded-md p-2.5">
+    <div>
       <div className="flex items-baseline justify-between mb-1.5">
-        <div className="text-[10.5px] font-semibold text-foreground">
+        <div className="text-xs font-semibold text-foreground">
           Voxel indicator profile · radar
           {depthLabel && (
             <span className="ml-1.5 font-mono font-normal text-muted-foreground">
@@ -82,7 +82,7 @@ export default function VoxelRadar({ depthLabel }: { depthLabel?: string } = {})
             </span>
           )}
         </div>
-        <div className="text-[9px] text-muted-foreground">1.0× = bay avg</div>
+        <div className="text-[10px] text-muted-foreground">1.0× = bay avg</div>
       </div>
 
       <div className="relative mx-auto" style={{ width: W, height: H }}>
