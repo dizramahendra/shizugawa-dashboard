@@ -1058,11 +1058,23 @@ function AggregateRadarChart({
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {/* Rings every 0.5× so the 1.0× baseline always lines up */}
-        {[0.5, 1.0, 1.5].map((f, idx) => (
-          <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
-            fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
-        ))}
+        {/* Rings every 0.5× (1.0× baseline lines up) + scale tick labels */}
+        {[0.5, 1.0, 1.5].map((f, idx) => {
+          const r = (f / MAX_FRAC) * R;
+          return (
+            <g key={idx}>
+              <circle cx={cx} cy={cy} r={r}
+                fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+              {f >= 1.0 && (
+                <text x={cx + 4} y={cy - r + 3} fontSize="7.5"
+                  fill="#94a3b8" fontFamily="monospace"
+                  style={{ pointerEvents: "none" }}>
+                  {f.toFixed(1)}×
+                </text>
+              )}
+            </g>
+          );
+        })}
         {/* Baseline reference ring */}
         <circle cx={cx} cy={cy} r={baselineRingR}
           fill="none" stroke={REF_COLOR} strokeWidth="1.1"
@@ -1240,11 +1252,23 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {/* Rings every 0.5× so the 1.0× baseline always lines up */}
-        {[0.5, 1.0, 1.5].map((f, idx) => (
-          <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
-            fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
-        ))}
+        {/* Rings every 0.5× (1.0× baseline lines up) + scale tick labels */}
+        {[0.5, 1.0, 1.5].map((f, idx) => {
+          const r = (f / MAX_FRAC) * R;
+          return (
+            <g key={idx}>
+              <circle cx={cx} cy={cy} r={r}
+                fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+              {f >= 1.0 && (
+                <text x={cx + 4} y={cy - r + 3} fontSize="7.5"
+                  fill="#94a3b8" fontFamily="monospace"
+                  style={{ pointerEvents: "none" }}>
+                  {f.toFixed(1)}×
+                </text>
+              )}
+            </g>
+          );
+        })}
         <circle cx={cx} cy={cy} r={baselineRingR}
           fill="none" stroke={REF_COLOR} strokeWidth="1.1"
           strokeDasharray="3 2" opacity="0.7" />
@@ -1411,10 +1435,22 @@ function MultiBasinRadar({
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {gridFracs.map((f, idx) => (
-          <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
-            fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
-        ))}
+        {gridFracs.map((f, idx) => {
+          const r = (f / MAX_FRAC) * R;
+          return (
+            <g key={idx}>
+              <circle cx={cx} cy={cy} r={r}
+                fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+              {f >= 1.0 && (
+                <text x={cx + 4} y={cy - r + 3} fontSize="7.5"
+                  fill="#94a3b8" fontFamily="monospace"
+                  style={{ pointerEvents: "none" }}>
+                  {f.toFixed(1)}×
+                </text>
+              )}
+            </g>
+          );
+        })}
         <circle cx={cx} cy={cy} r={baselineRingR}
           fill="none" stroke={REF_COLOR} strokeWidth="1.1"
           strokeDasharray="3 2" opacity="0.7" />
