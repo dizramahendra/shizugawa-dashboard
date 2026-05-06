@@ -64,6 +64,88 @@ function fmtPctDelta(before: number, after: number): string {
   return `${sign}${(Math.abs(d) * 100).toFixed(0)}%`;
 }
 
+// ── Reusable explainer for the "1.0× = regional avg" baseline ──────────────
+//
+// Same chart family (radar + combined bars) on both aggregate and compare
+// tabs uses this badge so the meaning of the dashed ring / 1.0 gridline is
+// consistent and discoverable.  Hovering surfaces the full explanation;
+// the visible pill makes the convention obvious at a glance.
+const BASELINE_HINT_TEXT =
+  "Each indicator is normalised to its average across all 25 sub-basins. " +
+  "1.0× equals the regional average. Above 1.0× = above average; " +
+  "below 1.0× = below average.";
+
+function BaselineBadge() {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[9.5px] font-medium text-sky-700 bg-sky-50 border border-sky-200/80 px-1.5 py-0.5 rounded cursor-help"
+      title={BASELINE_HINT_TEXT}
+      aria-label={BASELINE_HINT_TEXT}
+    >
+      <Info size={9} />
+      1.0× = regional avg
+    </span>
+  );
+}
+
+// ── Reusable indicator breakdown table (value vs expected regional avg) ────
+//
+// Used by the aggregate radar AND the aggregate combined bars view so the
+// two chart types of the same data show an identical companion table.
+function IndicatorBreakdownTable({
+  values,
+  expectedSums,
+  units,
+  hasMeasure,
+  measureLabel,
+}: {
+  values:       Record<SubBasinIndicatorId, number>;
+  expectedSums: Record<SubBasinIndicatorId, number>;
+  units:        Record<SubBasinIndicatorId, string>;
+  hasMeasure:   boolean;
+  measureLabel: string;
+}) {
+  return (
+    <div className="bg-white border border-border rounded-md p-2.5">
+      <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
+        Indicator values vs regional avg
+      </div>
+      <div className="space-y-1">
+        {SUB_BASIN_INDICATORS.map(ind => {
+          const value    = values[ind.id];
+          const expected = expectedSums[ind.id];
+          const delta    = expected > 0 ? (value - expected) / expected : 0;
+          const positive = delta >= 0;
+          return (
+            <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
+              <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
+              <span className="font-mono text-foreground tabular-nums">
+                {fmt(value, ind.decimals)}
+              </span>
+              <span className="text-muted-foreground text-[9.5px]">
+                / {fmt(expected, ind.decimals)} {units[ind.id]}
+              </span>
+              <span
+                className={[
+                  "text-[9.5px] font-mono w-10 text-right",
+                  positive ? "text-emerald-700" : "text-rose-700",
+                ].join(" ")}
+              >
+                {positive ? "+" : "−"}{(Math.abs(delta) * 100).toFixed(0)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
+        {hasMeasure
+          ? `After-measure sum (${measureLabel}) vs expected sum if every selected basin were at the regional avg.`
+          : "Current regional sum vs expected sum if every selected basin were at the regional avg."}
+      </p>
+    </div>
+  );
+}
+
 // ── Hover tooltip primitive ────────────────────────────────────────────────
 
 interface TipState {
@@ -1426,13 +1508,11 @@ export default function SubBasinComparisonPanel({
                 shared 5-axis radar normalised to regional avg). */}
             {!aggregate && aggregateView === "radar" && (
               <div className="bg-white border border-border rounded-md p-2.5">
-                <div className="flex items-baseline justify-between mb-1">
+                <div className="flex items-baseline justify-between gap-2 mb-1">
                   <span className="text-[11px] font-semibold text-foreground">
-                    Side-by-side fingerprint
+                    Per-basin indicator profile · radar
                   </span>
-                  <span className="text-[9px] text-muted-foreground">
-                    1.0× ring = regional avg
-                  </span>
+                  <BaselineBadge />
                 </div>
                 <MultiBasinRadar basins={basins} colorFor={colorFor} />
                 {/* Per-basin colour key */}
@@ -1464,49 +1544,55 @@ export default function SubBasinComparisonPanel({
 
             {/* Aggregate · combined view (all indicators on one chart) */}
             {aggregate && aggregateView === "combined" && (
-              <div className="bg-white border border-border rounded-md p-2.5">
-                <div className="flex items-baseline justify-between mb-1">
-                  <span className="text-[11px] font-semibold text-foreground">
-                    All indicators · normalised
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">
-                    1.0× = regional avg
-                  </span>
+              <>
+                <div className="bg-white border border-border rounded-md p-2.5">
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
+                    <span className="text-[11px] font-semibold text-foreground">
+                      Regional indicator profile · combined bars
+                    </span>
+                    <BaselineBadge />
+                  </div>
+                  <CombinedAggregateChart
+                    values={aggResult.values}
+                    baseValues={aggResult.baseValues}
+                    expectedSums={expectedSums}
+                    hasMeasure={hasMeasure}
+                    measureLabel={measure.shortLabel}
+                    units={units}
+                  />
+                  {hasMeasure && (
+                    <div className="flex items-center gap-3 px-2 pt-1 text-[9.5px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-2 rounded-sm" style={{ background: BEFORE_FILL, opacity: 0.55 }} />
+                        Before
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-sm" style={{ background: AFTER_FILL }} />
+                        After ({measure.shortLabel})
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <CombinedAggregateChart
+
+                <IndicatorBreakdownTable
                   values={aggResult.values}
-                  baseValues={aggResult.baseValues}
                   expectedSums={expectedSums}
+                  units={units}
                   hasMeasure={hasMeasure}
                   measureLabel={measure.shortLabel}
-                  units={units}
                 />
-                {hasMeasure && (
-                  <div className="flex items-center gap-3 px-2 pt-1 text-[9.5px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="w-3 h-2 rounded-sm" style={{ background: BEFORE_FILL, opacity: 0.55 }} />
-                      Before
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-sm" style={{ background: AFTER_FILL }} />
-                      After ({measure.shortLabel})
-                    </span>
-                  </div>
-                )}
-              </div>
+              </>
             )}
 
             {/* Aggregate · radar view */}
             {aggregate && aggregateView === "radar" && (
               <>
                 <div className="bg-white border border-border rounded-md p-2.5">
-                  <div className="flex items-baseline justify-between mb-1">
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
                     <span className="text-[11px] font-semibold text-foreground">
-                      Regional fingerprint
+                      Regional indicator profile · radar
                     </span>
-                    <span className="text-[9px] text-muted-foreground">
-                      1.0× ring = regional avg
-                    </span>
+                    <BaselineBadge />
                   </div>
                   <AggregateRadarChart
                     values={aggResult.values}
@@ -1530,44 +1616,13 @@ export default function SubBasinComparisonPanel({
                   )}
                 </div>
 
-                {/* Compact value vs regional-avg table (matches the radar's normalisation) */}
-                <div className="bg-white border border-border rounded-md p-2.5">
-                  <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
-                    Indicator values vs regional avg
-                  </div>
-                  <div className="space-y-1">
-                    {SUB_BASIN_INDICATORS.map(ind => {
-                      const value    = aggResult.values[ind.id];
-                      const expected = expectedSums[ind.id];
-                      const delta    = expected > 0 ? (value - expected) / expected : 0;
-                      const positive = delta >= 0;
-                      return (
-                        <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
-                          <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
-                          <span className="font-mono text-foreground tabular-nums">
-                            {fmt(value, ind.decimals)}
-                          </span>
-                          <span className="text-muted-foreground text-[9.5px]">
-                            / {fmt(expected, ind.decimals)} {units[ind.id]}
-                          </span>
-                          <span
-                            className={[
-                              "text-[9.5px] font-mono w-10 text-right",
-                              positive ? "text-emerald-700" : "text-rose-700",
-                            ].join(" ")}
-                          >
-                            {positive ? "+" : "−"}{(Math.abs(delta) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
-                    {hasMeasure
-                      ? `After-measure sum (${measure.shortLabel}) vs expected sum if every selected basin were at the regional avg.`
-                      : "Current regional sum vs expected sum if every selected basin were at the regional avg."}
-                  </p>
-                </div>
+                <IndicatorBreakdownTable
+                  values={aggResult.values}
+                  expectedSums={expectedSums}
+                  units={units}
+                  hasMeasure={hasMeasure}
+                  measureLabel={measure.shortLabel}
+                />
               </>
             )}
           </div>
@@ -1655,13 +1710,11 @@ function SingleBasinDetail({ basin, color }: { basin: SubBasinMeta; color: strin
 
       {/* Radar */}
       <div className="bg-white border border-border rounded-md p-2.5">
-        <div className="flex items-baseline justify-between mb-1">
+        <div className="flex items-baseline justify-between gap-2 mb-1">
           <span className="text-[11px] font-semibold text-foreground">
-            Indicator profile
+            Single-basin indicator profile · radar
           </span>
-          <span className="text-[9px] text-muted-foreground">
-            vs avg of 25 (ring = 1.0)
-          </span>
+          <BaselineBadge />
         </div>
         <SingleBasinRadar basin={basin} color={color} />
       </div>

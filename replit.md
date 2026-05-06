@@ -65,7 +65,15 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
     agri BMPs, wetland, no-till, reduce N/P — all marked *(simulated)*).
     The **Combined** view normalises every indicator to "× regional avg"
     so all five fit in a single bar chart with a shared y-axis (raw values
-    + units stay visible in the per-bar tooltip).
+    + units stay visible in the per-bar tooltip); a shared
+    `IndicatorBreakdownTable` sits below both the Combined and Radar
+    aggregate views so the same data is also legible as a value-vs-avg
+    table.  Chart titles follow a unified
+    "<scope> indicator profile · <chart-type>" pattern across all
+    profile views (Single-basin, Per-basin, Regional × Bars/Combined/Radar)
+    and every one of them carries the same hoverable
+    `BaselineBadge` ("ⓘ 1.0× = regional avg") for a consistent
+    explanation of the dashed/baseline reference.
     With a measure picked, every aggregate chart switches to **Before vs
     After** (paired bars + Δ% badge in the bars view; two overlaid
     polygons in the radar view).  Sanity rules baked into `SUB_BASIN_META`:
