@@ -24,14 +24,19 @@ type SliceTool   = "none" | "slice-h" | "slice-v";
 type InspectTool = "none" | "point-select" | "depth-graph";
 type ToolState   = SliceTool | InspectTool;
 
-const sliceTools: { id: SliceTool; label: string; icon: typeof Crosshair; desc: string }[] = [
-  { id: "slice-h", label: "Horizontal Slice", icon: Layers,       desc: "Cross-section at fixed depth" },
-  { id: "slice-v", label: "Vertical Slice",   icon: GitBranchPlus, desc: "Draw a transect · drag the mini-map line" },
+// Tool segment definitions used by the rail's segmented controls below.
+// URL param values (slice-h / slice-v / point-select / depth-graph) are
+// preserved for back-compat; only user-facing labels change.
+const SLICE_SEGMENTS: { id: SliceTool;   label: string; Icon: typeof Crosshair | null }[] = [
+  { id: "none",    label: "Off",        Icon: null },
+  { id: "slice-h", label: "Horizontal", Icon: Layers },
+  { id: "slice-v", label: "Vertical",   Icon: GitBranchPlus },
 ];
 
-const inspectTools: { id: InspectTool; label: string; icon: typeof Crosshair; desc: string }[] = [
-  { id: "point-select", label: "Point Inspection",        icon: Crosshair, desc: "Click any voxel to inspect its column" },
-  { id: "depth-graph",  label: "Depth Profile",           icon: BarChart2, desc: "Concentration vs. depth chart" },
+const INSPECT_SEGMENTS: { id: InspectTool; label: string; Icon: typeof Crosshair | null }[] = [
+  { id: "none",         label: "Off",    Icon: null },
+  { id: "point-select", label: "Voxel",  Icon: Crosshair },
+  { id: "depth-graph",  label: "Column", Icon: BarChart2 },
 ];
 
 // ── Mini-map constants (top-down bay view for vertical slice) ─────────────────
@@ -620,72 +625,315 @@ export default function PlaybackPage() {
               </div>
             </div>
 
-            {/* Analysis tools */}
-            <div className="px-4 py-4 space-y-3">
-              {/* Slice tools (independent of inspect tools) */}
-              <div>
-                <div className="panel-section-title mb-1.5">Slice View</div>
-                <div className="space-y-1">
-                  {sliceTools.map((tool) => {
-                    const Icon = tool.icon;
-                    const isActive = sliceTool === tool.id;
-                    return (
-                      <button
-                        key={tool.id}
-                        className={`tool-btn ${isActive ? "tool-btn-active" : ""}`}
-                        onClick={() => {
-                          if (isActive) { setSliceTool("none"); return; }
-                          setSliceTool(tool.id as SliceTool);
-                          if (tool.id === "slice-v") {
-                            setSliceDir("north");
-                            setSliceLevel(Math.floor((GRID_D - 1) / 2));
-                          }
-                        }}
-                      >
-                        <Icon size={14} className="flex-shrink-0" />
-                        <div className="text-left">
-                          <div className="text-xs font-medium">{tool.label}</div>
-                          <div className="text-[10px] text-muted-foreground leading-none mt-0.5">{tool.desc}</div>
-                        </div>
-                        {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              {/* Inspect tools (combinable with any slice) */}
-              <div>
-                <div className="panel-section-title mb-1.5">Inspection</div>
-                <div className="space-y-1">
-                  {inspectTools.map((tool) => {
-                    const Icon = tool.icon;
-                    const isActive = inspectTool === tool.id;
-                    return (
-                      <button
-                        key={tool.id}
-                        className={`tool-btn ${isActive ? "tool-btn-active" : ""}`}
-                        onClick={() => setInspectTool(isActive ? "none" : tool.id)}
-                      >
-                        <Icon size={14} className="flex-shrink-0" />
-                        <div className="text-left">
-                          <div className="text-xs font-medium">{tool.label}</div>
-                          <div className="text-[10px] text-muted-foreground leading-none mt-0.5">{tool.desc}</div>
-                        </div>
-                        {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Prompt shown when an inspect tool is active but no voxel has been picked yet */}
-                {inspectTool !== "none" && !selectedPoint && (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-primary/8 border border-primary/20 px-2.5 py-2">
-                    <Crosshair size={11} className="text-primary flex-shrink-0" />
-                    <span className="text-[10px] text-primary leading-tight">
-                      Click any voxel in the 3D view to inspect
-                    </span>
+            {/* ─── SLICE TOOL ────────────────────────────────────────────── */}
+            <div className="px-4 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="panel-section-title">Slice</div>
+                {sliceTool !== "none" && (
+                  <div className="text-[10px] text-primary font-mono">
+                    {sliceTool === "slice-h"
+                      ? "Horizontal"
+                      : `Vertical · ${sliceDir.charAt(0).toUpperCase()}${sliceDir.slice(1)}`}
                   </div>
                 )}
               </div>
+              <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+                {SLICE_SEGMENTS.map(({ id, label, Icon }) => {
+                  const active = sliceTool === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        setSliceTool(id);
+                        if (id === "slice-v") {
+                          setSliceDir("north");
+                          setSliceLevel(Math.floor((GRID_D - 1) / 2));
+                        }
+                      }}
+                      className={`flex-1 py-1.5 px-1 rounded-sm text-[11px] transition-colors flex items-center justify-center gap-1 ${
+                        active
+                          ? "bg-white text-foreground shadow-sm font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {Icon && <Icon size={11} />}
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active sub-panel — appears only when a slice mode is on */}
+              {sliceTool !== "none" && (
+                <div className="mt-3 space-y-3">
+                  {sliceTool === "slice-v" && (
+                    <>
+                      <div>
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
+                          Step 1 · Cut direction
+                        </div>
+
+                        <div className="text-[8px] text-muted-foreground/70 mb-1 tracking-wide">Both sides · thin slab</div>
+                        <div className="flex bg-muted rounded-md p-0.5 gap-0.5 mb-2">
+                          {([
+                            { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S", dir: "north" as const },
+                            { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E", dir: "east"  as const },
+                          ]).map(({ axis, label, sub, dir: defaultDir }) => {
+                            const active = sliceCutType === "both-sides" && (sliceDirIsX ? axis === "x" : axis === "z");
+                            return (
+                              <button
+                                key={axis}
+                                onClick={() => {
+                                  setSliceCutType("both-sides");
+                                  setSliceDir(defaultDir);
+                                  setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2));
+                                }}
+                                className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
+                                  active
+                                    ? "bg-white text-foreground shadow-sm font-semibold"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                <span>{label}</span>
+                                <span className="text-[8px] opacity-60">{sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="text-[8px] text-muted-foreground/70 mb-1 tracking-wide">One side · half-volume</div>
+                        <div className="grid grid-cols-2 gap-0.5">
+                          {([
+                            { dir: "north" as const, label: "↑ From North", sub: "looking south" },
+                            { dir: "south" as const, label: "↓ From South", sub: "looking north" },
+                            { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
+                            { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
+                          ]).map(({ dir, label, sub }) => {
+                            const active = sliceCutType === "one-side" && sliceDir === dir;
+                            return (
+                              <button
+                                key={dir}
+                                onClick={() => { setSliceCutType("one-side"); handleDirChange(dir); }}
+                                className={`py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 border ${
+                                  active
+                                    ? "bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm"
+                                    : "bg-muted border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                                }`}
+                              >
+                                <span>{label}</span>
+                                <span className="text-[8px] opacity-60">{sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setShowCutPlane(v => !v)}
+                          className={`w-7 h-4 rounded-full transition-colors relative flex-shrink-0 ${showCutPlane ? "bg-amber-400" : "bg-muted-foreground/30"}`}
+                        >
+                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${showCutPlane ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                        </button>
+                        <span className="text-[10px] text-muted-foreground">Show cut plane</span>
+                      </div>
+
+                      <div className="bg-amber-50 border border-amber-100 rounded-md px-2.5 py-2 flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5 flex-shrink-0" />
+                        <div className="text-[10px] text-amber-700 leading-snug">
+                          <span className="font-semibold">Step 2 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
+                      {sliceTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={sliceMax}
+                      value={sliceLevel}
+                      onChange={(e) => setSliceLevel(Number(e.target.value))}
+                      className="w-full accent-primary cursor-pointer"
+                    />
+                    <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
+                      {sliceTool === "slice-h"
+                        ? `Layer ${sliceLevel + 1} of 8 · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
+                        : sliceDirIsX
+                          ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
+                          : `Row ${sliceLevel + 1} of ${GRID_D} · ${(38.582 + (sliceLevel / (GRID_D - 1)) * 0.069).toFixed(4)}°N`}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ─── INSPECT TOOL ──────────────────────────────────────────── */}
+            <div className="px-4 py-4 border-t border-border">
+              <div className="flex items-center justify-between mb-2">
+                <div className="panel-section-title">Inspect</div>
+                {inspectTool !== "none" && (
+                  <div className="text-[10px] text-primary font-mono">
+                    {inspectTool === "point-select" ? "Voxel" : "Column"}
+                  </div>
+                )}
+              </div>
+              <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+                {INSPECT_SEGMENTS.map(({ id, label, Icon }) => {
+                  const active = inspectTool === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        setInspectTool(id);
+                        // Reshape the existing selection's depth so the inspector
+                        // shows the matching widget without a re-click:
+                        //   • Voxel mode  → ensure y is set (default to surface)
+                        //   • Column mode → drop y (whole column)
+                        if (selectedPoint) {
+                          if (id === "point-select" && selectedPoint.y === undefined) {
+                            setSelectedPoint({ ...selectedPoint, y: 0 });
+                          } else if (id === "depth-graph" && selectedPoint.y !== undefined) {
+                            setSelectedPoint({ x: selectedPoint.x, z: selectedPoint.z });
+                          }
+                        }
+                      }}
+                      className={`flex-1 py-1.5 px-1 rounded-sm text-[11px] transition-colors flex items-center justify-center gap-1 ${
+                        active
+                          ? "bg-white text-foreground shadow-sm font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {Icon && <Icon size={11} />}
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Mode tagline (one-line description of what the active mode does) */}
+              {inspectTool !== "none" && (
+                <div className="mt-2 text-[10px] text-muted-foreground leading-snug px-0.5">
+                  {inspectTool === "point-select"
+                    ? "Click any cell to inspect its 5-indicator profile."
+                    : "Click any column to view its concentration profile by depth."}
+                </div>
+              )}
+
+              {/* Awaiting-pick prompt — active mode but no point yet */}
+              {inspectTool !== "none" && !selectedPoint && (
+                <div className="mt-2 flex items-center gap-1.5 rounded-md bg-primary/8 border border-primary/20 px-2.5 py-2">
+                  <Crosshair size={11} className="text-primary flex-shrink-0" />
+                  <span className="text-[10px] text-primary leading-tight">
+                    Click any {inspectTool === "point-select" ? "voxel" : "water column"} in the 3D view
+                  </span>
+                </div>
+              )}
+
+              {/* Selection card — active mode + a point picked */}
+              {selectedPoint && inspectTool !== "none" && (() => {
+                const isVoxel = inspectTool === "point-select";
+                const coords = gridToCoords(selectedPoint.x, selectedPoint.z, 0);
+                const voxelDepthIdx = selectedPoint.y ?? 0;
+                const voxelValue = isVoxel
+                  ? valueToConcentration(
+                      weekData[selectedPoint.z]?.[selectedPoint.x]?.[voxelDepthIdx] ?? 0,
+                      selectedVariable,
+                    )
+                  : null;
+                const copy = (text: string) => {
+                  if (typeof navigator !== "undefined" && navigator.clipboard) {
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }
+                };
+                const CopyIcon = (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-3.5 h-3.5">
+                    <rect x="5" y="5" width="8" height="8" rx="1.2" />
+                    <path d="M3 11V4a1 1 0 0 1 1-1h7" />
+                  </svg>
+                );
+                return (
+                  <div className="mt-3 rounded-md border border-border bg-card overflow-hidden">
+                    {/* Card header */}
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                      <div className="text-xs font-semibold text-foreground">
+                        {isVoxel ? "Selected Voxel" : "Selected Water Column"}
+                      </div>
+                      <button
+                        onClick={() => setSelectedPoint(null)}
+                        className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] text-foreground border border-border rounded-md hover:bg-muted/60 transition-colors bg-white"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                          <line x1="3" y1="3" x2="13" y2="13" />
+                          <line x1="13" y1="3" x2="3" y2="13" />
+                        </svg>
+                        Deselect
+                      </button>
+                    </div>
+
+                    <div className="p-3 space-y-2">
+                      {/* Lat / Lon / Depth */}
+                      <div className="bg-muted/40 rounded-md p-3 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 text-xs text-muted-foreground">Lat.</div>
+                          <div className="flex-1 text-sm font-mono font-medium text-foreground">{coords.lat}°N</div>
+                          <button onClick={() => copy(`${coords.lat}°N`)} title="Copy latitude" className="text-muted-foreground hover:text-foreground p-0.5 transition-colors">{CopyIcon}</button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 text-xs text-muted-foreground">Lon.</div>
+                          <div className="flex-1 text-sm font-mono font-medium text-foreground">{coords.lon}°E</div>
+                          <button onClick={() => copy(`${coords.lon}°E`)} title="Copy longitude" className="text-muted-foreground hover:text-foreground p-0.5 transition-colors">{CopyIcon}</button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 text-xs text-muted-foreground">
+                            {isVoxel ? "Voxel Depth" : "Column Depth"}
+                          </div>
+                          <div className="flex-1 text-sm font-mono font-medium text-foreground">
+                            {isVoxel ? depthLabel(voxelDepthIdx) : "0–99 m"}
+                          </div>
+                          <div className="w-3.5" aria-hidden />
+                        </div>
+                      </div>
+
+                      {/* Headline metric — concentration in both modes, same units */}
+                      {(isVoxel ? voxelValue !== null : selectedValue !== null) && (
+                        <div className="bg-muted/40 rounded-md p-3">
+                          <div className="text-xs text-muted-foreground">
+                            {isVoxel
+                              ? `${variable.label} at this voxel`
+                              : `Column-mean ${variable.label}`}
+                          </div>
+                          <div className="text-lg font-mono font-bold text-primary mt-0.5">
+                            {isVoxel ? voxelValue : selectedValue}
+                            <span className="text-sm font-normal text-muted-foreground ml-1">{variable.unit}</span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            {isVoxel
+                              ? "Concentration at the selected cell"
+                              : "Depth-weighted mean across all 8 layers"}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Voxel mode → radar; Column mode → depth graph */}
+                      {isVoxel ? (
+                        <VoxelRadar depthLabel={depthLabel(voxelDepthIdx)} />
+                      ) : (
+                        <DepthGraph
+                          week={week}
+                          variableId={selectedVariable}
+                          variableLabel={variable.label}
+                          unit={variable.unit}
+                          selectedPoint={{ ...selectedPoint, depth: 0 }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* HIDDEN – uncomment to restore Process Indicators section
@@ -731,221 +979,7 @@ export default function PlaybackPage() {
             </div>
             */}
 
-            {/* Slice controls */}
-            {sliceTool !== "none" && (
-              <div className="px-4 py-4 space-y-3">
-                <div className="panel-section-title flex items-center gap-1.5">
-                  <ArrowUpDown size={11} />
-                  {sliceTool === "slice-h" ? "Horizontal Slice" : "Vertical Slice"}
-                </div>
-
-                {/* ── Vertical slice controls ── */}
-                {sliceTool === "slice-v" && (
-                  <>
-                    {/* Step 1: all 6 cut buttons together */}
-                    <div>
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                        Step 1 · Cut direction
-                      </div>
-
-                      {/* ── Both-sides (symmetric) ── 2 axis buttons */}
-                      <div className="text-[8px] text-muted-foreground/70 mb-1 tracking-wide">Both sides · thin slab</div>
-                      <div className="flex bg-muted rounded-md p-0.5 gap-0.5 mb-2">
-                        {([
-                          { axis: "z" as const, label: "E–W Cut", sub: "sweeps N→S", dir: "north" as const },
-                          { axis: "x" as const, label: "N–S Cut", sub: "sweeps W→E", dir: "east"  as const },
-                        ]).map(({ axis, label, sub, dir: defaultDir }) => {
-                          const active = sliceCutType === "both-sides" && (sliceDirIsX ? axis === "x" : axis === "z");
-                          return (
-                            <button
-                              key={axis}
-                              onClick={() => {
-                                setSliceCutType("both-sides");
-                                setSliceDir(defaultDir);
-                                setSliceLevel(axis === "x" ? Math.floor((GRID_W - 1) / 2) : Math.floor((GRID_D - 1) / 2));
-                              }}
-                              className={`flex-1 py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 ${
-                                active
-                                  ? "bg-white text-foreground shadow-sm font-semibold"
-                                  : "text-muted-foreground hover:text-foreground"
-                              }`}
-                            >
-                              <span>{label}</span>
-                              <span className="text-[8px] opacity-60">{sub}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* ── One-side (directional) ── 2×2 compass grid */}
-                      <div className="text-[8px] text-muted-foreground/70 mb-1 tracking-wide">One side · half-volume</div>
-                      <div className="grid grid-cols-2 gap-0.5">
-                        {([
-                          { dir: "north" as const, label: "↑ From North", sub: "looking south" },
-                          { dir: "south" as const, label: "↓ From South", sub: "looking north" },
-                          { dir: "west"  as const, label: "← From West",  sub: "looking east"  },
-                          { dir: "east"  as const, label: "→ From East",  sub: "looking west"  },
-                        ]).map(({ dir, label, sub }) => {
-                          const active = sliceCutType === "one-side" && sliceDir === dir;
-                          return (
-                            <button
-                              key={dir}
-                              onClick={() => { setSliceCutType("one-side"); handleDirChange(dir); }}
-                              className={`py-1.5 px-1 rounded-sm text-[10px] transition-colors flex flex-col items-center gap-0.5 border ${
-                                active
-                                  ? "bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm"
-                                  : "bg-muted border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
-                              }`}
-                            >
-                              <span>{label}</span>
-                              <span className="text-[8px] opacity-60">{sub}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Cut plane toggle */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowCutPlane(v => !v)}
-                        className={`w-7 h-4 rounded-full transition-colors relative flex-shrink-0 ${showCutPlane ? "bg-amber-400" : "bg-muted-foreground/30"}`}
-                      >
-                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${showCutPlane ? "translate-x-3.5" : "translate-x-0.5"}`} />
-                      </button>
-                      <span className="text-[10px] text-muted-foreground">Show cut plane</span>
-                    </div>
-
-                    {/* Draw hint */}
-                    <div className="bg-amber-50 border border-amber-100 rounded-md px-2.5 py-2 flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5 flex-shrink-0" />
-                      <div className="text-[10px] text-amber-700 leading-snug">
-                        <span className="font-semibold">Step 2 · Draw</span> — drag the yellow line on the mini-map (bottom-right of the 3D view)
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Step 3 (both modes): slider */}
-                <div>
-                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
-                    {sliceTool === "slice-v" ? "Step 3 · Fine-tune" : "Depth layer"}
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={sliceMax}
-                    value={sliceLevel}
-                    onChange={(e) => setSliceLevel(Number(e.target.value))}
-                    className="w-full accent-primary cursor-pointer"
-                  />
-                  <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
-                    {sliceTool === "slice-h"
-                      ? `Layer ${sliceLevel + 1} of 8 · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
-                      : sliceDirIsX
-                        ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
-                        : `Row ${sliceLevel + 1} of ${GRID_D} · ${(38.582 + (sliceLevel / (GRID_D - 1)) * 0.069).toFixed(4)}°N`}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Selected column — visible whenever a single-point inspect tool is active */}
-            {selectedPoint && inspectTool !== "none" && (() => {
-              const coords = gridToCoords(selectedPoint.x, selectedPoint.z, 0);
-              const copy = (text: string) => {
-                if (typeof navigator !== "undefined" && navigator.clipboard) {
-                  navigator.clipboard.writeText(text).catch(() => {});
-                }
-              };
-              const CopyIcon = (
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-3.5 h-3.5">
-                  <rect x="5" y="5" width="8" height="8" rx="1.2" />
-                  <path d="M3 11V4a1 1 0 0 1 1-1h7" />
-                </svg>
-              );
-              return (
-                <div className="px-4 py-4">
-                  {/* Header row */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold text-foreground">Selected Water Column</div>
-                    <button
-                      onClick={() => setSelectedPoint(null)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-foreground border border-border rounded-md hover:bg-muted/60 transition-colors"
-                    >
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
-                        <line x1="3" y1="3" x2="13" y2="13" />
-                        <line x1="13" y1="3" x2="3" y2="13" />
-                      </svg>
-                      Deselect
-                    </button>
-                  </div>
-
-                  {/* Lat / Lon / Depth card */}
-                  <div className="bg-muted/40 rounded-md p-3 space-y-1.5 mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 text-xs text-muted-foreground">Lat.</div>
-                      <div className="flex-1 text-sm font-mono font-medium text-foreground">{coords.lat}°N</div>
-                      <button
-                        onClick={() => copy(`${coords.lat}°N`)}
-                        title="Copy latitude"
-                        className="text-muted-foreground hover:text-foreground p-0.5 transition-colors"
-                      >{CopyIcon}</button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 text-xs text-muted-foreground">Lon.</div>
-                      <div className="flex-1 text-sm font-mono font-medium text-foreground">{coords.lon}°E</div>
-                      <button
-                        onClick={() => copy(`${coords.lon}°E`)}
-                        title="Copy longitude"
-                        className="text-muted-foreground hover:text-foreground p-0.5 transition-colors"
-                      >{CopyIcon}</button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 text-xs text-muted-foreground">
-                        {selectedPoint?.y !== undefined ? "Voxel Depth" : "Column Depth"}
-                      </div>
-                      <div className="flex-1 text-sm font-mono font-medium text-foreground">
-                        {selectedPoint?.y !== undefined ? depthLabel(selectedPoint.y) : "0–99 m"}
-                      </div>
-                      <div className="w-3.5" aria-hidden />
-                    </div>
-                  </div>
-
-                  {/* Column-integrated total — kept as-is per spec */}
-                  {selectedValue !== null && (
-                    <div className="bg-muted/40 rounded-md p-3">
-                      <div className="text-xs text-muted-foreground">Column-Integrated {variable.label}</div>
-                      <div className="text-lg font-mono font-bold text-primary mt-0.5">
-                        {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Voxel radar — Point Inspection mode only (static placeholder) */}
-                  {inspectTool === "point-select" && (
-                    <div className="mt-3">
-                      <VoxelRadar
-                        depthLabel={selectedPoint?.y !== undefined ? depthLabel(selectedPoint.y) : undefined}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Depth graph — visible whenever depth-graph inspect tool is active */}
-            {inspectTool === "depth-graph" && (
-              <div className="px-4 py-4">
-                <DepthGraph
-                  week={week}
-                  variableId={selectedVariable}
-                  variableLabel={variable.label}
-                  unit={variable.unit}
-                  selectedPoint={selectedPoint ? { ...selectedPoint, depth: 0 } : null}
-                />
-              </div>
-            )}
+            {/* (Selection card + depth graph now live inside the Inspect tool section above.) */}
           </div>
         </div>
       </div>
