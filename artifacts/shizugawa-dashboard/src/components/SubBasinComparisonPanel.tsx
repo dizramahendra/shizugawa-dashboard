@@ -829,9 +829,9 @@ function AggregateRadarChart({
       height={RADAR_H}
       render={({ setTip }) => (
         <svg width={W} height={H} className="block">
-          {/* Concentric rings */}
-          {[0.25, 0.5, 0.75, 1.25, 1.5].map(f => (
-            <circle key={f} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
+          {/* 5 evenly spaced concentric rings */}
+          {[1, 2, 3, 4, 5].map(i => (
+            <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
               fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
           ))}
           {/* Baseline reference ring */}
@@ -976,8 +976,9 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
       height={RADAR_H}
       render={({ setTip }) => (
         <svg width={W} height={H} className="block">
-          {[0.25, 0.5, 0.75, 1.25, 1.5].map(f => (
-            <circle key={f} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
+          {/* 5 evenly spaced concentric rings */}
+          {[1, 2, 3, 4, 5].map(i => (
+            <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
               fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
           ))}
           {/* Baseline reference ring */}
@@ -1116,11 +1117,8 @@ function MultiBasinRadar({
     };
   });
 
-  // Grid rings at every 0.5× step, skipping the 1.0× baseline (drawn dashed).
-  const gridFracs: number[] = [];
-  for (let f = 0.5; f <= MAX_FRAC + 0.01; f += 0.5) {
-    if (Math.abs(f - 1.0) > 0.01) gridFracs.push(Number(f.toFixed(2)));
-  }
+  // 5 evenly spaced grid rings, regardless of MAX_FRAC.
+  const gridFracs: number[] = [1, 2, 3, 4, 5].map(i => (i / 5) * MAX_FRAC);
 
   // Translucent fill so overlapping polygons stay readable.  Scales down
   // mildly with N so 10+ basins don't muddy into a single blob.
@@ -1131,9 +1129,9 @@ function MultiBasinRadar({
       height={RADAR_H}
       render={({ setTip }) => (
         <svg width={W} height={H} className="block">
-          {/* Concentric grid rings */}
-          {gridFracs.map(f => (
-            <circle key={f} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
+          {/* 5 evenly spaced concentric grid rings */}
+          {gridFracs.map((f, idx) => (
+            <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
               fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
           ))}
           {/* Baseline reference ring */}
