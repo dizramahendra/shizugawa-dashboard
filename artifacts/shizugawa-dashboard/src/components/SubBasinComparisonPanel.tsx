@@ -979,6 +979,172 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   );
 }
 
+// ── Multi-basin radar (n≥2, baseline-avg reference ring, 1 polygon per basin)
+
+function MultiBasinRadar({
+  basins,
+  colorFor,
+}: {
+  basins:   SubBasinMeta[];
+  colorFor: (id: number) => string;
+}) {
+  const W = RADAR_W;
+  const H = RADAR_H;
+  const cx = W / 2, cy = H / 2 + 4;
+  const R  = 78;
+
+  const N = SUB_BASIN_INDICATORS.length;
+  const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
+
+  // Auto-scale outer ring to fit the most extreme basin/indicator combo.
+  // Round up to the next 0.5× and never go below 1.5× so the dashed
+  // baseline ring (1.0×) always has visual breathing room.
+  const allRatios = basins.flatMap(b =>
+    SUB_BASIN_INDICATORS.map(ind => {
+      const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+      const v = b.indicators[ind.id];
+      if (!(baseline > 0) || !Number.isFinite(v)) return 0;
+      const r = v / baseline;
+      return Number.isFinite(r) ? r : 0;
+    }),
+  );
+  const rawMax = allRatios.length ? Math.max(...allRatios) : 1.5;
+  const MAX_FRAC = Math.max(1.5, Math.ceil(rawMax * 2) / 2);
+  const BASELINE_FRAC  = 1.0;
+  const baselineRingR  = (BASELINE_FRAC / MAX_FRAC) * R;
+
+  const point = (frac: number, i: number) => {
+    const r = (Math.min(MAX_FRAC, Math.max(0, frac)) / MAX_FRAC) * R;
+    const a = angleFor(i);
+    return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
+  };
+
+  // Per-basin geometry (one polygon per basin, all on shared axes).
+  const basinPolygons = basins.map(b => {
+    const pts = SUB_BASIN_INDICATORS.map((ind, i) => {
+      const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+      const frac = baseline > 0 ? b.indicators[ind.id] / baseline : 0;
+      return point(frac, i);
+    });
+    return {
+      basin: b,
+      color: colorFor(b.id),
+      pts,
+      path: pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "),
+    };
+  });
+
+  // Grid rings at every 0.5× step, skipping the 1.0× baseline (drawn dashed).
+  const gridFracs: number[] = [];
+  for (let f = 0.5; f <= MAX_FRAC + 0.01; f += 0.5) {
+    if (Math.abs(f - 1.0) > 0.01) gridFracs.push(Number(f.toFixed(2)));
+  }
+
+  // Translucent fill so overlapping polygons stay readable.  Scales down
+  // mildly with N so 10+ basins don't muddy into a single blob.
+  const fillOpacity = Math.max(0.06, 0.22 / Math.max(1, basins.length * 0.35));
+
+  return (
+    <ChartHoverable
+      height={RADAR_H}
+      render={({ setTip }) => (
+        <svg width={W} height={H} className="block">
+          {/* Concentric grid rings */}
+          {gridFracs.map(f => (
+            <circle key={f} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
+              fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+          ))}
+          {/* Baseline reference ring */}
+          <circle cx={cx} cy={cy} r={baselineRingR}
+            fill="none" stroke={REF_COLOR} strokeWidth="1.1"
+            strokeDasharray="3 2" opacity="0.7" />
+
+          {/* Axes + labels */}
+          {SUB_BASIN_INDICATORS.map((ind, i) => {
+            const outer = point(MAX_FRAC, i);
+            const labelR = R + 14;
+            const a = angleFor(i);
+            const lx = cx + Math.cos(a) * labelR;
+            const ly = cy + Math.sin(a) * labelR;
+            const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+            return (
+              <g key={ind.id}>
+                <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
+                  stroke="#cbd5e1" strokeWidth="0.5" />
+                <text
+                  x={lx} y={ly}
+                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
+                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
+                  fontSize="8.5" fill="#334155" fontWeight="600"
+                >
+                  {ind.shortLabel}
+                </text>
+                <text
+                  x={lx} y={ly + (Math.sin(a) >= 0 ? 11 : -11)}
+                  textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
+                  dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
+                  fontSize="7.5" fill="#64748b" fontFamily="monospace"
+                >
+                  avg {fmt(baseline, ind.decimals)} {ind.unit}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* One polygon per basin */}
+          {basinPolygons.map(({ basin, color, path }) => (
+            <polygon key={basin.id} points={path}
+              fill={color} fillOpacity={fillOpacity}
+              stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+          ))}
+
+          {/* Hoverable vertices on every basin polygon */}
+          {basinPolygons.map(({ basin, color, pts }) =>
+            pts.map((p, i) => {
+              const ind = SUB_BASIN_INDICATORS[i];
+              const v = basin.indicators[ind.id];
+              const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
+              return (
+                <circle
+                  key={`${basin.id}-${i}`} cx={p.x} cy={p.y} r="2.6"
+                  fill={color} stroke="white" strokeWidth="1"
+                  onMouseEnter={() => setTip({
+                    x: p.x,
+                    y: p.y,
+                    node: (
+                      <div>
+                        <div className="font-semibold mb-0.5" style={{ color }}>{basin.name}</div>
+                        <div className="opacity-90">{ind.label}</div>
+                        <div>Value: <span className="font-mono">{fmt(v, ind.decimals)} {ind.unit}</span></div>
+                        <div className="opacity-80 text-[9.5px]">
+                          Avg of 25: <span className="font-mono">{fmt(baseline, ind.decimals)} {ind.unit}</span>
+                        </div>
+                        <div className="opacity-80 text-[9.5px]">
+                          Δ vs avg: {fmtPctDelta(baseline, v)}
+                        </div>
+                      </div>
+                    ),
+                  })}
+                  onMouseLeave={() => setTip(null)}
+                  style={{ cursor: "pointer" }}
+                />
+              );
+            }),
+          )}
+
+          {/* Legend */}
+          <g transform={`translate(${cx - 78}, ${H - 18})`}>
+            <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
+            <text x="14" y="9" fontSize="8.5" fill="#334155">
+              Avg of 25 (baseline ring) · outer = {MAX_FRAC.toFixed(1)}×
+            </text>
+          </g>
+        </svg>
+      )}
+    />
+  );
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────
 
 interface Props {
@@ -1104,10 +1270,12 @@ export default function SubBasinComparisonPanel({
         )}
       </div>
 
-      {/* Aggregate-only sub-toolbar (measure + chart-type toggle) */}
-      {isComparing && aggregate && (
+      {/* Compare-mode sub-toolbar (chart-type toggle, plus measure when aggregate). */}
+      {isComparing && (
         <div className="px-4 py-2.5 border-b border-border flex-shrink-0 space-y-2 bg-slate-50/60">
-          {/* Chart type toggle */}
+          {/* Chart type toggle — always shown when comparing.  "Combined"
+              only makes sense for the single aggregated sum, so it's
+              hidden in non-aggregate compare mode. */}
           <div className="flex items-center gap-1">
             <span className="text-[9.5px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">
               View
@@ -1124,18 +1292,20 @@ export default function SubBasinComparisonPanel({
             >
               <BarChart3 size={11} /> Bars
             </button>
-            <button
-              onClick={() => onSetAggregateView("combined")}
-              className={[
-                "text-[10.5px] px-2 py-1 rounded border flex items-center gap-1 cursor-pointer",
-                aggregateView === "combined"
-                  ? "bg-foreground text-white border-foreground"
-                  : "bg-white text-foreground border-border hover:bg-muted",
-              ].join(" ")}
-              title="All indicators in one chart, normalised to regional avg"
-            >
-              <Columns3 size={11} /> Combined
-            </button>
+            {aggregate && (
+              <button
+                onClick={() => onSetAggregateView("combined")}
+                className={[
+                  "text-[10.5px] px-2 py-1 rounded border flex items-center gap-1 cursor-pointer",
+                  aggregateView === "combined"
+                    ? "bg-foreground text-white border-foreground"
+                    : "bg-white text-foreground border-border hover:bg-muted",
+                ].join(" ")}
+                title="All indicators in one chart, normalised to regional avg"
+              >
+                <Columns3 size={11} /> Combined
+              </button>
+            )}
             <button
               onClick={() => onSetAggregateView("radar")}
               className={[
@@ -1150,7 +1320,8 @@ export default function SubBasinComparisonPanel({
             </button>
           </div>
 
-          {/* Measure dropdown */}
+          {/* Measure dropdown — aggregate-only */}
+          {aggregate && (
           <div>
             <label className="text-[9.5px] uppercase tracking-wide text-muted-foreground font-semibold flex items-center gap-1 mb-1">
               <Sparkles size={10} /> Decarbonization measure
@@ -1174,6 +1345,7 @@ export default function SubBasinComparisonPanel({
               </p>
             )}
           </div>
+          )}
         </div>
       )}
 
@@ -1233,8 +1405,10 @@ export default function SubBasinComparisonPanel({
                 `Scenario: ${measure.shortLabel} on ${selectedIds.length} sub-basins — Before vs After`}
             </div>
 
-            {/* Per-basin compare: 5 stacked vertical bar cards (no measure) */}
-            {!aggregate && SUB_BASIN_INDICATORS.map(ind => {
+            {/* Per-basin compare · bars view (5 stacked vertical bar cards).
+                "combined" has no per-basin meaning here, so it falls back
+                to bars rendering. */}
+            {!aggregate && aggregateView !== "radar" && SUB_BASIN_INDICATORS.map(ind => {
               const rows: BarRow[] = basins.map(b => ({
                 id: b.id,
                 name: b.name,
@@ -1247,6 +1421,31 @@ export default function SubBasinComparisonPanel({
                 </ChartCard>
               );
             })}
+
+            {/* Per-basin compare · radar view (one polygon per basin,
+                shared 5-axis radar normalised to regional avg). */}
+            {!aggregate && aggregateView === "radar" && (
+              <div className="bg-white border border-border rounded-md p-2.5">
+                <div className="flex items-baseline justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-foreground">
+                    Side-by-side fingerprint
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">
+                    1.0× ring = regional avg
+                  </span>
+                </div>
+                <MultiBasinRadar basins={basins} colorFor={colorFor} />
+                {/* Per-basin colour key */}
+                <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 pt-1 text-[9.5px] text-muted-foreground">
+                  {basins.map(b => (
+                    <span key={b.id} className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: colorFor(b.id) }} />
+                      <span className="text-foreground/80 truncate max-w-[110px]">{b.name}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Aggregate · bars view */}
             {aggregate && aggregateView === "bars" && SUB_BASIN_INDICATORS.map(ind => (

@@ -120,13 +120,15 @@ export default function SubBasinPage() {
     setSelectedIds(SUB_BASIN_META.map(b => b.id));
   }, []);
 
-  // Turning aggregate OFF resets the aggregate-only sub-state so coming
-  // back to it is a clean default (no measure, bars).
+  // Turning aggregate OFF clears the measure (aggregate-only) but keeps
+  // the chart-type view sticky — both modes now share the Bars/Radar
+  // toggle, so flipping aggregate shouldn't yank the user out of radar.
+  // (If the user was on "combined", the panel falls back to bars in
+  // compare mode automatically.)
   const handleSetAggregate = useCallback((v: boolean) => {
     setAggregate(v);
     if (!v) {
       setMeasureId("none");
-      setAggregateView("bars");
     }
   }, []);
 

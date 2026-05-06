@@ -50,9 +50,14 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
     (`SUB_BASIN_BASELINE_AVG`, simple arithmetic mean), not a fixed health
     threshold.  Single selection ⇒ radar chart fingerprint + value-vs-avg
     table; the dashed ring marks "1.0 × regional avg".  2+ selections ⇒
-    five stacked vertical-bar cards (one per indicator) with the avg
-    reference line and per-bar hover tooltips showing basin name, value,
-    and Δ vs avg.  **Aggregate** toggle collapses bars into "Total Regional
+    chart-type toggle (**Bars** or **Radar**).  Bars = five stacked
+    vertical-bar cards (one per indicator) with the avg reference line
+    and per-bar hover tooltips showing basin name, value, and Δ vs avg.
+    Radar = single shared 5-axis radar with **one polygon per selected
+    basin**, each axis normalised to its baseline avg (1.0× ring) and the
+    outer ring auto-scaled to fit the most extreme basin/indicator combo;
+    fill opacity scales down with N so 10+ overlapping polygons stay
+    readable.  **Aggregate** toggle collapses bars into "Total Regional
     Sum"; per-area indicators are area-weighted (unit shifts to absolute t
     or kg/yr) while waterFlow is summed directly.  Aggregate exposes two
     extra controls: a **chart-type toggle** (Bars / Combined / Radar) and a
