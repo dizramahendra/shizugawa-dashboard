@@ -11,6 +11,7 @@ import OceanBasin3D from "@/components/OceanBasin3D";
 import LegendOverlay from "@/components/LegendOverlay";
 import PlaybackControls from "@/components/PlaybackControls";
 import DepthGraph from "@/components/DepthGraph";
+import VoxelRadar from "@/components/VoxelRadar";
 
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
@@ -897,6 +898,13 @@ export default function PlaybackPage() {
                       <div className="text-lg font-mono font-bold text-primary mt-0.5">
                         {selectedValue} <span className="text-sm font-normal text-muted-foreground">{variable.unit}</span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Voxel radar — Point Inspection mode only (static placeholder) */}
+                  {inspectTool === "point-select" && (
+                    <div className="mt-3">
+                      <VoxelRadar />
                     </div>
                   )}
                 </div>
