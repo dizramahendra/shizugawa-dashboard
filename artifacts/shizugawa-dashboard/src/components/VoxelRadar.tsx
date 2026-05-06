@@ -86,7 +86,10 @@ export default function VoxelRadar({ depthLabel }: { depthLabel?: string } = {})
       </div>
 
       <div className="relative mx-auto" style={{ width: W, height: H }}>
-        <svg width={W} height={H} className="block">
+        {/* overflow:visible lets the outermost axis labels (Phosphorus on the
+            right, Water Flow on the left) render past the SVG's 248-px box
+            instead of being clipped by the default svg overflow:hidden. */}
+        <svg width={W} height={H} className="block" style={{ overflow: "visible" }}>
           {/* 5 grid rings + tick labels at vertical (1.0× and above) */}
           {[0.5, 1.0, 1.5, 2.0, 2.5].map((f, idx) => {
             const r = (f / MAX_FRAC) * R;
