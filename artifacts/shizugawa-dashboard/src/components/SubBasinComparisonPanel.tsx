@@ -1403,11 +1403,12 @@ function MultiBasinRadar({
       return Number.isFinite(r) ? r : 0;
     }),
   );
-  const rawMax = allRatios.length ? Math.max(...allRatios) : 1.5;
-  // Always 5 rings: snap to either 2.5 (rings 0.5/1.0/1.5/2.0/2.5 — 1.0× on
-  // the 2nd) or 5.0 (rings 1.0/2.0/3.0/4.0/5.0 — 1.0× on the 1st) so the
-  // baseline always sits exactly on a grid ring.
-  const MAX_FRAC = rawMax <= 2.5 ? 2.5 : 5.0;
+  // Fixed 2.5× scale across all 3 radars: 5 rings (0.5/1.0/1.5/2.0/2.5) with
+  // the 1.0× baseline on ring #2.  Rare values >2.5× clamp to the outer ring
+  // (see `point()`); we don't auto-scale because doing so shrinks every other
+  // polygon for one outlier.
+  void allRatios;
+  const MAX_FRAC = 2.5;
   const BASELINE_FRAC  = 1.0;
   const baselineRingR  = (BASELINE_FRAC / MAX_FRAC) * R;
 
