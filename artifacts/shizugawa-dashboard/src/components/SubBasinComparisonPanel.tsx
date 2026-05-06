@@ -204,6 +204,16 @@ function axisIndexFromPoint(
   return Math.round(t / wedge) % N;
 }
 
+/** Reordered indicator slots used only by the 3 radar charts (clockwise from
+ *  top): Forest C → Soil C → Water Flow → Nitrogen → Phosphorus.  This puts
+ *  Water Flow on the bottom-right, Nitrogen on the bottom-left, and
+ *  Phosphorus on the left.  The bar / table views keep the canonical
+ *  SUB_BASIN_INDICATORS order. */
+const RADAR_AXES: SubBasinIndicatorDef[] = (() => {
+  const order: SubBasinIndicatorId[] = ["forestC", "soilC", "waterFlow", "nitrogen", "phosphorus"];
+  return order.map(id => SUB_BASIN_INDICATORS.find(i => i.id === id)!);
+})();
+
 function RadarAxisPopover({
   indicator,
   baseline,
@@ -957,6 +967,9 @@ function AggregateRadarChart({
   const cx = W / 2, cy = H / 2 + 4;
   const R  = 84;
 
+  // Use radar-specific axis order (Forest, Soil, Water, N, P clockwise).
+  // eslint-disable-next-line @typescript-eslint/no-shadow
+  const SUB_BASIN_INDICATORS = RADAR_AXES;
   const N = SUB_BASIN_INDICATORS.length;
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
@@ -1201,6 +1214,9 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   const cx = W / 2, cy = H / 2 + 4;
   const R  = 78;
 
+  // Use radar-specific axis order (Forest, Soil, Water, N, P clockwise).
+  // eslint-disable-next-line @typescript-eslint/no-shadow
+  const SUB_BASIN_INDICATORS = RADAR_AXES;
   const N = SUB_BASIN_INDICATORS.length;
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
@@ -1372,6 +1388,9 @@ function MultiBasinRadar({
   const cx = W / 2, cy = H / 2 + 4;
   const R  = 78;
 
+  // Use radar-specific axis order (Forest, Soil, Water, N, P clockwise).
+  // eslint-disable-next-line @typescript-eslint/no-shadow
+  const SUB_BASIN_INDICATORS = RADAR_AXES;
   const N = SUB_BASIN_INDICATORS.length;
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
