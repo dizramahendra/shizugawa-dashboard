@@ -963,7 +963,8 @@ function AggregateRadarChart({
   // Each axis normalised to its own expected sum (= baseline avg × scaling).
   // baseline ring sits at 1.0; outer ring at 1.5 so above-avg basins fit.
   const BASELINE_FRAC = 1.0;
-  const MAX_FRAC      = 1.5;
+  // Always 5 rings, with 1.0× landing on the 2nd ring (0.5, 1.0, 1.5, 2.0, 2.5).
+  const MAX_FRAC      = 2.5;
 
   const point = (frac: number, i: number) => {
     const r = (Math.min(MAX_FRAC, Math.max(0, frac)) / MAX_FRAC) * R;
@@ -1058,8 +1059,8 @@ function AggregateRadarChart({
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {/* Rings every 0.5× (1.0× baseline lines up) + scale tick labels */}
-        {[0.5, 1.0, 1.5].map((f, idx) => {
+        {/* 5 rings (1.0× baseline lines up on ring #2) + scale tick labels */}
+        {[0.5, 1.0, 1.5, 2.0, 2.5].map((f, idx) => {
           const r = (f / MAX_FRAC) * R;
           return (
             <g key={idx}>
@@ -1204,7 +1205,8 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
   const BASELINE_FRAC = 1.0;
-  const MAX_FRAC      = 1.5;
+  // Always 5 rings, with 1.0× landing on the 2nd ring (0.5, 1.0, 1.5, 2.0, 2.5).
+  const MAX_FRAC      = 2.5;
 
   const point = (frac: number, i: number) => {
     const r = (Math.min(MAX_FRAC, Math.max(0, frac)) / MAX_FRAC) * R;
@@ -1252,8 +1254,8 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {/* Rings every 0.5× (1.0× baseline lines up) + scale tick labels */}
-        {[0.5, 1.0, 1.5].map((f, idx) => {
+        {/* 5 rings (1.0× baseline lines up on ring #2) + scale tick labels */}
+        {[0.5, 1.0, 1.5, 2.0, 2.5].map((f, idx) => {
           const r = (f / MAX_FRAC) * R;
           return (
             <g key={idx}>
@@ -1383,7 +1385,10 @@ function MultiBasinRadar({
     }),
   );
   const rawMax = allRatios.length ? Math.max(...allRatios) : 1.5;
-  const MAX_FRAC = Math.max(1.5, Math.ceil(rawMax * 2) / 2);
+  // Always 5 rings: snap to either 2.5 (rings 0.5/1.0/1.5/2.0/2.5 — 1.0× on
+  // the 2nd) or 5.0 (rings 1.0/2.0/3.0/4.0/5.0 — 1.0× on the 1st) so the
+  // baseline always sits exactly on a grid ring.
+  const MAX_FRAC = rawMax <= 2.5 ? 2.5 : 5.0;
   const BASELINE_FRAC  = 1.0;
   const baselineRingR  = (BASELINE_FRAC / MAX_FRAC) * R;
 
@@ -1407,9 +1412,9 @@ function MultiBasinRadar({
     };
   });
 
-  // Rings every 0.5× so the 1.0× baseline always lines up with one ring.
-  const gridFracs: number[] = [];
-  for (let f = 0.5; f <= MAX_FRAC + 1e-6; f += 0.5) gridFracs.push(f);
+  // Always 5 rings; step depends on snapped MAX_FRAC (0.5 step at 2.5×, 1.0 step at 5.0×).
+  const ringStep  = MAX_FRAC / 5;
+  const gridFracs: number[] = [1, 2, 3, 4, 5].map(i => i * ringStep);
   const fillOpacity = Math.max(0.06, 0.22 / Math.max(1, basins.length * 0.35));
 
   const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
