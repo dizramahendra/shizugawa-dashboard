@@ -28,7 +28,7 @@ const CHART_H_AGG     = 96;
 const PAD_L = 38, PAD_R = 8, PAD_T = 8, PAD_B = 22;
 
 const RADAR_W = CHART_INNER_W;
-const RADAR_H = 250;
+const RADAR_H = 280;
 
 const LAND_USE_LABEL: Record<string, string> = {
   forest: "Forest",
@@ -1058,9 +1058,9 @@ function AggregateRadarChart({
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {/* 5 evenly spaced concentric rings */}
-        {[1, 2, 3, 4, 5].map(i => (
-          <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
+        {/* Rings every 0.5× so the 1.0× baseline always lines up */}
+        {[0.5, 1.0, 1.5].map((f, idx) => (
+          <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
             fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
         ))}
         {/* Baseline reference ring */}
@@ -1071,11 +1071,13 @@ function AggregateRadarChart({
         {/* Axes + labels (avg moved into popover header) */}
         {SUB_BASIN_INDICATORS.map((ind, i) => {
           const outer = point(MAX_FRAC, i);
-          const labelR = R + 14;
+          const labelR = R + 22;
           const a = angleFor(i);
           const lx = cx + Math.cos(a) * labelR;
           const ly = cy + Math.sin(a) * labelR;
           const isActive = activeAxis === i;
+          const anchor = Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end");
+          const baseline = Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto");
           return (
             <g key={ind.id}>
               <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
@@ -1083,12 +1085,21 @@ function AggregateRadarChart({
                 strokeWidth={isActive ? 1.2 : 0.5} />
               <text
                 x={lx} y={ly}
-                textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                fontSize="9" fill={isActive ? "#0f172a" : "#334155"}
+                textAnchor={anchor}
+                dominantBaseline={baseline}
+                fontSize="9.5" fill={isActive ? "#0f172a" : "#334155"}
                 fontWeight={isActive ? 700 : 600}
               >
                 {ind.shortLabel}
+              </text>
+              <text
+                x={lx} y={ly + 11}
+                textAnchor={anchor}
+                dominantBaseline={baseline}
+                fontSize="8" fill={isActive ? "#334155" : "#64748b"}
+                fontFamily="monospace"
+              >
+                {ind.unit}
               </text>
             </g>
           );
@@ -1148,10 +1159,10 @@ function AggregateRadarChart({
           onMouseLeave={onMouseLeave}
         />
 
-        {/* Legend */}
-        <g transform={`translate(${cx - 70}, ${H - 18})`} style={{ pointerEvents: "none" }}>
-          <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
-          <text x="14" y="9" fontSize="8.5" fill="#334155">Avg of 25 (baseline ring)</text>
+        {/* Legend (1.0× baseline already explained by the BaselineBadge in the chart header) */}
+        <g transform={`translate(8, ${H - 14})`} style={{ pointerEvents: "none" }}>
+          <circle cx="4" cy="4" r="3" fill={REF_COLOR} opacity="0.7" />
+          <text x="11" y="7" fontSize="8" fill="#64748b">avg of 25</text>
         </g>
       </svg>
       {activeAxis !== null && (
@@ -1229,9 +1240,9 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
   return (
     <div className="relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} className="block">
-        {/* 5 evenly spaced concentric rings */}
-        {[1, 2, 3, 4, 5].map(i => (
-          <circle key={i} cx={cx} cy={cy} r={(i / 5) * R}
+        {/* Rings every 0.5× so the 1.0× baseline always lines up */}
+        {[0.5, 1.0, 1.5].map((f, idx) => (
+          <circle key={idx} cx={cx} cy={cy} r={(f / MAX_FRAC) * R}
             fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
         ))}
         <circle cx={cx} cy={cy} r={baselineRingR}
@@ -1241,11 +1252,13 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
         {/* Axes + labels (value moved into popover header) */}
         {SUB_BASIN_INDICATORS.map((ind, i) => {
           const outer = point(MAX_FRAC, i);
-          const labelR = R + 14;
+          const labelR = R + 22;
           const a = angleFor(i);
           const lx = cx + Math.cos(a) * labelR;
           const ly = cy + Math.sin(a) * labelR;
           const isActive = activeAxis === i;
+          const anchor = Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end");
+          const baseline = Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto");
           return (
             <g key={ind.id}>
               <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
@@ -1253,12 +1266,21 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
                 strokeWidth={isActive ? 1.2 : 0.5} />
               <text
                 x={lx} y={ly}
-                textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                fontSize="9" fill={isActive ? "#0f172a" : "#334155"}
+                textAnchor={anchor}
+                dominantBaseline={baseline}
+                fontSize="9.5" fill={isActive ? "#0f172a" : "#334155"}
                 fontWeight={isActive ? 700 : 600}
               >
                 {ind.shortLabel}
+              </text>
+              <text
+                x={lx} y={ly + 11}
+                textAnchor={anchor}
+                dominantBaseline={baseline}
+                fontSize="8" fill={isActive ? "#334155" : "#64748b"}
+                fontFamily="monospace"
+              >
+                {ind.unit}
               </text>
             </g>
           );
@@ -1289,10 +1311,10 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
           onMouseLeave={onMouseLeave}
         />
 
-        {/* Legend */}
-        <g transform={`translate(${cx - 70}, ${H - 18})`} style={{ pointerEvents: "none" }}>
-          <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
-          <text x="14" y="9" fontSize="8.5" fill="#334155">Avg of 25 (baseline ring)</text>
+        {/* Legend (1.0× baseline already explained by the BaselineBadge in the chart header) */}
+        <g transform={`translate(8, ${H - 14})`} style={{ pointerEvents: "none" }}>
+          <circle cx="4" cy="4" r="3" fill={REF_COLOR} opacity="0.7" />
+          <text x="11" y="7" fontSize="8" fill="#64748b">avg of 25</text>
         </g>
       </svg>
       {activeAxis !== null && (
@@ -1361,7 +1383,9 @@ function MultiBasinRadar({
     };
   });
 
-  const gridFracs: number[] = [1, 2, 3, 4, 5].map(i => (i / 5) * MAX_FRAC);
+  // Rings every 0.5× so the 1.0× baseline always lines up with one ring.
+  const gridFracs: number[] = [];
+  for (let f = 0.5; f <= MAX_FRAC + 1e-6; f += 0.5) gridFracs.push(f);
   const fillOpacity = Math.max(0.06, 0.22 / Math.max(1, basins.length * 0.35));
 
   const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
@@ -1398,11 +1422,13 @@ function MultiBasinRadar({
         {/* Axes + labels (avg moved into popover header) */}
         {SUB_BASIN_INDICATORS.map((ind, i) => {
           const outer = point(MAX_FRAC, i);
-          const labelR = R + 14;
+          const labelR = R + 22;
           const a = angleFor(i);
           const lx = cx + Math.cos(a) * labelR;
           const ly = cy + Math.sin(a) * labelR;
           const isActive = activeAxis === i;
+          const anchor = Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end");
+          const baseline = Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto");
           return (
             <g key={ind.id}>
               <line x1={cx} y1={cy} x2={outer.x} y2={outer.y}
@@ -1410,12 +1436,21 @@ function MultiBasinRadar({
                 strokeWidth={isActive ? 1.2 : 0.5} />
               <text
                 x={lx} y={ly}
-                textAnchor={Math.abs(Math.cos(a)) < 0.2 ? "middle" : (Math.cos(a) > 0 ? "start" : "end")}
-                dominantBaseline={Math.abs(Math.sin(a)) < 0.3 ? "middle" : (Math.sin(a) > 0 ? "hanging" : "auto")}
-                fontSize="9" fill={isActive ? "#0f172a" : "#334155"}
+                textAnchor={anchor}
+                dominantBaseline={baseline}
+                fontSize="9.5" fill={isActive ? "#0f172a" : "#334155"}
                 fontWeight={isActive ? 700 : 600}
               >
                 {ind.shortLabel}
+              </text>
+              <text
+                x={lx} y={ly + 11}
+                textAnchor={anchor}
+                dominantBaseline={baseline}
+                fontSize="8" fill={isActive ? "#334155" : "#64748b"}
+                fontFamily="monospace"
+              >
+                {ind.unit}
               </text>
             </g>
           );
@@ -1459,10 +1494,10 @@ function MultiBasinRadar({
         />
 
         {/* Legend */}
-        <g transform={`translate(${cx - 78}, ${H - 18})`} style={{ pointerEvents: "none" }}>
-          <circle cx="6" cy="6" r="3.5" fill={REF_COLOR} opacity="0.7" />
-          <text x="14" y="9" fontSize="8.5" fill="#334155">
-            Avg of 25 (baseline ring) · outer = {MAX_FRAC.toFixed(1)}×
+        <g transform={`translate(8, ${H - 14})`} style={{ pointerEvents: "none" }}>
+          <circle cx="4" cy="4" r="3" fill={REF_COLOR} opacity="0.7" />
+          <text x="11" y="7" fontSize="8" fill="#64748b">
+            avg of 25 · outer = {MAX_FRAC.toFixed(1)}×
           </text>
         </g>
       </svg>
