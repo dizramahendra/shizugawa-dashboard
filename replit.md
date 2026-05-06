@@ -66,7 +66,7 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
     polygons in the radar view).  Sanity rules baked into `SUB_BASIN_META`:
     urban basins ⇒ 0 forestC, agricultural basins ⇒ high soilC + N/P
     export rates.  Full URL state: `?ids=1,5,20&agg=1&m=afforestation&view=radar`.
-    *Currently hidden from `TopNav` (commented out) but reachable by direct URL.*
+    Visible in `TopNav` as the "Sub-basin" tab (amber dot).
   - **Shared `<LegendOverlay>`** (`src/components/LegendOverlay.tsx`):
     single component used by `PlaybackPage`, `MapLibreMap`, and
     `RiverGrid2D` to render the bottom-left color-bar legend (Legend

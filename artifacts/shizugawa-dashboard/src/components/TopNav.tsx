@@ -106,7 +106,6 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
         >
           Map Viewport
         </NavLink>
-        {/* HIDDEN – uncomment to restore Sub-basin tab
         <NavLink
           to="/sub-basin"
           className={`tab-item ${isSubBasin ? "tab-item-active" : ""}`}
@@ -116,7 +115,6 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
             Sub-basin
           </span>
         </NavLink>
-        */}
         {/* HIDDEN – uncomment to restore Cross-Section tab
         <NavLink
           to={buildCSHref()}
