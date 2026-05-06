@@ -12,6 +12,7 @@ import LegendOverlay from "@/components/LegendOverlay";
 import PlaybackControls from "@/components/PlaybackControls";
 import DepthGraph from "@/components/DepthGraph";
 import VoxelRadar from "@/components/VoxelRadar";
+import { depthLabel } from "@/components/OceanBasin3D";
 
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
@@ -94,15 +95,22 @@ export default function PlaybackPage() {
   const [sliceTool,   setSliceTool]   = useState<SliceTool>(  (["none","slice-h","slice-v"].includes(_initTool)    ? _initTool : "none") as SliceTool);
   const _initPx = searchParams.get("px");
   const _initPz = searchParams.get("pz");
+  const _initPy = searchParams.get("py");
   // If px/pz are in the URL but no inspect tool, default to point-select
   const _initInspect = (["none","point-select","depth-graph"].includes(_initTool) ? _initTool : "none") as InspectTool;
   const [inspectTool, setInspectTool] = useState<InspectTool>(
     _initInspect === "none" && _initPx !== null && _initPz !== null ? "point-select" : _initInspect
   );
-  const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number } | null>(() => {
+  const [selectedPoint, setSelectedPoint] = useState<{ x: number; z: number; y?: number } | null>(() => {
     if (_initPx !== null && _initPz !== null) {
       const x = Number(_initPx), z = Number(_initPz);
-      if (Number.isFinite(x) && Number.isFinite(z)) return { x, z };
+      if (Number.isFinite(x) && Number.isFinite(z)) {
+        if (_initPy !== null) {
+          const y = Number(_initPy);
+          if (Number.isFinite(y)) return { x, z, y };
+        }
+        return { x, z };
+      }
     }
     return null;
   });
@@ -166,13 +174,19 @@ export default function PlaybackPage() {
         next.delete("level");
       }
 
-      // Selected point (pixel click / point inspection / depth profile)
+      // Selected point (pixel click / point inspection / depth profile).
+      // py = depth-layer index, only set when we have a single-voxel pick
+      // (point-select mode); depth-graph mode keeps it absent so the column
+      // stays the unit of selection.
       if (selectedPoint) {
         next.set("px", String(selectedPoint.x));
         next.set("pz", String(selectedPoint.z));
+        if (selectedPoint.y !== undefined) next.set("py", String(selectedPoint.y));
+        else next.delete("py");
       } else {
         next.delete("px");
         next.delete("pz");
+        next.delete("py");
       }
 
       // UI visibility — only encode when visible (ui=1); hidden is the default
@@ -251,8 +265,11 @@ export default function PlaybackPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPlaying, speed, weekRange]);
 
-  const handleCellClick = (x: number, z: number) => {
-    setSelectedPoint({ x, z });
+  const handleCellClick = (x: number, z: number, y: number) => {
+    // Point Inspection → single voxel (carries depth y).
+    // Depth Profile / no tool yet → column selection (no depth, whole column glows).
+    const tool = inspectTool === "none" ? "point-select" : inspectTool;
+    setSelectedPoint(tool === "point-select" ? { x, z, y } : { x, z });
     if (inspectTool === "none") setInspectTool("point-select");
   };
 
@@ -885,8 +902,12 @@ export default function PlaybackPage() {
                       >{CopyIcon}</button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-24 text-xs text-muted-foreground">Column Depth</div>
-                      <div className="flex-1 text-sm font-mono font-medium text-foreground">0–99 m</div>
+                      <div className="w-24 text-xs text-muted-foreground">
+                        {selectedPoint?.y !== undefined ? "Voxel Depth" : "Column Depth"}
+                      </div>
+                      <div className="flex-1 text-sm font-mono font-medium text-foreground">
+                        {selectedPoint?.y !== undefined ? depthLabel(selectedPoint.y) : "0–99 m"}
+                      </div>
                       <div className="w-3.5" aria-hidden />
                     </div>
                   </div>
@@ -904,7 +925,9 @@ export default function PlaybackPage() {
                   {/* Voxel radar — Point Inspection mode only (static placeholder) */}
                   {inspectTool === "point-select" && (
                     <div className="mt-3">
-                      <VoxelRadar />
+                      <VoxelRadar
+                        depthLabel={selectedPoint?.y !== undefined ? depthLabel(selectedPoint.y) : undefined}
+                      />
                     </div>
                   )}
                 </div>

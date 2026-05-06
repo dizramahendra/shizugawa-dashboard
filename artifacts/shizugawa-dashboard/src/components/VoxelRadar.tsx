@@ -42,7 +42,7 @@ const SAMPLE_BASELINE: Record<AxisDef["id"], number> = {
 const fmt = (v: number, d: number) =>
   Number.isFinite(v) ? v.toFixed(d) : "—";
 
-export default function VoxelRadar() {
+export default function VoxelRadar({ depthLabel }: { depthLabel?: string } = {}) {
   const W  = 248;
   const H  = 248;
   const cx = W / 2;
@@ -76,6 +76,11 @@ export default function VoxelRadar() {
       <div className="flex items-baseline justify-between mb-1.5">
         <div className="text-[10.5px] font-semibold text-foreground">
           Voxel indicator profile · radar
+          {depthLabel && (
+            <span className="ml-1.5 font-mono font-normal text-muted-foreground">
+              @ {depthLabel}
+            </span>
+          )}
         </div>
         <div className="text-[9px] text-muted-foreground">1.0× = bay avg</div>
       </div>

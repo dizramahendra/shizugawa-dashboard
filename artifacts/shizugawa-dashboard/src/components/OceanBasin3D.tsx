@@ -122,7 +122,7 @@ function toPhysical(val: number, scale: string): string {
 
 // Depth label for a given layer index: "0–2 m", "2–5 m", etc.
 const DEPTH_REAL_BOT = [2, 5, 10, 18, 30, 47, 69, 90]; // approx bottom of each layer
-function depthLabel(d: number): string {
+export function depthLabel(d: number): string {
   return `${DEPTH_REAL_M[d]}–${DEPTH_REAL_BOT[d]} m`;
 }
 
@@ -201,12 +201,12 @@ interface HoveredVoxel {
 interface VoxelGridProps {
   week: number;
   colorScale: string;
-  selectedPoint: { x: number; z: number } | null;
+  selectedPoint: { x: number; z: number; y?: number } | null;
   sliceMode: DashboardState;
   sliceLevel: number;
   sliceDir: SliceDir;
   sliceCutType: SliceCutType;
-  onCellClick: (x: number, z: number) => void;
+  onCellClick: (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
 }
 
@@ -251,10 +251,13 @@ function VoxelGrid({
         const val = data[gz]?.[gx]?.[d] ?? 0;
         const [r, g, b] = lerpColor(stops, val);
 
-        const isColumnSelected =
-          selectedPoint !== null &&
-          selectedPoint.x === gx &&
-          selectedPoint.z === gz;
+        // Two highlight modes:
+        //   • Column highlight (depth-graph): no y on selection → entire column glows.
+        //   • Voxel highlight (point-select): y defined → only that single voxel glows.
+        const colMatch = selectedPoint !== null && selectedPoint.x === gx && selectedPoint.z === gz;
+        const isColumnSelected = colMatch && selectedPoint?.y === undefined;
+        const isVoxelSelected  = colMatch && selectedPoint?.y === d;
+        const isHighlighted = isColumnSelected || isVoxelSelected;
 
         const px = offsetX + gx * STEP + CELL_W / 2;
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
@@ -266,7 +269,7 @@ function VoxelGrid({
           <mesh
             key={`${gz}-${gx}-${d}`}
             position={[px, py, pz]}
-            onClick={(e) => { e.stopPropagation(); onCellClick(gx, gz); }}
+            onClick={(e) => { e.stopPropagation(); onCellClick(gx, gz, d); }}
             onPointerOver={(e) => {
               e.stopPropagation();
               setHovered({ px, py, pz, val, depth: d });
@@ -277,12 +280,12 @@ function VoxelGrid({
             <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
             <meshStandardMaterial
               color={
-                isColumnSelected
+                isHighlighted
                   ? new THREE.Color(1, 0.9, 0.2)
                   : new THREE.Color(r, g, b)
               }
               transparent={depthOpacity < 1}
-              opacity={isColumnSelected ? 1 : depthOpacity}
+              opacity={isHighlighted ? 1 : depthOpacity}
               roughness={0.7}
               metalness={0.05}
             />
@@ -345,7 +348,7 @@ interface InstanceMeta {
 function buildBatches(
   data: ReturnType<typeof generateWeekData>,
   stops: string[],
-  selectedPoint: { x: number; z: number } | null,
+  selectedPoint: { x: number; z: number; y?: number } | null,
   sliceMode: DashboardState,
   sliceLevel: number,
   sliceDir: SliceDir,
@@ -376,7 +379,10 @@ function buildBatches(
         if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
-        const isSelected = selectedPoint?.x === gx && selectedPoint?.z === gz;
+        // Voxel highlight (point-select): only the exact (gx,gz,d) glows.
+        // Column highlight (depth-graph or no y): whole column glows.
+        const colMatch = selectedPoint?.x === gx && selectedPoint?.z === gz;
+        const isSelected = colMatch && (selectedPoint?.y === undefined || selectedPoint?.y === d);
         const markerColor = markerPixels?.get(`${gx}:${gz}`);
         const [r, g, b] = markerColor && d === 0
           ? markerColor
@@ -403,7 +409,7 @@ function InstancedDepthLayer({
 }: {
   depthIdx: number;
   batch:    LayerBatch;
-  onCellClick:  (x: number, z: number) => void;
+  onCellClick:  (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
   onHover: (h: HoveredVoxel | null) => void;
 }) {
@@ -444,7 +450,7 @@ function InstancedDepthLayer({
         const iid = e.instanceId;
         if (iid == null) return;
         const { gx, gz } = batch.meta[iid];
-        onCellClick(gx, gz);
+        onCellClick(gx, gz, depthIdx);
       }}
       onPointerOver={(e) => {
         e.stopPropagation();
@@ -1241,12 +1247,12 @@ interface OceanBasin3DProps {
   week: number;
   colorScale: string;
   dashboardState: DashboardState;
-  selectedPoint: { x: number; z: number } | null;
+  selectedPoint: { x: number; z: number; y?: number } | null;
   sliceLevel: number;
   sliceDir: SliceDir;
   sliceCutType?: SliceCutType;
   showCutPlane?: boolean;
-  onCellClick: (x: number, z: number) => void;
+  onCellClick: (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
   cameraPreset?: string;
