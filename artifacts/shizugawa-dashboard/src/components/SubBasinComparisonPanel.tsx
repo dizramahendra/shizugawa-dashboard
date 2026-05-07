@@ -246,8 +246,8 @@ function IndicatorBreakdownTable({
       </div>
       <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
         {hasMeasure
-          ? `After-measure sum (${measureLabel}) vs expected sum if every selected basin were at baseline.`
-          : "Current selection sum vs expected sum if every selected basin were at baseline."}
+          ? `After-measure sum (${measureLabel}) vs baseline sum (per-ha baseline × area, or per-basin baseline × N).`
+          : "Selection sum vs baseline sum (per-ha baseline × area, or per-basin baseline × N)."}
       </p>
     </div>
   );
@@ -603,7 +603,8 @@ function AggregateBarChart({
   indicator: SubBasinIndicatorDef;
   beforeValue: number;
   afterValue: number;
-  /** "Expected sum if every selected basin were exactly at baseline". */
+  /** Baseline sum = per-ha baseline × selection area (or per-basin baseline × N
+   *  for additive indicators). The reference the bar's height is compared to. */
   expectedSum: number;
   measureLabel: string;
   hasMeasure: boolean;
@@ -621,7 +622,7 @@ function AggregateBarChart({
       height={CHART_H_AGG}
       render={({ setTip }) => {
         if (!hasMeasure) {
-          // Single sum bar with expected reference line
+          // Single sum bar with baseline reference line
           const barW = Math.min(160, innerW * 0.55);
           const barX = PAD_L + (innerW - barW) / 2;
           const y    = toY(beforeValue);
@@ -647,14 +648,14 @@ function AggregateBarChart({
                 );
               })}
 
-              {/* Expected (baseline × scaling) reference */}
+              {/* Baseline (per-ha baseline × scaling) reference */}
               <line
                 x1={PAD_L} y1={yExpected} x2={CHART_INNER_W - PAD_R} y2={yExpected}
                 stroke={REF_COLOR} strokeWidth="1.2" strokeDasharray="4 3" opacity="0.85"
               />
               <text x={CHART_INNER_W - PAD_R} y={yExpected - 3} textAnchor="end"
                 fontSize="8" fill={REF_COLOR_DARK} fontFamily="monospace" fontWeight="600">
-                expected {fmt(expectedSum, indicator.decimals)}
+                baseline {fmt(expectedSum, indicator.decimals)}
               </text>
 
               {/* Sum bar */}
@@ -669,10 +670,10 @@ function AggregateBarChart({
                       <div className="font-semibold mb-0.5">{indicator.label} · selection sum</div>
                       <div>Total: <span className="font-mono">{fmt(beforeValue, indicator.decimals)} {unit}</span></div>
                       <div className="opacity-80 text-[9.5px]">
-                        Expected if avg: <span className="font-mono">{fmt(expectedSum, indicator.decimals)} {unit}</span>
+                        Baseline: <span className="font-mono">{fmt(expectedSum, indicator.decimals)} {unit}</span>
                       </div>
                       <div className="opacity-80 text-[9.5px]">
-                        Δ vs expected: <span className="font-mono">{fmtPctDelta(expectedSum, beforeValue)}</span>
+                        Δ vs baseline: <span className="font-mono">{fmtPctDelta(expectedSum, beforeValue)}</span>
                       </div>
                     </div>
                   ),
@@ -933,7 +934,7 @@ function CombinedAggregateChart({
                 <div className="font-semibold mb-0.5">{ind.label}</div>
                 <div>Sum: <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span></div>
                 <div className="opacity-80 text-[9.5px]">
-                  Expected: <span className="font-mono">{fmt(exp, ind.decimals)} {units[ind.id]}</span>
+                  Baseline: <span className="font-mono">{fmt(exp, ind.decimals)} {units[ind.id]}</span>
                 </div>
                 <div className="opacity-80 text-[9.5px]">
                   Ratio: <span className="font-mono">{afterR.toFixed(2)}× avg</span>
@@ -1080,7 +1081,7 @@ function AggregateRadarChart({
   const N = SUB_BASIN_INDICATORS.length;
   const angleFor = (i: number) => -Math.PI / 2 + (i / N) * Math.PI * 2;
 
-  // Each axis normalised to its own expected sum (= baseline avg × scaling).
+  // Each axis normalised to its own baseline sum (= per-ha baseline × scaling).
   // baseline ring sits at 1.0; outer ring at 1.5 so above-avg basins fit.
   const BASELINE_FRAC = 1.0;
   // Always 5 rings, with 1.0× landing on the 2nd ring (0.5, 1.0, 1.5, 2.0, 2.5).
@@ -1113,7 +1114,7 @@ function AggregateRadarChart({
   const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
 
   // Build popover rows for the active axis: selection Before/After (or
-  // Sum/Expected when no measure) at top, then per-basin contributors.
+  // Sum/Baseline when no measure) at top, then per-basin contributors.
   const popoverRows: RadarPopoverRow[] = activeAxis !== null
     ? (() => {
         const ind  = SUB_BASIN_INDICATORS[activeAxis];
@@ -1153,7 +1154,7 @@ function AggregateRadarChart({
             emphasis: true,
           });
           out.push({
-            label: "Expected (avg × N)",
+            label: "Baseline (avg × scale)",
             color: REF_COLOR,
             value: exp,
             formatted: fmt(exp, ind.decimals),
@@ -1731,9 +1732,12 @@ export default function SubBasinComparisonPanel({
     [selectedIds, measureId],
   );
 
-  // Expected sum per indicator = baseline_avg × scaling factor.
+  // Baseline sum per indicator = baseline_avg × scaling factor.
   //   per-area densities ⇒ × totalArea
   //   additive (waterFlow) ⇒ × N basins
+  // (Internal name kept as `expectedSums` to limit churn; the UI labels it
+  // "baseline" everywhere so the per-ha "baseline" and aggregate "baseline"
+  // both refer to the same conceptual reference.)
   const expectedSums = useMemo(() => {
     const out: Record<SubBasinIndicatorId, number> = { forestC: 0, soilC: 0, nitrogen: 0, phosphorus: 0, waterFlow: 0 };
     for (const ind of SUB_BASIN_INDICATORS) {
