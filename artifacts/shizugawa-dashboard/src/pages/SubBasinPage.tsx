@@ -8,6 +8,11 @@ import {
   SUB_BASIN_META,
   SUB_BASIN_MEASURES,
   type SubBasinMeasureId,
+  type PixelMeta,
+  makePixelMeta,
+  registerPixel,
+  unregisterPixel,
+  isPixelId,
 } from "@/lib/simulatedData";
 
 /**
@@ -21,6 +26,10 @@ import {
  *   ?m=afforestation decarbonization measure (aggregate-only)
  *   ?view=combined   single normalised bar chart (all 5 indicators on one axis)
  *   ?view=radar      radar polygon view
+ *   ?pixel=1         hidden pixel-mode prototype: click anywhere to drop
+ *                    1-ha "pixels" (A..Z) instead of selecting basins.
+ *                    Indicators are hardcoded (baseline ± per-letter jitter)
+ *                    and reuse the entire SubBasinComparisonPanel unchanged.
  */
 
 type AggregateView = "bars" | "combined" | "radar";
@@ -29,6 +38,9 @@ const VALID_MEASURE_IDS = new Set<string>(SUB_BASIN_MEASURES.map(m => m.id));
 
 export default function SubBasinPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Hidden flag — flip on with ?pixel=1 in the URL.
+  const pixelMode = searchParams.get("pixel") === "1";
 
   // ── Initial state from URL ──
   // Defensively dedupe ids (preserving first-seen order) and clamp to 25 so
@@ -63,13 +75,17 @@ export default function SubBasinPage() {
     return "bars";
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [selectedIds, setSelectedIds] = useState<number[]>(initIds);
+  const [basinIds, setBasinIds]       = useState<number[]>(initIds);
+  const [pixels, setPixels]           = useState<PixelMeta[]>([]);
   const [aggregate, setAggregate]     = useState<boolean>(searchParams.get("agg") === "1");
   const [measureId, setMeasureId]     = useState<SubBasinMeasureId>(initMeasure);
   const [aggregateView, setAggregateView] = useState<AggregateView>(initAggregateView);
 
-  // Stable id→color mapping based on selection order, so a basin keeps the
-  // same colour on the map and in every chart bar even as others are added.
+  // The panel is fed a single id list — pixels in pixel mode, basins otherwise.
+  const selectedIds = pixelMode ? pixels.map(p => p.id) : basinIds;
+
+  // Stable id→color mapping based on selection order, so a basin/pixel keeps
+  // the same colour on the map and in every chart bar even as others are added.
   const colorOf = useMemo(() => {
     const map: Record<number, string> = {};
     selectedIds.forEach((id, idx) => {
@@ -83,42 +99,92 @@ export default function SubBasinPage() {
     [colorOf],
   );
 
-  // Mirror state → URL
+  // Pixels are ephemeral: drop them (and unregister from the module-global
+  // PIXEL_REGISTRY) whenever pixel-mode is exited or the page unmounts, so
+  // re-entering the mode starts from a clean slate and no stale virtual
+  // basins linger in memory.
+  useEffect(() => {
+    if (!pixelMode && pixels.length > 0) {
+      pixels.forEach(p => unregisterPixel(p.id));
+      setPixels([]);
+    }
+  }, [pixelMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    return () => {
+      pixels.forEach(p => unregisterPixel(p.id));
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mirror state → URL (basin ids only; pixels are ephemeral by design).
   useEffect(() => {
     setSearchParams(p => {
       const next = new URLSearchParams(p);
-      if (selectedIds.length > 0) next.set("ids", selectedIds.join(","));
+      if (!pixelMode && basinIds.length > 0) next.set("ids", basinIds.join(","));
       else next.delete("ids");
       if (aggregate) next.set("agg", "1"); else next.delete("agg");
       if (measureId !== "none") next.set("m", measureId); else next.delete("m");
       if (aggregateView !== "bars") next.set("view", aggregateView); else next.delete("view");
       return next;
     }, { replace: true });
-  }, [selectedIds, aggregate, measureId, aggregateView, setSearchParams]);
+  }, [basinIds, pixelMode, aggregate, measureId, aggregateView, setSearchParams]);
 
-  // ── Selection handlers ──
+  // ── Basin selection handlers ──
   const handleToggle = useCallback((id: number) => {
-    setSelectedIds(prev => {
+    setBasinIds(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
       if (prev.length >= 25)  return prev;
       return [...prev, id];
     });
   }, []);
 
+  // ── Pixel selection handlers ──
+  const handleAddPixel = useCallback((svgX: number, svgY: number) => {
+    setPixels(prev => {
+      if (prev.length >= 26) return prev;
+      const used = new Set(prev.map(p => p.letter));
+      let letter = "";
+      for (let i = 0; i < 26; i++) {
+        const c = String.fromCharCode(65 + i);
+        if (!used.has(c)) { letter = c; break; }
+      }
+      if (!letter) return prev;
+      const px = makePixelMeta(letter, svgX, svgY);
+      registerPixel(px);
+      return [...prev, px];
+    });
+  }, []);
+
+  const handleRemovePixel = useCallback((id: number) => {
+    unregisterPixel(id);
+    setPixels(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  // Unified remove (called from panel chip × button).
   const handleRemove = useCallback((id: number) => {
-    setSelectedIds(prev => prev.filter(x => x !== id));
+    if (isPixelId(id)) {
+      unregisterPixel(id);
+      setPixels(prev => prev.filter(p => p.id !== id));
+    } else {
+      setBasinIds(prev => prev.filter(x => x !== id));
+    }
   }, []);
 
   const handleClear = useCallback(() => {
-    setSelectedIds([]);
+    if (pixelMode) {
+      pixels.forEach(p => unregisterPixel(p.id));
+      setPixels([]);
+    } else {
+      setBasinIds([]);
+    }
     setAggregate(false);
     setMeasureId("none");
     setAggregateView("bars");
-  }, []);
+  }, [pixelMode, pixels]);
 
   const handleSelectAll = useCallback(() => {
-    setSelectedIds(SUB_BASIN_META.map(b => b.id));
-  }, []);
+    if (pixelMode) return; // no-op in pixel mode
+    setBasinIds(SUB_BASIN_META.map(b => b.id));
+  }, [pixelMode]);
 
   // Turning aggregate OFF clears the measure (aggregate-only) but keeps
   // the chart-type view sticky — both modes now share the Bars/Radar
@@ -137,6 +203,18 @@ export default function SubBasinPage() {
   const noopRiver = useCallback((_id: string | null) => { /* sub-basin mode */ }, []);
   const noopOcean = useCallback(() => { /* sub-basin mode */ }, []);
 
+  // Pixel marker payload for MapLibreMap (id, letter, position, color).
+  const pixelMarkers = useMemo(
+    () => pixels.map(p => ({
+      id: p.id,
+      letter: p.letter,
+      svgX: p.svgX,
+      svgY: p.svgY,
+      color: colorFor(p.id),
+    })),
+    [pixels, colorFor],
+  );
+
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-background">
       <TopNav />
@@ -147,10 +225,12 @@ export default function SubBasinPage() {
           {/* Compact toolbar — caption + quick stats */}
           <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-border">
             <span className="text-xs font-semibold text-foreground">
-              Sub-basin Comparison
+              {pixelMode ? "Pixel Selection (prototype)" : "Sub-basin Comparison"}
             </span>
             <span className="text-[10px] text-muted-foreground">
-              Click polygons to compare · max 25
+              {pixelMode
+                ? "Click anywhere to drop a 1-ha pixel · max 26 (A..Z)"
+                : "Click polygons to compare · max 25"}
             </span>
             <div className="ml-auto flex items-center gap-3 text-[10.5px]">
               <span className="text-muted-foreground">
@@ -176,10 +256,14 @@ export default function SubBasinPage() {
               selectedRiver={null}
               onSelectRiver={noopRiver}
               onSelectOcean={noopOcean}
-              subBasinMode
-              selectedSubBasins={selectedIds}
-              subBasinColors={colorOf}
+              subBasinMode={!pixelMode}
+              selectedSubBasins={pixelMode ? [] : basinIds}
+              subBasinColors={pixelMode ? {} : colorOf}
               onToggleSubBasin={handleToggle}
+              pixelMode={pixelMode}
+              pixels={pixelMarkers}
+              onMapClick={handleAddPixel}
+              onRemovePixel={handleRemovePixel}
             />
 
             {/* Hint overlay when nothing selected */}
@@ -187,7 +271,9 @@ export default function SubBasinPage() {
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 shadow-sm pointer-events-none">
                 <span className="text-[11px] text-foreground">
                   <span className="font-semibold">Tip:</span>{" "}
-                  Click any sub-basin polygon to start comparing
+                  {pixelMode
+                    ? "Click anywhere on the map to drop a pixel (A, B, C…)"
+                    : "Click any sub-basin polygon to start comparing"}
                 </span>
               </div>
             )}
@@ -209,6 +295,7 @@ export default function SubBasinPage() {
             onClear={handleClear}
             onSelectAll={handleSelectAll}
             onSelectAllDeselect={handleClear}
+            pixelMode={pixelMode}
           />
         </div>
       </div>

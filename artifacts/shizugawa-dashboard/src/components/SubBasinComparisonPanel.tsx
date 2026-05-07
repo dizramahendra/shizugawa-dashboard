@@ -6,6 +6,8 @@ import {
 import {
   SUB_BASIN_INDICATORS,
   SUB_BASIN_META,
+  isPixelId,
+  pixelIdToLetter,
   SUB_BASIN_BASELINE_AVG,
   SUB_BASIN_MEASURES,
   aggregateSubBasins,
@@ -1751,6 +1753,10 @@ interface Props {
   onClear:           () => void;
   onSelectAll:       () => void;
   onSelectAllDeselect: () => void;
+  /** Hidden Pixel-mode prototype (Sub-basin tab, ?pixel=1).  When true the
+   *  panel relabels itself for "pixels" instead of "sub-basins" and hides
+   *  controls that don't apply (e.g. "Select all 25"). */
+  pixelMode?: boolean;
 }
 
 export default function SubBasinComparisonPanel({
@@ -1766,6 +1772,7 @@ export default function SubBasinComparisonPanel({
   onClear,
   onSelectAll,
   onSelectAllDeselect,
+  pixelMode = false,
 }: Props) {
   const basins = useMemo(
     () => selectedIds.map(getSubBasin).filter((b): b is SubBasinMeta => !!b),
@@ -1817,10 +1824,12 @@ export default function SubBasinComparisonPanel({
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
             <Layers size={14} className="text-primary" />
-            Sub-basin Compare
+            {pixelMode ? "Pixel Compare" : "Sub-basin Compare"}
           </h2>
           <span className="text-[10px] text-muted-foreground">
-            {selectedIds.length} of {SUB_BASIN_META.length} selected
+            {pixelMode
+              ? `${selectedIds.length} pixel${selectedIds.length === 1 ? "" : "s"}`
+              : `${selectedIds.length} of ${SUB_BASIN_META.length} selected`}
           </span>
         </div>
         {selectedIds.length > 0 && (
@@ -1832,13 +1841,15 @@ export default function SubBasinComparisonPanel({
 
       {/* Action toolbar */}
       <div className="px-4 py-2.5 border-b border-border flex-shrink-0 flex items-center gap-1.5 flex-wrap">
-        <button
-          onClick={allSelected ? onSelectAllDeselect : onSelectAll}
-          className="text-[10.5px] px-2 py-1 rounded bg-muted/60 text-foreground hover:bg-muted border border-border cursor-pointer"
-          title={allSelected ? "Clear all 25" : "Select all 25 sub-basins"}
-        >
-          {allSelected ? "Deselect all" : "Select all 25"}
-        </button>
+        {!pixelMode && (
+          <button
+            onClick={allSelected ? onSelectAllDeselect : onSelectAll}
+            className="text-[10.5px] px-2 py-1 rounded bg-muted/60 text-foreground hover:bg-muted border border-border cursor-pointer"
+            title={allSelected ? "Clear all 25" : "Select all 25 sub-basins"}
+          >
+            {allSelected ? "Deselect all" : "Select all 25"}
+          </button>
+        )}
         {selectedIds.length > 0 && !allSelected && (
           <button
             onClick={onClear}
@@ -1953,7 +1964,9 @@ export default function SubBasinComparisonPanel({
                 className="inline-flex items-center gap-1 text-[10px] pl-1.5 pr-1 py-0.5 rounded bg-muted/40 border border-border"
               >
                 <span className="w-2 h-2 rounded-sm" style={{ background: colorFor(b.id) }} />
-                <span className="font-mono text-foreground/80">{b.id}</span>
+                <span className="font-mono text-foreground/80">
+                  {isPixelId(b.id) ? pixelIdToLetter(b.id) : b.id}
+                </span>
                 <span className="text-foreground/70 truncate max-w-[80px]">{b.name}</span>
                 <button
                   onClick={() => onRemove(b.id)}
@@ -1970,7 +1983,7 @@ export default function SubBasinComparisonPanel({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
-        {selectedIds.length === 0 && <EmptyState />}
+        {selectedIds.length === 0 && <EmptyState pixelMode={pixelMode} />}
 
         {isSingle && basins[0] && (
           <SingleBasinDetail basin={basins[0]} color={colorFor(basins[0].id)} />
@@ -2197,20 +2210,31 @@ function ChartCard({
   );
 }
 
-function EmptyState() {
+function EmptyState({ pixelMode = false }: { pixelMode?: boolean }) {
   return (
     <div className="px-6 py-10 text-center">
       <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-muted/50 border border-border flex items-center justify-center">
         <Layers size={18} className="text-muted-foreground" />
       </div>
       <p className="text-xs font-semibold text-foreground mb-1">
-        No sub-basins selected
+        {pixelMode ? "No pixels selected" : "No sub-basins selected"}
       </p>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Click any sub-basin polygon on the map to start.
-        Pick <span className="font-medium text-foreground">2 or more</span> to compare them
-        side-by-side, or use <span className="font-medium text-foreground">Select all 25</span>
-        for a watershed-wide view.
+        {pixelMode ? (
+          <>
+            Click anywhere on the map to drop a 1-ha pixel
+            (labeled <span className="font-medium text-foreground">A, B, C…</span>).
+            Pick <span className="font-medium text-foreground">2 or more</span> to compare them
+            side-by-side. Click a marker to remove it.
+          </>
+        ) : (
+          <>
+            Click any sub-basin polygon on the map to start.
+            Pick <span className="font-medium text-foreground">2 or more</span> to compare them
+            side-by-side, or use <span className="font-medium text-foreground">Select all 25</span>
+            for a watershed-wide view.
+          </>
+        )}
       </p>
     </div>
   );
@@ -2236,7 +2260,9 @@ function SingleBasinDetail({ basin, color }: { basin: SubBasinMeta; color: strin
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-foreground truncate">{basin.name}</div>
-            <div className="text-[10px] text-muted-foreground font-mono">Sub-basin {basin.id}</div>
+            <div className="text-[10px] text-muted-foreground font-mono">
+              {isPixelId(basin.id) ? `Pixel ${pixelIdToLetter(basin.id)}` : `Sub-basin ${basin.id}`}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-y-1 gap-x-3 text-[10.5px] mt-2 pt-2 border-t border-border/60">

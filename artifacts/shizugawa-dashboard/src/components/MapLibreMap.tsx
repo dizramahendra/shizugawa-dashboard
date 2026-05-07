@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { RIVER_PATHS, SUB_BASIN_PATHS, OCEAN_BASIN_PATH } from "@/lib/svgPaths";
 import { generateRiverData, RIVER_COLS, RIVER_ROWS, VARIABLE_OPTIONS } from "@/lib/simulatedData";
@@ -326,6 +327,14 @@ interface MapLibreMapProps {
   selectedSubBasins?: number[];
   subBasinColors?:    Record<number, string>;
   onToggleSubBasin?:  (id: number) => void;
+  // ── Hidden Pixel-mode prototype (Sub-basin tab, ?pixel=1) ──────────────
+  // When `pixelMode` is true, polygons become non-interactive; clicking
+  // anywhere on the map fires `onMapClick(svgX, svgY)` so the parent can
+  // drop a pixel marker.  Markers are rendered from the `pixels` array.
+  pixelMode?: boolean;
+  pixels?:    Array<{ id: number; letter: string; svgX: number; svgY: number; color: string }>;
+  onMapClick?:    (svgX: number, svgY: number) => void;
+  onRemovePixel?: (id: number) => void;
 }
 
 export default function MapLibreMap({
@@ -339,7 +348,27 @@ export default function MapLibreMap({
   selectedSubBasins,
   subBasinColors,
   onToggleSubBasin,
+  pixelMode = false,
+  pixels,
+  onMapClick,
+  onRemovePixel,
 }: MapLibreMapProps) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  // Translate a DOM mouse event into the SVG's user-space (viewBox) coords
+  // so pixel drops land at the visual click point regardless of zoom.
+  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!pixelMode || !onMapClick) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    onMapClick(local.x, local.y);
+  };
   const navigate = useNavigate();
   const [hoveredRiver, setHoveredRiver] = useState<number | null>(null);
   const [hoveredOcean, setHoveredOcean] = useState(false);
@@ -418,11 +447,13 @@ export default function MapLibreMap({
   return (
     <div className="relative w-full h-full bg-[#f0f4f8] overflow-hidden">
       <svg
+        ref={svgRef}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
         width="100%"
         height="100%"
         preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", transition: "viewBox 0.6s ease" }}
+        style={{ display: "block", transition: "viewBox 0.6s ease", cursor: pixelMode ? "crosshair" : undefined }}
+        onClick={handleSvgClick}
       >
         {/* Top-level defs — filter that flattens the background SVG's rivers
             (originally drawn in different blue/teal/yellow hues) to a single
@@ -648,6 +679,37 @@ export default function MapLibreMap({
           );
         })}
 
+        {/* Pixel-mode markers (hidden prototype, ?pixel=1) ─────────────────
+            Drawn in user-space inside the same SVG so they pan/zoom with
+            the map.  Each marker is a coloured dot with a letter label;
+            clicking the marker removes the pixel.  Rendered last so it
+            sits above polygons + rivers. */}
+        {pixelMode && pixels && pixels.length > 0 && (
+          <g>
+            {pixels.map(p => (
+              <g
+                key={p.id}
+                style={{ cursor: "pointer" }}
+                onClick={(e) => { e.stopPropagation(); onRemovePixel?.(p.id); }}
+              >
+                <circle
+                  cx={p.svgX} cy={p.svgY} r={9}
+                  fill="white" stroke={p.color} strokeWidth={2.5}
+                />
+                <text
+                  x={p.svgX} y={p.svgY + 3.5}
+                  textAnchor="middle"
+                  fontSize={10} fontWeight="bold"
+                  fill={p.color}
+                  style={{ userSelect: "none" }}
+                >
+                  {p.letter}
+                </text>
+                <title>{`Pixel ${p.letter} — click to remove`}</title>
+              </g>
+            ))}
+          </g>
+        )}
       </svg>
 
       {/* Pixel grid view overlay — CSS-grid based, fills any container shape */}

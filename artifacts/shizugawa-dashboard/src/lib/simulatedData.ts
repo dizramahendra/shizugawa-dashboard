@@ -815,7 +815,95 @@ export const SUB_BASIN_META: SubBasinMeta[] = SUB_BASIN_SEEDS.map(s => ({
 }));
 
 export function getSubBasin(id: number): SubBasinMeta | undefined {
+  if (isPixelId(id)) return PIXEL_REGISTRY.get(id);
   return SUB_BASIN_META.find(b => b.id === id);
+}
+
+// ─── Hidden Pixel-mode prototype (Sub-basin tab, ?pixel=1) ───────────────────
+// A "pixel" is a virtual 1-ha selection unit that piggy-backs on the
+// SubBasinMeta shape so SubBasinComparisonPanel + aggregateSubBasins work
+// unchanged.  Pixel ids live in 1001..1026 (letters A..Z) so they never
+// collide with real sub-basin ids 1..25.  Registry is in-memory only —
+// pixels are ephemeral and not URL-persisted.
+export interface PixelMeta extends SubBasinMeta {
+  letter: string;          // 'A'..'Z'
+  lat:    number;          // simulated, derived from svg coords
+  lon:    number;
+  svgX:   number;
+  svgY:   number;
+}
+
+const PIXEL_REGISTRY = new Map<number, PixelMeta>();
+
+export function isPixelId(id: number): boolean {
+  return id >= 1001 && id <= 1026;
+}
+
+export function pixelLetterToId(letter: string): number {
+  return 1000 + (letter.toUpperCase().charCodeAt(0) - 64);
+}
+
+export function pixelIdToLetter(id: number): string {
+  return String.fromCharCode(64 + (id - 1000));
+}
+
+function _pxHash(idx: number, salt: number): number {
+  let h = (idx * 374761393 + salt * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+/**
+ * Build a 1-ha "pixel" indicator profile anchored on the regional baseline,
+ * with deterministic per-letter jitter so each pixel reads differently in
+ * the radar / bar charts.  Water Flow is treated like every other indicator
+ * for prototype simplicity (per the design call: "use the indicators from
+ * the sub basin, no need to be realistic").
+ */
+export function makePixelMeta(letter: string, svgX: number, svgY: number): PixelMeta {
+  const li = letter.toUpperCase().charCodeAt(0) - 64;   // 1..26
+  const id = 1000 + li;
+  const j = (salt: number, lo: number, hi: number) =>
+    lo + _pxHash(li, salt) * (hi - lo);
+
+  const indicators: SubBasinIndicators = {
+    forestC:    +(SUB_BASIN_BASELINE_AVG.forestC    * j(1, 0.40, 1.60)).toFixed(1),
+    soilC:      +(SUB_BASIN_BASELINE_AVG.soilC      * j(2, 0.50, 1.50)).toFixed(1),
+    nitrogen:   +(SUB_BASIN_BASELINE_AVG.nitrogen   * j(3, 0.30, 1.70)).toFixed(1),
+    phosphorus: +(SUB_BASIN_BASELINE_AVG.phosphorus * j(4, 0.30, 1.70)).toFixed(2),
+    waterFlow:  +(SUB_BASIN_BASELINE_AVG.waterFlow  * j(5, 0.40, 1.60)).toFixed(1),
+  };
+
+  // Simulated lat/lon mapping over the bay frame (SVG_W=465, SVG_H=586)
+  // anchored on Shizugawa Bay (~38.65°N 141.50°E). North is up.
+  const lat = +(38.55 + (1 - svgY / 586) * 0.20).toFixed(4);
+  const lon = +(141.40 + (svgX / 465) * 0.20).toFixed(4);
+
+  return {
+    id,
+    name: `Pixel ${letter} · ${lat.toFixed(3)}°N ${lon.toFixed(3)}°E`,
+    area_ha:   1,
+    elevation: 0,
+    landUse:   "mixed",
+    indicators,
+    letter,
+    lat,
+    lon,
+    svgX,
+    svgY,
+  };
+}
+
+export function registerPixel(p: PixelMeta): void {
+  PIXEL_REGISTRY.set(p.id, p);
+}
+
+export function unregisterPixel(id: number): void {
+  PIXEL_REGISTRY.delete(id);
+}
+
+export function getPixel(id: number): PixelMeta | undefined {
+  return PIXEL_REGISTRY.get(id);
 }
 
 /**

@@ -105,6 +105,18 @@ Scientific environmental analytics dashboard for Shizugawa Bay, Japan.
   - Measures (all valued by seagrass-carbon impact): no measure,
     plant eelgrass meadow, restore oyster reef (clarifies water → eelgrass
     expands), reduce upstream N/P load, restore tidal flats.
+  - **Hidden Pixel-mode prototype** (Sub-basin tab, gated by `?pixel=1`):
+    in this mode the Sub-basin tab swaps polygon-selection for free-form
+    1-ha "pixel" placement.  Click anywhere on the map to drop a labelled
+    marker (A, B, C, … up to Z); each pixel is registered as a virtual
+    sub-basin (id 1001..1026, area_ha=1, landUse "mixed") whose 5
+    indicators are baseline ± deterministic per-letter jitter.  All
+    existing comparison panel charts (single radar, multi bars/radar,
+    aggregate Bars/Combined/Radar, measure dropdown) are reused
+    unchanged via a `pixelMode` prop that only relabels copy ("Pixel
+    Compare", "Pixel A" instead of "Sub-basin 1") and hides the
+    "Select all 25" action.  Pixels are ephemeral (not URL-persisted);
+    only the `?pixel=1` flag is.
 
 ### `artifacts/api-server` — Express API Server
 
