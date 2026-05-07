@@ -64,16 +64,18 @@ function fmtPctDelta(before: number, after: number): string {
   return `${sign}${(Math.abs(d) * 100).toFixed(0)}%`;
 }
 
-// ── Reusable explainer for the "1.0× = regional avg" baseline ──────────────
+// ── Reusable explainer for the "1.0× = baseline" reference ────────────────
 //
+// "Baseline" = the fixed arithmetic mean of each indicator across all 25
+// sub-basins (`SUB_BASIN_BASELINE_AVG`).  Doesn't change with selection.
 // Same chart family (radar + combined bars) on both aggregate and compare
 // tabs uses this badge so the meaning of the dashed ring / 1.0 gridline is
 // consistent and discoverable.  Hovering surfaces the full explanation;
 // the visible pill makes the convention obvious at a glance.
 const BASELINE_HINT_TEXT =
-  "Each indicator is normalised to its average across all 25 sub-basins. " +
-  "1.0× equals the regional average. Above 1.0× = above average; " +
-  "below 1.0× = below average.";
+  "Baseline = arithmetic mean of each indicator across all 25 sub-basins. " +
+  "1.0× equals the baseline. Above 1.0× = above baseline; " +
+  "below 1.0× = below baseline.";
 
 function BaselineBadge() {
   return (
@@ -83,16 +85,16 @@ function BaselineBadge() {
       aria-label={BASELINE_HINT_TEXT}
     >
       <Info size={9} />
-      1.0× = regional avg per indicator
+      1.0× = baseline (avg of 25 sub-basins)
     </span>
   );
 }
 
-// ── Reusable indicator breakdown table (value vs expected regional avg) ────
+// ── Reusable indicator breakdown table (value vs baseline) ────────────────
 //
 // Used by the aggregate radar AND the aggregate combined bars view so the
 // two chart types of the same data show an identical companion table.
-/** Per-basin value-vs-regional-avg breakdown shown beneath the per-basin
+/** Per-basin value-vs-baseline breakdown shown beneath the per-basin
  *  compare radar.  Mirrors the single-basin and aggregate breakdown cards
  *  but lists every selected basin in its own colour-keyed section. */
 function PerBasinBreakdownList({
@@ -104,7 +106,7 @@ function PerBasinBreakdownList({
   return (
     <div className="bg-white border border-border rounded-md p-2.5">
       <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
-        Per-indicator breakdown vs regional avg
+        Per-indicator breakdown vs baseline
       </div>
       <div className="space-y-2.5">
         {SUB_BASIN_INDICATORS.map((ind, iIdx) => {
@@ -133,7 +135,7 @@ function PerBasinBreakdownList({
               <div className="flex items-baseline gap-2 text-[10.5px]">
                 <span className="font-medium text-foreground">{ind.shortLabel}</span>
                 <span className="text-[9.5px] text-muted-foreground">
-                  regional avg {fmt(baseline, ind.decimals)} {ind.unit}
+                  baseline {fmt(baseline, ind.decimals)} {ind.unit}
                 </span>
               </div>
               {ordered.map(b => {
@@ -188,7 +190,7 @@ function PerBasinBreakdownList({
         })}
       </div>
       <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
-        Per-hectare values vs the regional average across all 25 sub-basins;
+        Per-hectare values vs baseline (avg of all 25 sub-basins);
         basins listed in selection order. Selection avg = simple arithmetic
         mean across the picked basins. (For area-weighted absolute totals,
         switch to Aggregate mode.)
@@ -213,7 +215,7 @@ function IndicatorBreakdownTable({
   return (
     <div className="bg-white border border-border rounded-md p-2.5">
       <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
-        Indicator values vs regional avg
+        Indicator values vs baseline
       </div>
       <div className="space-y-1">
         {SUB_BASIN_INDICATORS.map(ind => {
@@ -244,8 +246,8 @@ function IndicatorBreakdownTable({
       </div>
       <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
         {hasMeasure
-          ? `After-measure sum (${measureLabel}) vs expected sum if every selected basin were at the regional avg.`
-          : "Current regional sum vs expected sum if every selected basin were at the regional avg."}
+          ? `After-measure sum (${measureLabel}) vs expected sum if every selected basin were at baseline.`
+          : "Current selection sum vs expected sum if every selected basin were at baseline."}
       </p>
     </div>
   );
@@ -255,8 +257,8 @@ function IndicatorBreakdownTable({
 //
 // Hovering inside a 72° axis wedge opens a popover that lists every series'
 // value on that axis, sorted descending by raw value, with swatch + label +
-// value/unit + ±Δ% vs regional avg.  Same component used on single-basin,
-// per-basin compare, and aggregate regional radars so the interaction model
+// value/unit + ±Δ% vs baseline.  Same component used on single-basin,
+// per-basin compare, and aggregate radars so the interaction model
 // is identical.  Replaces the per-vertex dot tooltip (which doesn't scale
 // past ~3 basins because of overlapping vertices).
 
@@ -268,7 +270,7 @@ export interface RadarPopoverRow {
   unit:      string;
   /** Signed fraction (e.g. 0.42 = +42%). Hides the ± column when undefined. */
   deltaPct?: number;
-  /** Bold + tinted background (regional/header rows). */
+  /** Bold + tinted background (selection/header rows). */
   emphasis?: boolean;
 }
 
@@ -336,7 +338,7 @@ function RadarAxisPopover({
   containerW: number;
   cx: number; cy: number; R: number;
 }) {
-  // Sort header rows first (they encode regional/Before/After context),
+  // Sort header rows first (they encode selection/Before/After context),
   // then rest by raw value descending so rank is read at a glance.
   const headerRows  = rows.filter(r => r.emphasis);
   const detailRows  = rows.filter(r => !r.emphasis).sort((a, b) => b.value - a.value);
@@ -376,7 +378,7 @@ function RadarAxisPopover({
           {indicator.label}
         </div>
         <div className="text-[9px] text-slate-500 font-mono">
-          regional avg {fmt(baseline, indicator.decimals)} {indicator.unit}
+          baseline {fmt(baseline, indicator.decimals)} {indicator.unit}
         </div>
       </div>
       <div className="px-1.5 py-1 space-y-0.5 max-h-[200px] overflow-y-auto">
@@ -601,7 +603,7 @@ function AggregateBarChart({
   indicator: SubBasinIndicatorDef;
   beforeValue: number;
   afterValue: number;
-  /** "Expected sum if every selected basin were exactly regional-average". */
+  /** "Expected sum if every selected basin were exactly at baseline". */
   expectedSum: number;
   measureLabel: string;
   hasMeasure: boolean;
@@ -664,7 +666,7 @@ function AggregateBarChart({
                   y,
                   node: (
                     <div>
-                      <div className="font-semibold mb-0.5">{indicator.label} · regional sum</div>
+                      <div className="font-semibold mb-0.5">{indicator.label} · selection sum</div>
                       <div>Total: <span className="font-mono">{fmt(beforeValue, indicator.decimals)} {unit}</span></div>
                       <div className="opacity-80 text-[9.5px]">
                         Expected if avg: <span className="font-mono">{fmt(expectedSum, indicator.decimals)} {unit}</span>
@@ -685,7 +687,7 @@ function AggregateBarChart({
 
               <text x={PAD_L + innerW / 2} y={PAD_T + innerH + 14} textAnchor="middle"
                 fontSize="8" fill="#64748b">
-                Total Regional Sum
+                Total Selection Sum
               </text>
 
               {/* Axis lines */}
@@ -825,12 +827,12 @@ function AggregateBarChart({
 
 // ── Combined aggregate chart (all indicators in one normalised bar chart) ──
 //
-// All five indicators on a single shared y-axis ("× regional avg"), so
+// All five indicators on a single shared y-axis ("× baseline"), so
 // different units stay visually comparable at a glance.  One bar per
 // indicator; with a measure, the slot holds an overlaid pair (lighter
 // "Before" wide bar behind + darker "After" narrow bar in front).
 // Tooltip on every bar shows the raw value with its real unit, the
-// regional avg, and the ratio.
+// baseline, and the ratio.
 
 const COMBINED_CHART_H = 210;
 const COMB_PAD_L = 32, COMB_PAD_R = 8, COMB_PAD_T = 18, COMB_PAD_B = 40;
@@ -856,7 +858,7 @@ function CombinedAggregateChart({
   const N      = SUB_BASIN_INDICATORS.length;
   const slotW  = innerW / N;
 
-  // Y-axis: "× regional avg".  Auto-fit to data with a floor of 1.5×.
+  // Y-axis: "× baseline".  Auto-fit to data with a floor of 1.5×.
   const ratios = SUB_BASIN_INDICATORS.flatMap(ind => {
     const exp = expectedSums[ind.id];
     if (!exp || !Number.isFinite(exp)) return [];
@@ -877,7 +879,7 @@ function CombinedAggregateChart({
         <svg width={CHART_INNER_W} height={COMBINED_CHART_H} className="overflow-visible block">
           {/* Y-axis title */}
           <text x={2} y={COMB_PAD_T - 6} fontSize="8.5" fill="#64748b" fontWeight="600">
-            × regional avg
+            × baseline
           </text>
 
           {/* Y axis grid + labels (baseline ring at 1.0× highlighted) */}
@@ -1110,7 +1112,7 @@ function AggregateRadarChart({
 
   const { activeAxis, onMouseMove, onMouseLeave } = useRadarAxisHover(cx, cy, R, N);
 
-  // Build popover rows for the active axis: regional Before/After (or
+  // Build popover rows for the active axis: selection Before/After (or
   // Sum/Expected when no measure) at top, then per-basin contributors.
   const popoverRows: RadarPopoverRow[] = activeAxis !== null
     ? (() => {
@@ -1122,7 +1124,7 @@ function AggregateRadarChart({
           const before = baseValues[ind.id];
           const after  = values[ind.id];
           out.push({
-            label: "Regional · Before",
+            label: "Selection · Before",
             color: BEFORE_FILL,
             value: before,
             formatted: fmt(before, ind.decimals),
@@ -1131,7 +1133,7 @@ function AggregateRadarChart({
             emphasis: true,
           });
           out.push({
-            label: `Regional · After (${measureLabel})`,
+            label: `Selection · After (${measureLabel})`,
             color: AFTER_FILL,
             value: after,
             formatted: fmt(after, ind.decimals),
@@ -1142,7 +1144,7 @@ function AggregateRadarChart({
         } else {
           const sum = values[ind.id];
           out.push({
-            label: "Regional sum",
+            label: "Selection sum",
             color: "#3b82f6",
             value: sum,
             formatted: fmt(sum, ind.decimals),
@@ -1361,7 +1363,7 @@ function SingleBasinRadar({ basin, color }: { basin: SubBasinMeta; color: string
             emphasis: true,
           },
           {
-            label: "Regional avg (25 basins)",
+            label: "Baseline (avg of 25 basins)",
             color: REF_COLOR,
             value: baseline,
             formatted: fmt(baseline, ind.decimals),
@@ -1799,7 +1801,7 @@ export default function SubBasinComparisonPanel({
                 ? "bg-primary text-white border-primary hover:bg-primary/90"
                 : "bg-white text-primary border-primary/40 hover:bg-primary/5",
             ].join(" ")}
-            title="Toggle between per-basin comparison and Total Regional Sum"
+            title="Toggle between per-basin comparison and Total Selection Sum"
           >
             {aggregate ? <Sigma size={11} /> : <BarChart3 size={11} />}
             {aggregate ? "Aggregate ON" : "Aggregate"}
@@ -1838,7 +1840,7 @@ export default function SubBasinComparisonPanel({
                     ? "bg-foreground text-white border-foreground"
                     : "bg-white text-foreground border-border hover:bg-muted",
                 ].join(" ")}
-                title="All indicators in one chart, normalised to regional avg"
+                title="All indicators in one chart, normalised to baseline"
               >
                 <Columns3 size={11} /> Combined
               </button>
@@ -1937,7 +1939,7 @@ export default function SubBasinComparisonPanel({
                 : <BarChart3 size={11} />}
               {!aggregate && `Comparing ${selectedIds.length} sub-basins side-by-side`}
               {aggregate && !hasMeasure &&
-                `Regional sum across ${selectedIds.length} sub-basins (${totalArea.toLocaleString()} ha)`}
+                `Sum across ${selectedIds.length} sub-basins (${totalArea.toLocaleString()} ha)`}
               {aggregate && hasMeasure &&
                 `Scenario: ${measure.shortLabel} on ${selectedIds.length} sub-basins — Before vs After`}
             </div>
@@ -1960,7 +1962,7 @@ export default function SubBasinComparisonPanel({
             })}
 
             {/* Per-basin compare · radar view (one polygon per basin,
-                shared 5-axis radar normalised to regional avg). */}
+                shared 5-axis radar normalised to baseline). */}
             {!aggregate && aggregateView === "radar" && (
               <div className="bg-white border border-border rounded-md p-2.5">
                 <div className="flex items-baseline justify-between gap-2 mb-1">
@@ -2009,7 +2011,7 @@ export default function SubBasinComparisonPanel({
                 <div className="bg-white border border-border rounded-md p-2.5">
                   <div className="flex items-baseline justify-between gap-2 mb-1">
                     <span className="text-[11px] font-semibold text-foreground">
-                      Regional indicator profile · combined bars
+                      Selection indicator profile · combined bars
                     </span>
                     <BaselineBadge />
                   </div>
@@ -2051,7 +2053,7 @@ export default function SubBasinComparisonPanel({
                 <div className="bg-white border border-border rounded-md p-2.5">
                   <div className="flex items-baseline justify-between gap-2 mb-1">
                     <span className="text-[11px] font-semibold text-foreground">
-                      Regional indicator profile · radar
+                      Selection indicator profile · radar
                     </span>
                     <BaselineBadge />
                   </div>
@@ -2132,7 +2134,7 @@ function EmptyState() {
         Click any sub-basin polygon on the map to start.
         Pick <span className="font-medium text-foreground">2 or more</span> to compare them
         side-by-side, or use <span className="font-medium text-foreground">Select all 25</span>
-        for a regional view.
+        for a watershed-wide view.
       </p>
     </div>
   );
@@ -2185,7 +2187,7 @@ function SingleBasinDetail({ basin, color }: { basin: SubBasinMeta; color: strin
       {/* Compact value vs baseline table */}
       <div className="mt-3 bg-white border border-border rounded-md p-2.5">
         <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
-          Indicator values vs regional avg
+          Indicator values vs baseline
         </div>
         <div className="space-y-1">
           {rows.map(({ ind, value, baseline }) => {

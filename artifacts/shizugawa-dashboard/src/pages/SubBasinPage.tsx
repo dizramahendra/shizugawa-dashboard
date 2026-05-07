@@ -17,7 +17,7 @@ import {
  *
  * URL state:
  *   ?ids=1,5,20      selected sub-basin ids (max 25, deduped)
- *   ?agg=1           aggregate (regional sum) view
+ *   ?agg=1           aggregate (selection sum) view
  *   ?m=afforestation decarbonization measure (aggregate-only)
  *   ?view=combined   single normalised bar chart (all 5 indicators on one axis)
  *   ?view=radar      radar polygon view
