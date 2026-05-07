@@ -201,12 +201,14 @@ function PerBasinBreakdownList({
 
 function IndicatorBreakdownTable({
   values,
+  baseValues,
   expectedSums,
   units,
   hasMeasure,
   measureLabel,
 }: {
   values:       Record<SubBasinIndicatorId, number>;
+  baseValues:   Record<SubBasinIndicatorId, number>;
   expectedSums: Record<SubBasinIndicatorId, number>;
   units:        Record<SubBasinIndicatorId, string>;
   hasMeasure:   boolean;
@@ -214,20 +216,58 @@ function IndicatorBreakdownTable({
 }) {
   return (
     <div className="bg-white border border-border rounded-md p-2.5">
-      <div className="text-[10.5px] font-semibold text-foreground mb-1.5">
-        Indicator values vs baseline
+      <div className="flex items-baseline justify-between mb-1.5">
+        <div className="text-[10.5px] font-semibold text-foreground">
+          {hasMeasure
+            ? `Indicator values · Before vs After (${measureLabel})`
+            : "Indicator values vs baseline"}
+        </div>
+        {hasMeasure && (
+          <div className="flex items-center gap-2 text-[8.5px] text-muted-foreground font-medium uppercase tracking-wide">
+            <span className="w-14 text-right">Before</span>
+            <span className="w-14 text-right">After</span>
+            <span className="w-12 text-right">Δ</span>
+          </div>
+        )}
       </div>
       <div className="space-y-1">
         {SUB_BASIN_INDICATORS.map(ind => {
-          const value    = values[ind.id];
+          const after    = values[ind.id];
+          const before   = baseValues[ind.id];
           const expected = expectedSums[ind.id];
-          const delta    = expected > 0 ? (value - expected) / expected : 0;
+          if (hasMeasure) {
+            // Before / After / Δ vs Before columns.
+            const measureDelta = before > 0 ? (after - before) / before : 0;
+            const positive = measureDelta >= 0;
+            const flat     = Math.abs(measureDelta) < 5e-4;
+            return (
+              <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
+                <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
+                <span className="font-mono text-muted-foreground tabular-nums w-14 text-right">
+                  {fmt(before, ind.decimals)}
+                </span>
+                <span className="font-mono text-foreground tabular-nums w-14 text-right">
+                  {fmt(after, ind.decimals)}
+                </span>
+                <span
+                  className={[
+                    "text-[9.5px] font-mono w-12 text-right",
+                    flat ? "text-muted-foreground" : positive ? "text-emerald-700" : "text-rose-700",
+                  ].join(" ")}
+                >
+                  {flat ? "—" : `${positive ? "+" : "−"}${(Math.abs(measureDelta) * 100).toFixed(0)}%`}
+                </span>
+              </div>
+            );
+          }
+          // No measure: single value vs baseline.
+          const delta    = expected > 0 ? (after - expected) / expected : 0;
           const positive = delta >= 0;
           return (
             <div key={ind.id} className="flex items-center text-[10.5px] gap-2">
               <span className="text-foreground/80 flex-1 truncate">{ind.shortLabel}</span>
               <span className="font-mono text-foreground tabular-nums">
-                {fmt(value, ind.decimals)}
+                {fmt(after, ind.decimals)}
               </span>
               <span className="text-muted-foreground text-[9.5px]">
                 / {fmt(expected, ind.decimals)} {units[ind.id]}
@@ -246,7 +286,7 @@ function IndicatorBreakdownTable({
       </div>
       <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
         {hasMeasure
-          ? `After-measure sum (${measureLabel}) vs baseline sum (per-ha baseline × area, or per-basin baseline × N).`
+          ? `Δ shows change from current selection sum to sum after ${measureLabel} is applied to all basins. Units: ${SUB_BASIN_INDICATORS.map(i => units[i.id]).join(", ")}.`
           : "Selection sum vs baseline sum (per-ha baseline × area, or per-basin baseline × N)."}
       </p>
     </div>
@@ -942,54 +982,65 @@ function CombinedAggregateChart({
               </div>
             );
 
-            const tipBefore = (
+            // Single combined popup for the Before/After pair — covers the
+            // whole slot so hovering anywhere over the indicator shows both
+            // values at once (no jitter between two side-by-side popups).
+            const tipBeforeAfter = (
               <div>
-                <div className="font-semibold mb-0.5">{ind.label} · Before</div>
-                <div>Baseline: <span className="font-mono">{fmt(baseValues[ind.id], ind.decimals)} {units[ind.id]}</span></div>
-                <div className="opacity-80 text-[9.5px]">
-                  Ratio: <span className="font-mono">{beforeR.toFixed(2)}× avg</span>
+                <div className="font-semibold mb-0.5">{ind.label} · Before vs After</div>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: BEFORE_FILL, opacity: 0.55 }} />
+                  <span className="opacity-80">Before:</span>
+                  <span className="font-mono">{fmt(baseValues[ind.id], ind.decimals)} {units[ind.id]}</span>
+                  <span className="font-mono opacity-60">({beforeR.toFixed(2)}× avg)</span>
                 </div>
-              </div>
-            );
-
-            const tipAfter = (
-              <div>
-                <div className="font-semibold mb-0.5">{ind.label} · After</div>
-                <div>With {measureLabel}: <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span></div>
-                <div className="opacity-80 text-[9.5px]">
-                  Ratio: <span className="font-mono">{afterR.toFixed(2)}× avg</span>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: AFTER_FILL }} />
+                  <span className="opacity-80">After:</span>
+                  <span className="font-mono">{fmt(values[ind.id], ind.decimals)} {units[ind.id]}</span>
+                  <span className="font-mono opacity-60">({afterR.toFixed(2)}× avg)</span>
                 </div>
-                <div className="opacity-80 text-[9.5px]">
-                  Δ: <span className="font-mono">{fmtPctDelta(baseValues[ind.id], values[ind.id])}</span> vs Before
+                <div className="opacity-80 text-[9.5px] mt-0.5 pt-0.5 border-t border-white/15">
+                  Δ vs Before: <span className="font-mono">{fmtPctDelta(baseValues[ind.id], values[ind.id])}</span>
+                  {" · "}With {measureLabel}
                 </div>
               </div>
             );
 
             // Annotation y position — above whichever bar is taller.
             const annotateY = Math.min(yBefore, yAfter) - 3;
-            const annotateLabel = hasMeasure
-              ? `${afterR.toFixed(2)}×`
-              : `${afterR.toFixed(2)}×`;
+            const annotateLabel = `${afterR.toFixed(2)}×`;
+
+            // Hit-rect: full slot height, used to drive the combined tooltip
+            // when there's a measure. Drawn last so it sits above the bars
+            // (transparent fill keeps the bars fully visible).
+            const slotHitY = COMB_PAD_T;
+            const slotHitH = innerH;
 
             return (
               <g key={ind.id}>
                 {hasMeasure ? (
                   <>
-                    {/* Before — wider, lighter, behind */}
+                    {/* Before — wider, lighter, behind (no pointer events) */}
                     <rect
                       x={xWide} y={yBefore}
                       width={wideW} height={hBefore}
                       fill={BEFORE_FILL} fillOpacity="0.55" rx="2"
-                      onMouseEnter={() => setTip({ x: cx, y: yBefore, node: tipBefore })}
-                      onMouseLeave={() => setTip(null)}
-                      style={{ cursor: "pointer" }}
+                      pointerEvents="none"
                     />
-                    {/* After — narrower, darker, in front */}
+                    {/* After — narrower, darker, in front (no pointer events) */}
                     <rect
                       x={xNarrow} y={yAfter}
                       width={narrowW} height={hAfter}
                       fill={AFTER_FILL} rx="2"
-                      onMouseEnter={() => setTip({ x: cx, y: yAfter, node: tipAfter })}
+                      pointerEvents="none"
+                    />
+                    {/* Single hover hit-rect spanning the whole slot */}
+                    <rect
+                      x={slotX} y={slotHitY}
+                      width={slotW} height={slotHitH}
+                      fill="transparent"
+                      onMouseEnter={() => setTip({ x: cx, y: Math.min(yBefore, yAfter), node: tipBeforeAfter })}
                       onMouseLeave={() => setTip(null)}
                       style={{ cursor: "pointer" }}
                     />
@@ -2062,6 +2113,7 @@ export default function SubBasinComparisonPanel({
 
                 <IndicatorBreakdownTable
                   values={aggResult.values}
+                  baseValues={aggResult.baseValues}
                   expectedSums={expectedSums}
                   units={units}
                   hasMeasure={hasMeasure}
@@ -2106,6 +2158,7 @@ export default function SubBasinComparisonPanel({
 
                 <IndicatorBreakdownTable
                   values={aggResult.values}
+                  baseValues={aggResult.baseValues}
                   expectedSums={expectedSums}
                   units={units}
                   hasMeasure={hasMeasure}
