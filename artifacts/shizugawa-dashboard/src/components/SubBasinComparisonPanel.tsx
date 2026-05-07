@@ -109,10 +109,19 @@ function PerBasinBreakdownList({
       <div className="space-y-2.5">
         {SUB_BASIN_INDICATORS.map((ind, iIdx) => {
           const baseline = SUB_BASIN_BASELINE_AVG[ind.id];
-          // Sort basins descending by value so the best/worst stand out.
-          const sorted = [...basins].sort(
-            (a, b) => b.indicators[ind.id] - a.indicators[ind.id],
-          );
+          // Preserve the order in which basins were selected (no ranking) so
+          // the same basin sits in the same row across every indicator block.
+          const ordered = basins;
+          // Selection-average: simple arithmetic mean across the picked basins.
+          // For per-ha indicators this is the mean per-ha value; for waterFlow
+          // (m³/s) it's the mean flow.  Sums are intentionally NOT shown — the
+          // sum of per-ha values isn't a meaningful quantity (use Aggregate
+          // mode for area-weighted absolute totals).
+          const selAvg = ordered.length > 0
+            ? ordered.reduce((s, b) => s + b.indicators[ind.id], 0) / ordered.length
+            : 0;
+          const selDelta    = baseline > 0 ? (selAvg - baseline) / baseline : 0;
+          const selPositive = selDelta >= 0;
           return (
             <div
               key={ind.id}
@@ -127,7 +136,7 @@ function PerBasinBreakdownList({
                   regional avg {fmt(baseline, ind.decimals)} {ind.unit}
                 </span>
               </div>
-              {sorted.map(b => {
+              {ordered.map(b => {
                 const value    = b.indicators[ind.id];
                 const delta    = baseline > 0 ? (value - baseline) / baseline : 0;
                 const positive = delta >= 0;
@@ -152,12 +161,37 @@ function PerBasinBreakdownList({
                   </div>
                 );
               })}
+              {/* Selection average row — mean across the picked basins,
+                  visually demoted (italic + muted) so it doesn't compete
+                  with the per-basin rows. */}
+              {ordered.length > 1 && (
+                <div className="flex items-center text-[10.5px] gap-2 pt-0.5 mt-0.5 border-t border-border/40">
+                  <span className="w-2.5 h-2.5 flex-shrink-0" aria-hidden />
+                  <span className="text-muted-foreground italic flex-1 truncate">
+                    Selection avg
+                  </span>
+                  <span className="font-mono text-foreground tabular-nums">
+                    {fmt(selAvg, ind.decimals)}
+                  </span>
+                  <span
+                    className={[
+                      "text-[9.5px] font-mono w-12 text-right",
+                      selPositive ? "text-emerald-700" : "text-rose-700",
+                    ].join(" ")}
+                  >
+                    {selPositive ? "+" : "−"}{(Math.abs(selDelta) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
       <p className="text-[9.5px] text-muted-foreground leading-relaxed mt-2 pt-1.5 border-t border-border/60">
-        Per-hectare values vs the regional average across all 25 sub-basins; basins ranked highest → lowest in each indicator.
+        Per-hectare values vs the regional average across all 25 sub-basins;
+        basins listed in selection order. Selection avg = simple arithmetic
+        mean across the picked basins. (For area-weighted absolute totals,
+        switch to Aggregate mode.)
       </p>
     </div>
   );
