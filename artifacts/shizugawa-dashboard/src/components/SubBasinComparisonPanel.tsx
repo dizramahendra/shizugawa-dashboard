@@ -83,7 +83,7 @@ function BaselineBadge() {
       aria-label={BASELINE_HINT_TEXT}
     >
       <Info size={9} />
-      1.0× = regional avg
+      1.0× = regional avg per indicator
     </span>
   );
 }
