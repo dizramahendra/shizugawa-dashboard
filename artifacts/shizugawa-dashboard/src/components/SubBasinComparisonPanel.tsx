@@ -1927,25 +1927,50 @@ export default function SubBasinComparisonPanel({
 
         {isComparing && (
           <div className="px-3 py-3 space-y-3">
-            {/* Mode banner */}
+            {/* Mode banner — title (what's shown) + explainer (how the numbers
+                are derived, so the contrast between Aggregate ON/OFF is
+                obvious without having to dig into chart tooltips). */}
             <div className={[
-              "rounded-md border px-2.5 py-1.5 text-[10.5px] flex items-center gap-1.5",
+              "rounded-md border px-2.5 py-1.5",
               aggregate
                 ? hasMeasure
                   ? "bg-amber-50 border-amber-300 text-amber-900"
                   : "bg-primary/8 border-primary/25 text-primary"
                 : "bg-muted/40 border-border text-muted-foreground",
             ].join(" ")}>
-              {aggregate
-                ? hasMeasure
-                  ? <Sparkles size={11} />
-                  : <Sigma size={11} />
-                : <BarChart3 size={11} />}
-              {!aggregate && `Comparing ${selectedIds.length} sub-basins side-by-side`}
-              {aggregate && !hasMeasure &&
-                `Sum across ${selectedIds.length} sub-basins (${totalArea.toLocaleString()} ha)`}
-              {aggregate && hasMeasure &&
-                `Scenario: ${measure.shortLabel} on ${selectedIds.length} sub-basins — Before vs After`}
+              <div className="flex items-center gap-1.5 text-[10.5px] font-medium">
+                {aggregate
+                  ? hasMeasure
+                    ? <Sparkles size={11} />
+                    : <Sigma size={11} />
+                  : <BarChart3 size={11} />}
+                {!aggregate && `Comparing ${selectedIds.length} sub-basins side-by-side`}
+                {aggregate && !hasMeasure &&
+                  `Sum across ${selectedIds.length} sub-basins (${totalArea.toLocaleString()} ha)`}
+                {aggregate && hasMeasure &&
+                  `Scenario: ${measure.shortLabel} on ${selectedIds.length} sub-basins — Before vs After`}
+              </div>
+              <div className="text-[9.5px] leading-snug opacity-80 mt-0.5 pl-[18px]">
+                {!aggregate && (
+                  <>Per-hectare values shown for each basin individually, so
+                    basins of different sizes stay comparable. Compared to
+                    baseline (per-ha avg of all 25 sub-basins).</>
+                )}
+                {aggregate && !hasMeasure && (
+                  <>Selection treated as one region: per-area indicators
+                    (Forest&nbsp;C, Soil&nbsp;C, N, P) are <em>per-ha × area</em>
+                    then summed; Water&nbsp;Flow is summed directly. Units
+                    switch to absolute totals (t, kg/yr, m³/s). Compared to
+                    baseline scaled the same way (baseline × area or × N basins).</>
+                )}
+                {aggregate && hasMeasure && (
+                  <>Same aggregation as above (selection summed to absolute
+                    totals), but each indicator is recomputed under the
+                    measure's effect on the selection's land use. <em>Before</em>
+                    = current selection sum; <em>After</em> = sum if the
+                    measure were applied to all {selectedIds.length} basins.</>
+                )}
+              </div>
             </div>
 
             {/* Per-basin compare · bars view (5 stacked vertical bar cards).
