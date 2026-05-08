@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
 import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
-import { DashboardState, TOTAL_WEEKS, VARIABLE_OPTIONS, valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, OCEAN_VARIABLE_OPTIONS as VARIABLE_OPTIONS, valueToVoxelMassKg as valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";

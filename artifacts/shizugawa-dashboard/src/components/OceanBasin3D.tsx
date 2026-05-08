@@ -109,8 +109,8 @@ const COLOR_SCALES: Record<string, string[]> = {
 
 // Physical value ranges for tooltip display (normalized 0-1 → physical unit)
 const PHYS: Record<string, { min: number; max: number; unit: string; dec: number }> = {
-  nitrogen:   { min: 0.20, max: 3.00, unit: "mg/L", dec: 2 },
-  phosphorus: { min: 10,   max: 130,  unit: "μg/L", dec: 0 },
+  nitrogen:   { min: 20,   max: 300,  unit: "kg",   dec: 0 },
+  phosphorus: { min: 1,    max: 13,   unit: "kg",   dec: 1 },
   flow:       { min: 0,    max: 100,  unit: "cm/s", dec: 1 },
 };
 

@@ -14,13 +14,13 @@ const NUTRIENT_RAMP = [
 const SCALES: Record<string, { stops: string[]; low: string; high: string }> = {
   nitrogen: {
     stops: NUTRIENT_RAMP,
-    low: "0.2 mg/L",
-    high: "3.0 mg/L",
+    low: "20 kg",
+    high: "300 kg",
   },
   phosphorus: {
     stops: NUTRIENT_RAMP,
-    low: "10 μg/L",
-    high: "130 μg/L",
+    low: "1 kg",
+    high: "13 kg",
   },
   flow: {
     stops: ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],

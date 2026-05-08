@@ -1245,6 +1245,17 @@ export const VARIABLE_OPTIONS: VariableOption[] = [
 ];
 
 /**
+ * Ocean Playback (3D) variant: same variables expressed as kg-per-voxel
+ * (using a single avg voxel volume of ~1e8 L). Used only by `/playback`
+ * so River/Basin pages keep their concentration units (mg/L, μg/L).
+ */
+export const OCEAN_VARIABLE_OPTIONS: VariableOption[] = [
+  { id: "nitrogen",   label: "Total Nitrogen",   unit: "kg",   colorScale: "nitrogen",   min: 20,   max: 300, decimals: 0 },
+  { id: "phosphorus", label: "Total Phosphorus", unit: "kg",   colorScale: "phosphorus", min: 1,    max: 13,  decimals: 1 },
+  { id: "flow",       label: "Water Flow",       unit: "cm/s", colorScale: "flow",       min: 0,    max: 100, decimals: 1 },
+];
+
+/**
  * Compute bay-ocean exchange intensity (0–1) for a given week.
  * Based on the average value of the rightmost active cells in each row.
  */
@@ -1293,6 +1304,21 @@ export function valueToConcentration(value: number, variableId: string): number 
     case "nitrogen":   return +(value * 2.80 + 0.20).toFixed(2);   // 0.20–3.00 mg/L
     case "phosphorus": return +(value * 120  + 10).toFixed(0);     // 10–130 µg/L
     case "flow":       return +(value * 100).toFixed(1);            // 0–100 cm/s
+    default:           return +value.toFixed(3);
+  }
+}
+
+/**
+ * Ocean Playback (3D) variant: returns kg-per-voxel for nitrogen and
+ * phosphorus (concentration × avg voxel volume of ~1e8 L). Flow is
+ * untouched. Used only by `/playback`; River/Basin pages keep
+ * `valueToConcentration` (mg/L, μg/L).
+ */
+export function valueToVoxelMassKg(value: number, variableId: string): number {
+  switch (variableId) {
+    case "nitrogen":   return +((value * 2.80 + 0.20) * 100).toFixed(0);  // 20–300 kg
+    case "phosphorus": return +((value * 120  + 10)   * 0.1).toFixed(1);  // 1–13 kg
+    case "flow":       return +(value * 100).toFixed(1);                   // 0–100 cm/s
     default:           return +value.toFixed(3);
   }
 }

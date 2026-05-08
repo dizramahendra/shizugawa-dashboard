@@ -16,9 +16,9 @@ const DEPTH_MID_M  = [2.5, 10, 22.5, 40, 62.5, 87.5, 112.5, 137.5];
 type VarDef = { id: string; label: string; color: string; varMin: number; varMax: number; unit: string; decimals: number };
 
 // Series colors chosen to match the Figma palette: blue N, green P, purple Flow.
-const N_VAR:    VarDef = { id: "nitrogen",   label: "Nitrogen",   color: "#60a5fa", varMin: 0.2, varMax: 3.0,  unit: "mg/L",  decimals: 2 };
-const P_VAR:    VarDef = { id: "phosphorus", label: "Phosphorus", color: "#34d399", varMin: 10,  varMax: 130,  unit: "μg/L",  decimals: 0 };
-const FLOW_VAR: VarDef = { id: "flow",       label: "Water Flow", color: "#a78bfa", varMin: 0,   varMax: 100,  unit: "cm/s",  decimals: 1 };
+const N_VAR:    VarDef = { id: "nitrogen",   label: "Nitrogen",   color: "#60a5fa", varMin: 20, varMax: 300, unit: "kg",   decimals: 0 };
+const P_VAR:    VarDef = { id: "phosphorus", label: "Phosphorus", color: "#34d399", varMin: 1,  varMax: 13,  unit: "kg",   decimals: 1 };
+const FLOW_VAR: VarDef = { id: "flow",       label: "Water Flow", color: "#a78bfa", varMin: 0,  varMax: 100, unit: "cm/s", decimals: 1 };
 
 // Geometry — sized for the 288px sidebar (inner width ≈ 256px after px-4 padding).
 const SVG_W = 256;

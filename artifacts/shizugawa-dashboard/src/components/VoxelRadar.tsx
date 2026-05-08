@@ -15,8 +15,8 @@ type AxisDef = {
 // Axis order (clockwise from top): nutrients grouped at the top, their
 // downstream signal (Chl-a) next to them, ambient conditions on the left.
 const VOXEL_AXES: readonly AxisDef[] = [
-  { id: "nitrogen",    shortLabel: "Nitrogen",    unit: "mg/L",   decimals: 2 },
-  { id: "phosphorus",  shortLabel: "Phosphorus",  unit: "mg/L",   decimals: 2 },
+  { id: "nitrogen",    shortLabel: "Nitrogen",    unit: "kg",     decimals: 0 },
+  { id: "phosphorus",  shortLabel: "Phosphorus",  unit: "kg",     decimals: 0 },
   { id: "chla",        shortLabel: "Chlorophyll-a", unit: "mg/m³", decimals: 1 },
   { id: "temperature", shortLabel: "Temperature", unit: "°C",     decimals: 1 },
   { id: "waterFlow",   shortLabel: "Water Flow",  unit: "m/s",    decimals: 2 },
@@ -25,15 +25,15 @@ const VOXEL_AXES: readonly AxisDef[] = [
 // Placeholder per-voxel values + bay-average baselines (so ratio = 1.0× = avg).
 // These exist only to give the polygon a non-trivial shape for review.
 const SAMPLE_VALUES: Record<AxisDef["id"], number> = {
-  nitrogen:    1.42,
-  phosphorus:  0.38,
+  nitrogen:    142,
+  phosphorus:   38,
   chla:         4.6,
   temperature: 14.8,
   waterFlow:   0.09,
 };
 const SAMPLE_BASELINE: Record<AxisDef["id"], number> = {
-  nitrogen:    0.90,
-  phosphorus:  0.30,
+  nitrogen:     90,
+  phosphorus:   30,
   chla:         2.6,
   temperature: 14.5,
   waterFlow:   0.13,
