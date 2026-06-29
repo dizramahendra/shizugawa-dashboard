@@ -1,0 +1,112 @@
+TomTom
+Staff UX Designer - Map Visualisation
+TomTom  Amsterdam, North Holland, Netherlands
+2 weeks ago   Over 200 applicants
+  
+See who TomTom has hired for this role
+
+Apply 
+
+
+
+
+Save
+
+TomTom's map is seen by millions of people every day in dashboards, on phones, and across partner products worldwide. As a Staff UX Designer on the Map Visualisation team, you will own the visual and technical direction of how our 2D and 3D geospatial data comes to life in real time.
+
+This is not a traditional UX role. You'll operate at the intersection of cartographic design, real-time rendering, and product engineering, partnering directly with software engineers to define, prototype, and ship features within TomTom's modern map rendering engine.
+
+You'll report into the UX Design organisation but spend significant time embedded with engineering and product teams, influencing the roadmap, shaping architectural decisions, and ensuring that what we build is both technically sound and visually compelling.
+
+What You'll Do
+
+Set the Visual Direction Define and evolve the long-term vision for TomTom's map rendering across 2D and 3D, from cartographic styling to photorealistic environments. Establish and maintain design principles that scale across product lines, platforms, and global markets.
+Partner with Engineering on Rendering Features Work side-by-side with graphics and platform engineers to specify, develop, and validate new rendering capabilities in TomTom's Premium Map Display engine. Translate design intent into concrete renderer specifications, including lighting models, shader parameters, level-of-detail strategies, and style-layer behaviour. Participate actively in solution design reviews, pull requests, and sprint ceremonies.
+Own Core Map Styles End-to-End Take map experiences from early ideation through prototyping, implementation, and production delivery. Enhance and maintain TomTom's core map styles, balancing aesthetic quality, readability, and runtime performance.
+Drive Product and Roadmap Decisions Operate as a staff-level contributor who shapes what gets built and why. Make complex product trade-offs across visual fidelity, rendering performance, SDK compatibility, and data constraints. Influence the Map Visualisation roadmap in close collaboration with Product Management, Map Data, and Engineering leadership.
+Inform Tooling and Workflows Define requirements for internal cartographic design tooling and authoring pipelines. Identify gaps in the current workflow and advocate for tooling investments that improve design velocity and quality.
+Champion User and Customer Insight Participate in user research, customer success conversations, and competitive analysis to ground visual and technical decisions in real-world needs. Translate customer feedback into actionable design and rendering improvements.
+
+What You'll Need
+
+Cartography & Map Visualisation
+
+Deep expertise in digital cartography, multi-zoom map design, and cartographic conventions across cultures and regions.
+Proven track record of building advanced, visually compelling 2D and 3D map experiences, from lane-level detail to global overviews.
+Extensive experience working with spatial datasets and geospatial data pipelines.
+
+Real-Time Rendering & Technical Craft
+
+Strong understanding of real-time 3D rendering concepts shaders, lighting, modeling, texturing, level-of-detail, post effects and runtime performance optimizations.
+Demonstrated ability to work within and influence a rendering technology stack; experience with mapping libraries such as MapLibre, Mapbox GL JS, and game engines such as Unity.
+Proficiency in handling a range of graphical styles from photorealistic to stylised rendering of real-world environments.
+
+Software Development Collaboration
+
+Significant experience working inside product engineering teams, not adjacent to them. You understand agile methodologies, CI/CD workflows, git, pull request reviews, branching strategies, and feature-flag rollouts.
+Ability to read and reason about code. Hands-on coding skills are a plus but not a prerequisite; what matters is that you can engage credibly with engineers on technical implementation details and architectural decisions.
+Fluency with solution design documents, technical specifications, and cross-functional RFC processes.
+
+Staff-Level Leadership
+
+8+ years of relevant professional experience in UX design, technical art, cartographic design, or a closely related discipline.
+Bachelor's or Master's degree in Cartography, Geography, GIS, Computer Science, UX Design, or a related field, or equivalent professional experience.
+Demonstrated ability to drive alignment across engineering, product, and design without direct authority.
+Track record of influencing technical and product roadmaps at an organisational level.
+Strong documentation, storytelling, and presentation skills. You can make a renderer specification as clear as a design critique.
+
+Mindset & Working Style
+
+Deep user empathy paired with pragmatic product thinking.
+Comfort navigating ambiguity in complex, multi-layered technology stacks.
+Collaborative and low ego. You build trust with engineers, PMs, marketeers, designers and customers.
+High attention to detail with a passion for craft at every zoom level.
+
+Nice to Have
+
+Hands-on proficiency in front-end development (JavaScript, WebGL, etc).
+Experience in the automotive, fleet management, or logistics industries.
+Familiarity with consumer location-technology products and emerging trends in spatial computing, AR navigation, or digital twins.
+Experience defining or contributing to design systems at scale.
+
+What We Offer
+
+A competitive compensation package, of course.
+
+Time and resources to grow and develop, including a personal development budget and paid leave for learning days, as well as paid access to e-learning resources such as O’Reilly and LinkedIn Learning.
+
+Time to support life outside of work, with enhanced parental leave plus paid leave to care for loved ones and volunteer in local communities.
+
+Work flexibility, where TomTom’ers, in agreement with their manager and team, use both the office and home to focus, collaborate, learn and socialize. It’s all about getting the best out of both worlds – we ask TomTom’ers to come to the office two days a week, and the remaining three are free to be worked in either location.
+
+Improve your home office with a setup budget and get extra support with a monthly allowance.
+
+Enjoy options to work from your home country and abroad for a set number of days each year, to visit family and friends, or to simply explore the world we’re mapping.
+
+Take the holidays you want with a competitive holiday plan, plus an extra day off to celebrate your birthday.
+
+Join annual events like our Hackathon and DevDays to bring your ideas to life with talented teammates from around the world.
+
+Become a part of our inclusive global culture and have the chance to collaborate with a diverse community – we have over 80 nationalities at TomTom!
+
+Find out more about our global benefits and enjoy additional local benefits tailored to your location.
+
+Meet your team
+
+We’re the User Experience Design team. Fueled by user insights and data analytics, our mission is to create powerful, easy-to-use products that delight our customers, from millions of drivers to automotive customers who embed our technologies in their vehicles. We deliver the design specifications for all TomTom’s products. Joining us, you'll be part of a team that brings together design disciplines from user research to interaction, concept and visual design. Together, we'll continue to develop a map that people trust all around the world.
+
+At TomTom...
+
+You’ll help people find their way in the world. In 2004, TomTom revolutionized how the world moves with the introduction of the first portable navigation device. Now, we intend to do it again by engineering the first-ever real-time map, the smartest and most useful map on the planet.
+
+Work with a team of 3,600+ unique, curious and passionate problem-solvers. Together, we’ll open up a world of possibilities for car manufacturers, enterprises and developers to help people understand and get closer to the world around them.
+
+After you apply
+
+Our recruitment team will work hard to give you a meaningful experience throughout your journey with us, no matter the outcome. Your application will be screened closely and you can rest assured that all follow-up actions will be thorough, from assessments and interviews all the way through onboarding. To find out more about our application process, check out our hiring FAQs .
+
+TomTom is an equal opportunity employer
+
+TomTom is where you can find your place in the world. Every day we welcome, nurture and celebrate differences. Why? Because your uniqueness is what makes you, you. No matter your culture or background, you’ll find your impact at TomTom. Research also shows that sometimes women and underrepresented communities can be hesitant to apply for positions unless they believe they meet 100% of the criteria. If you can relate to this, please know that we’d love to hear from you.
+
+We may use artificial intelligence (AI) tools to support parts of the hiring process, such as reviewing applications, analyzing resumes, or assessing responses and identifying potential inconsistencies or verification signals in application materials based on available information. These tools assist our recruitment team but do not replace human judgment. Final hiring decisions are ultimately made by humans. If you would like more information about how your data is processed, please contact us.
