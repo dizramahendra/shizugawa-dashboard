@@ -599,37 +599,6 @@ function VoxelGridInstanced({
   );
 }
 
-// ── Water surface plane ────────────────────────────────────────────────────────
-// A translucent sheet at sea level (Y_SURFACE) spanning the full bounding box.
-// Purely visual — it reads as "this is the waterline" and gives the model a
-// sense of depth (voxels + seabed sit visibly submerged beneath it). A gentle
-// opacity breathing animation keeps it from looking like a flat, dead plane.
-function WaterSurface() {
-  const matRef = useRef<THREE.MeshStandardMaterial>(null);
-
-  useFrame(({ clock }) => {
-    if (matRef.current) {
-      matRef.current.opacity = 0.15 + Math.sin(clock.elapsedTime * 0.5) * 0.025;
-    }
-  });
-
-  return (
-    <mesh position={[0, Y_SURFACE + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-      <planeGeometry args={[BOX_W, BOX_D]} />
-      <meshStandardMaterial
-        ref={matRef}
-        color="#5aa0d0"
-        transparent
-        opacity={0.15}
-        roughness={0.1}
-        metalness={0.2}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
-  );
-}
-
 // ── Volumetric seabed solid ───────────────────────────────────────────────────
 // A closed solid that fills from the bathymetric seabed contour down to the
 // absolute bottom of the bounding cube (BOX_BOT), making the overall 3-D model
@@ -1430,8 +1399,6 @@ export default function OceanBasin3D({
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>
         <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
-
-        <WaterSurface />
 
         <SeabedMesh
           sliceMode={dashboardState}
