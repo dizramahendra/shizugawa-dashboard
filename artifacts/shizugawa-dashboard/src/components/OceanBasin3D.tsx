@@ -404,39 +404,81 @@ function buildBatches(
   return batches;
 }
 
+function easeInOutQuad(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+// Smoothly cross-fades voxel colours between the previous and current week
+// instead of snapping instantly, so weekly playback reads as continuous
+// motion. Positions/geometry never animate — only the per-instance colour —
+// so this stays cheap (a per-frame loop over this layer's instance count,
+// skipped entirely once a transition settles).
 function InstancedDepthLayer({
-  depthIdx, batch, onCellClick, onCellHover, onHover,
+  depthIdx, toBatch, fromBatchesRef, toBatchesRef, progressRef, onCellClick, onCellHover, onHover,
 }: {
   depthIdx: number;
-  batch:    LayerBatch;
+  toBatch:  LayerBatch;
+  fromBatchesRef: React.MutableRefObject<LayerBatch[]>;
+  toBatchesRef:   React.MutableRefObject<LayerBatch[]>;
+  progressRef:    React.MutableRefObject<number>;
   onCellClick:  (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
   onHover: (h: HoveredVoxel | null) => void;
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const { positions, rgbs, count, opacity } = batch;
+  const { positions, count, opacity } = toBatch;
+  const lastToRef = useRef<LayerBatch | null>(null);
+  const lastAppliedRef = useRef(1);
 
   // useLayoutEffect fires synchronously before the first Three.js frame.
   // This guarantees instance matrices are in their correct positions before
   // Three.js computes & caches the bounding sphere for raycasting — fixing a
   // bug where clicks on voxels were silently missed on initial mount because
   // the bounding sphere was cached from identity matrices (all at origin).
+  // Colour is intentionally NOT set here — useFrame owns colour so the
+  // cross-fade below has full control from the first animated frame.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
-    const m4  = new THREE.Matrix4();
-    const col = new THREE.Color();
+    const m4 = new THREE.Matrix4();
     for (let i = 0; i < count; i++) {
       m4.setPosition(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
       mesh.setMatrixAt(i, m4);
-      col.setRGB(rgbs[i * 3], rgbs[i * 3 + 1], rgbs[i * 3 + 2]);
-      mesh.setColorAt(i, col);
     }
     mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     // Recompute bounding sphere from actual instance positions so raycasting works.
     mesh.computeBoundingSphere();
-  }, [positions, rgbs, count]);
+  }, [positions, count]);
+
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh || count === 0) return;
+    const to = toBatchesRef.current[depthIdx];
+    if (!to || to.count === 0) return;
+
+    const progress = progressRef.current;
+    const settled  = progress >= 1;
+    const toChanged = lastToRef.current !== to;
+    if (settled && !toChanged && lastAppliedRef.current >= 1) return; // nothing changed — skip work
+
+    const from = fromBatchesRef.current[depthIdx];
+    const useFrom = !settled && !!from && from.count === to.count;
+    const t = settled ? 1 : easeInOutQuad(progress);
+    const col = new THREE.Color();
+    for (let i = 0; i < to.count; i++) {
+      let r = to.rgbs[i * 3], g = to.rgbs[i * 3 + 1], b = to.rgbs[i * 3 + 2];
+      if (useFrom) {
+        r = from!.rgbs[i * 3]     + (r - from!.rgbs[i * 3])     * t;
+        g = from!.rgbs[i * 3 + 1] + (g - from!.rgbs[i * 3 + 1]) * t;
+        b = from!.rgbs[i * 3 + 2] + (b - from!.rgbs[i * 3 + 2]) * t;
+      }
+      col.setRGB(r, g, b);
+      mesh.setColorAt(i, col);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    lastToRef.current = to;
+    lastAppliedRef.current = settled ? 1 : progress;
+  });
 
   if (count === 0) return null;
 
@@ -449,14 +491,14 @@ function InstancedDepthLayer({
         e.stopPropagation();
         const iid = e.instanceId;
         if (iid == null) return;
-        const { gx, gz } = batch.meta[iid];
+        const { gx, gz } = toBatch.meta[iid];
         onCellClick(gx, gz, depthIdx);
       }}
       onPointerOver={(e) => {
         e.stopPropagation();
         const iid = e.instanceId;
         if (iid == null) return;
-        const { gx, gz, val, px, py, pz } = batch.meta[iid];
+        const { gx, gz, val, px, py, pz } = toBatch.meta[iid];
         onCellHover?.(gx, gz);
         onHover({ px, py, pz, val, depth: depthIdx });
       }}
@@ -474,8 +516,8 @@ function InstancedDepthLayer({
 }
 
 function VoxelGridInstanced({
-  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, onCellClick, onCellHover, markerPixels,
-}: VoxelGridProps & { markerPixels?: Map<string, [number, number, number]> }) {
+  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, onCellClick, onCellHover, markerPixels, transitionMs = 650,
+}: VoxelGridProps & { markerPixels?: Map<string, [number, number, number]>; transitionMs?: number }) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
@@ -483,6 +525,34 @@ function VoxelGridInstanced({
     () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels),
     [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels],
   );
+
+  // Colour cross-fade state, shared with every depth layer via refs so the
+  // per-frame blend runs imperatively (no React re-renders during playback).
+  const fromBatchesRef = useRef<LayerBatch[]>(batches);
+  const toBatchesRef   = useRef<LayerBatch[]>(batches);
+  const progressRef    = useRef(1);
+  const prevWeekRef     = useRef(week);
+
+  useEffect(() => {
+    if (prevWeekRef.current !== week) {
+      // The week advanced (or rewound) — cross-fade colours from whatever was
+      // last shown into the new week's data.
+      fromBatchesRef.current = toBatchesRef.current;
+      toBatchesRef.current = batches;
+      progressRef.current = 0;
+      prevWeekRef.current = week;
+    } else {
+      // Structural change (slice, selection, colour scale, markers) — snap.
+      toBatchesRef.current = batches;
+      progressRef.current = 1;
+    }
+  }, [batches, week]);
+
+  useFrame((_, delta) => {
+    if (progressRef.current < 1) {
+      progressRef.current = Math.min(1, progressRef.current + (delta * 1000) / transitionMs);
+    }
+  });
 
   const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
 
@@ -492,7 +562,10 @@ function VoxelGridInstanced({
         <InstancedDepthLayer
           key={`${d}-${batch.count}`}
           depthIdx={d}
-          batch={batch}
+          toBatch={batch}
+          fromBatchesRef={fromBatchesRef}
+          toBatchesRef={toBatchesRef}
+          progressRef={progressRef}
           onCellClick={onCellClick}
           onCellHover={onCellHover}
           onHover={setHovered}
@@ -523,6 +596,37 @@ function VoxelGridInstanced({
         </Html>
       )}
     </>
+  );
+}
+
+// ── Water surface plane ────────────────────────────────────────────────────────
+// A translucent sheet at sea level (Y_SURFACE) spanning the full bounding box.
+// Purely visual — it reads as "this is the waterline" and gives the model a
+// sense of depth (voxels + seabed sit visibly submerged beneath it). A gentle
+// opacity breathing animation keeps it from looking like a flat, dead plane.
+function WaterSurface() {
+  const matRef = useRef<THREE.MeshStandardMaterial>(null);
+
+  useFrame(({ clock }) => {
+    if (matRef.current) {
+      matRef.current.opacity = 0.15 + Math.sin(clock.elapsedTime * 0.5) * 0.025;
+    }
+  });
+
+  return (
+    <mesh position={[0, Y_SURFACE + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+      <planeGeometry args={[BOX_W, BOX_D]} />
+      <meshStandardMaterial
+        ref={matRef}
+        color="#5aa0d0"
+        transparent
+        opacity={0.15}
+        roughness={0.1}
+        metalness={0.2}
+        depthWrite={false}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
   );
 }
 
@@ -1258,6 +1362,7 @@ interface OceanBasin3DProps {
   cameraPreset?: string;
   cameraPresetTick?: number;
   markerPixels?: { x: number; z: number; color: string }[];
+  speed?: number;
 }
 
 function hexToRgb01(hex: string): [number, number, number] {
@@ -1283,6 +1388,7 @@ export default function OceanBasin3D({
   cameraPreset = "top",
   cameraPresetTick = 0,
   markerPixels,
+  speed = 1,
 }: OceanBasin3DProps) {
   const markerMap = useMemo(() => {
     if (!markerPixels || markerPixels.length === 0) return undefined;
@@ -1291,6 +1397,12 @@ export default function OceanBasin3D({
     return m;
   }, [markerPixels]);
   const orbitRef = useRef<any>(null);
+
+  // Colour cross-fade duration tracks the playback interval (800ms / speed)
+  // so the transition always finishes just before the next week lands —
+  // clamped so it never gets uncomfortably slow (paused/rewind) or too fast
+  // to read (4x speed).
+  const transitionMs = Math.max(150, Math.min(700, (800 / speed) * 0.85));
 
   const voxelProps: VoxelGridProps = {
     week,
@@ -1317,7 +1429,9 @@ export default function OceanBasin3D({
 
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>
-        <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} />
+        <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
+
+        <WaterSurface />
 
         <SeabedMesh
           sliceMode={dashboardState}
