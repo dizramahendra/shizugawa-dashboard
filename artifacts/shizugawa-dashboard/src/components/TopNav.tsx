@@ -1,6 +1,14 @@
 import type { MouseEvent } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Info } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 interface TopNavProps {
   stateLabel?: string;
@@ -87,6 +95,71 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
             Shizugawa Bay · 38.6°N 141.4°E
           </span>
           <div className="w-px h-4 bg-white/15" />
+          <Sheet>
+            <SheetTrigger asChild>
+              <button
+                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="About this dashboard"
+              >
+                <Info size={14} className="text-white/60" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>About this dashboard</SheetTitle>
+                <SheetDescription>
+                  Shizugawa Bay 3D Time-Series Dashboard — environmental analytics for Japan's Shizugawa Bay.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-6 text-sm text-foreground/90">
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                    What you're looking at
+                  </h3>
+                  <p className="leading-relaxed">
+                    A digital twin of Shizugawa Bay's water column, modelling how nutrients and
+                    freshwater move through the bay over a full year. The 3D ocean basin renders
+                    a voxel grid (112 × 96 cells, 8 depth layers) coloured by concentration; the
+                    2D river view tracks the 11 inflows that feed the bay.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                    Variables
+                  </h3>
+                  <ul className="space-y-1.5 leading-relaxed">
+                    <li><span className="font-medium">Total Nitrogen</span> — nutrient loading, mg/L</li>
+                    <li><span className="font-medium">Total Phosphorus</span> — nutrient loading, mg/L</li>
+                    <li><span className="font-medium">Water Flow</span> — river discharge, m³/s</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                    How to read it
+                  </h3>
+                  <ul className="space-y-1.5 leading-relaxed list-disc list-inside">
+                    <li>Playback advances week-by-week across a simulated year (52 weekly timesteps)</li>
+                    <li>Click any voxel to inspect its value and depth</li>
+                    <li>Horizontal/vertical slice modes cut into the basin to reveal internal structure</li>
+                    <li>The depth graph plots concentration vs. depth at a selected point</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                    Data note
+                  </h3>
+                  <p className="leading-relaxed text-muted-foreground">
+                    The underlying dataset is simulated for demonstration purposes — it follows
+                    realistic seasonal and spatial patterns but is not measured field data.
+                  </p>
+                </section>
+              </div>
+            </SheetContent>
+          </Sheet>
           <button className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors cursor-pointer">
             <Bell size={14} className="text-white/60" />
           </button>
