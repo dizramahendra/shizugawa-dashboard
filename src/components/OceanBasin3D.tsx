@@ -234,7 +234,6 @@ interface LayerBatch {
   count:     number;
   positions: number[];   // [x,y,z, x,y,z, …]  count×3
   rgbs:      number[];   // [r,g,b, r,g,b, …]   count×3
-  opacity:   number;
   meta:      InstanceMeta[];
 }
 
@@ -257,11 +256,10 @@ function buildBatches(
     ? Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i)
     : Array.from({ length: DEPTH_LAYERS }, (_, i) => i);
 
-  const batches: LayerBatch[] = Array.from({ length: DEPTH_LAYERS }, (_, d) => ({
+  const batches: LayerBatch[] = Array.from({ length: DEPTH_LAYERS }, () => ({
     count: 0,
     positions: [],
     rgbs: [],
-    opacity: 0.85 - d * 0.02,
     meta: [],
   }));
 
@@ -322,7 +320,7 @@ function InstancedDepthLayer({
   onHover: (h: HoveredVoxel | null) => void;
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const { positions, count, opacity } = toBatch;
+  const { positions, count } = toBatch;
   const lastToRef = useRef<LayerBatch | null>(null);
   const lastAppliedRef = useRef(1);
   const seededRef = useRef(false);
@@ -435,12 +433,10 @@ function InstancedDepthLayer({
       onPointerOut={() => onHover(null)}
     >
       <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[depthIdx], CELL_W]} />
-      <meshStandardMaterial
-        roughness={0.7}
-        metalness={0.05}
-        transparent={opacity < 1}
-        opacity={opacity}
-      />
+      {/* Opaque: renders through the depth buffer, so instances within a layer
+          no longer blend in the wrong order (fixes the orbit flicker), and each
+          voxel shows its true concentration colour without false blending. */}
+      <meshStandardMaterial roughness={0.7} metalness={0.05} />
     </instancedMesh>
   );
 }
@@ -961,7 +957,7 @@ function RiverGrid({
           onPointerOut={() => setHoveredId(null)}
         >
           <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[0], CELL_W]} />
-          <meshStandardMaterial transparent opacity={0.85} roughness={0.7} metalness={0.05} />
+          <meshStandardMaterial roughness={0.7} metalness={0.05} />
         </instancedMesh>
       )}
       {meta && (
