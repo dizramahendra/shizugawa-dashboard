@@ -12,7 +12,7 @@ import LegendOverlay from "@/components/LegendOverlay";
 import PlaybackControls from "@/components/PlaybackControls";
 import DepthGraph from "@/components/DepthGraph";
 import VoxelRadar from "@/components/VoxelRadar";
-import { depthLabel } from "@/components/OceanBasin3D";
+import { depthLabel } from "@/lib/depthLabels";
 
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],

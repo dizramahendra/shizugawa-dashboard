@@ -19,6 +19,7 @@ import {
   RIVER_ROWS,
   DashboardState,
 } from "@/lib/simulatedData";
+import { depthLabel } from "@/lib/depthLabels";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
 const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
@@ -118,12 +119,6 @@ function toPhysical(val: number, scale: string): string {
   const p = PHYS[scale] ?? PHYS.nitrogen;
   const phys = p.min + val * (p.max - p.min);
   return `${phys.toFixed(p.dec)} ${p.unit}`;
-}
-
-// Depth label for a given layer index: "0–2 m", "2–5 m", etc.
-const DEPTH_REAL_BOT = [2, 5, 10, 18, 30, 47, 69, 90]; // approx bottom of each layer
-export function depthLabel(d: number): string {
-  return `${DEPTH_REAL_M[d]}–${DEPTH_REAL_BOT[d]} m`;
 }
 
 // Hex→RGB with a module-level cache: lerpColor runs in the per-voxel hot loop
