@@ -573,32 +573,19 @@ function SeabedMesh({
       return true;
     }
 
-    // Scene-Y at the seabed for cell (gx, gz) — matches VoxelGrid's maxLayer exactly
-    // so the seabed solid top always kisses the bottom of the deepest water voxel.
-    function seabedSceneY(gx: number, gz: number): number {
+    // Per-cell seabed top (scene-Y): the bottom of THIS cell's deepest water
+    // voxel, clipped at the horizontal slice plane. Returns null when the cell
+    // has no solid (outside the bay, sliced away, or no visible column) — the
+    // wall logic treats that as "open down to BOX_BOT". Flat per-cell tops (no
+    // smoothing) keep the seabed blocky so it meets every voxel column exactly:
+    // no gaps beneath shallow columns, no over-height intrusion into deep ones.
+    function cellTop(gx: number, gz: number): number | null {
+      if (!shouldRender(gx, gz)) return null;
       const seabedM  = getBathymetryDepthM(gx, gz);
       const maxLayer = deepestVisibleLayer(seabedM);
-      if (maxLayer < 0) return Y_SURFACE;
-      return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
-    }
-
-    // Smooth terrain-corner Y: average seabedSceneY of up to 4 adjacent active cells,
-    // then clip at the horizontal slice plane so the solid doesn't poke above the cut.
-    function cornerY(gx: number, gz: number): number {
-      let sumY = 0, cnt = 0;
-      for (let dz = -1; dz <= 0; dz++) {
-        for (let dx = -1; dx <= 0; dx++) {
-          const nx = gx + dx, nz = gz + dz;
-          if (nx >= 0 && nx < GRID_W && nz >= 0 && nz < GRID_D && BAY_MASK[nz]?.[nx]) {
-            const sy = seabedSceneY(nx, nz);
-            if (isFinite(sy)) { sumY += sy; cnt++; }
-          }
-        }
-      }
-      const fallback = isFinite(Y_SURFACE - DEPTH_TOTAL_H) ? Y_SURFACE - DEPTH_TOTAL_H : -6.85;
-      const rawY = cnt > 0 ? sumY / cnt : fallback;
-      const clip = isFinite(sliceClipY) ? sliceClipY : Infinity;
-      return Math.min(rawY, clip);  // clip top at the slice plane
+      if (maxLayer < 0) return null;
+      const y = Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
+      return Math.min(y, sliceClipY);
     }
 
     const positions: number[] = [];
@@ -616,26 +603,31 @@ function SeabedMesh({
       return (positions.length / 3) - 1;
     }
 
+    // Wall bottom for one lateral edge: down to the neighbour's own top when the
+    // neighbour is a shorter (deeper-topped... i.e. lower) solid, or to BOX_BOT
+    // when the neighbour has no solid (shore / slice cut). Returns null when the
+    // neighbour is level or taller — it already covers this face, so no wall.
+    const wallBottom = (topY: number, nx: number, nz: number): number | null => {
+      const nT = cellTop(nx, nz);
+      const wb = nT === null ? BOX_BOT : nT;
+      return wb < topY ? wb : null;
+    };
+
     for (let gz = 0; gz < GRID_D; gz++) {
       for (let gx = 0; gx < GRID_W; gx++) {
-        if (!shouldRender(gx, gz)) continue;
+        const topY = cellTop(gx, gz);
+        if (topY === null) continue;
 
         const x0 = offsetX + gx       * STEP;
         const x1 = offsetX + (gx + 1) * STEP;
         const z0 = offsetZ + gz       * STEP;
         const z1 = offsetZ + (gz + 1) * STEP;
 
-        // Terrain Y at each top corner (smooth)
-        const y00 = cornerY(gx,     gz);
-        const y10 = cornerY(gx + 1, gz);
-        const y01 = cornerY(gx,     gz + 1);
-        const y11 = cornerY(gx + 1, gz + 1);
-
-        // ── Top face (terrain surface, faces upward) ──────────────────────────
-        const t00 = addVert(x0, y00, z0);
-        const t10 = addVert(x1, y10, z0);
-        const t01 = addVert(x0, y01, z1);
-        const t11 = addVert(x1, y11, z1);
+        // ── Top face (flat at this cell's own column bottom, faces upward) ────
+        const t00 = addVert(x0, topY, z0);
+        const t10 = addVert(x1, topY, z0);
+        const t01 = addVert(x0, topY, z1);
+        const t11 = addVert(x1, topY, z1);
         indices.push(t00, t11, t10,  t00, t01, t11);
 
         // ── Bottom face (flat at BOX_BOT, faces downward) ─────────────────────
@@ -645,31 +637,43 @@ function SeabedMesh({
         const b11 = addVert(x1, BOX_BOT, z1);
         indices.push(b00, b10, b11,  b00, b11, b01);
 
-        // ── Side walls — only on boundaries (neighbour not renderable) ────────
+        // ── Side / step walls — down to the neighbour's top, or BOX_BOT ───────
 
         // West face (-X): x=x0, z0→z1
-        if (!shouldRender(gx - 1, gz)) {
-          const a = addVert(x0, y00, z0); const b = addVert(x0, BOX_BOT, z0);
-          const c = addVert(x0, BOX_BOT, z1); const d = addVert(x0, y01, z1);
-          indices.push(a, b, c,  a, c, d);
+        {
+          const wb = wallBottom(topY, gx - 1, gz);
+          if (wb !== null) {
+            const a = addVert(x0, topY, z0); const b = addVert(x0, wb, z0);
+            const c = addVert(x0, wb, z1);   const d = addVert(x0, topY, z1);
+            indices.push(a, b, c,  a, c, d);
+          }
         }
         // East face (+X): x=x1, z0→z1
-        if (!shouldRender(gx + 1, gz)) {
-          const a = addVert(x1, y10, z0); const b = addVert(x1, BOX_BOT, z0);
-          const c = addVert(x1, BOX_BOT, z1); const d = addVert(x1, y11, z1);
-          indices.push(a, c, b,  a, d, c);
+        {
+          const wb = wallBottom(topY, gx + 1, gz);
+          if (wb !== null) {
+            const a = addVert(x1, topY, z0); const b = addVert(x1, wb, z0);
+            const c = addVert(x1, wb, z1);   const d = addVert(x1, topY, z1);
+            indices.push(a, c, b,  a, d, c);
+          }
         }
         // North face (-Z): z=z0, x0→x1
-        if (!shouldRender(gx, gz - 1)) {
-          const a = addVert(x0, y00, z0); const b = addVert(x0, BOX_BOT, z0);
-          const c = addVert(x1, BOX_BOT, z0); const d = addVert(x1, y10, z0);
-          indices.push(a, c, b,  a, d, c);
+        {
+          const wb = wallBottom(topY, gx, gz - 1);
+          if (wb !== null) {
+            const a = addVert(x0, topY, z0); const b = addVert(x0, wb, z0);
+            const c = addVert(x1, wb, z0);   const d = addVert(x1, topY, z0);
+            indices.push(a, c, b,  a, d, c);
+          }
         }
         // South face (+Z): z=z1, x0→x1
-        if (!shouldRender(gx, gz + 1)) {
-          const a = addVert(x0, y01, z1); const b = addVert(x0, BOX_BOT, z1);
-          const c = addVert(x1, BOX_BOT, z1); const d = addVert(x1, y11, z1);
-          indices.push(a, b, c,  a, c, d);
+        {
+          const wb = wallBottom(topY, gx, gz + 1);
+          if (wb !== null) {
+            const a = addVert(x0, topY, z1); const b = addVert(x0, wb, z1);
+            const c = addVert(x1, wb, z1);   const d = addVert(x1, topY, z1);
+            indices.push(a, b, c,  a, c, d);
+          }
         }
       }
     }
