@@ -1371,9 +1371,17 @@ export default function OceanBasin3D({
       data-testid="canvas-3d"
     >
       <CameraController preset={cameraPreset} tick={cameraPresetTick} orbitRef={orbitRef} />
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[10, 15, 10]} intensity={0.7} castShadow />
-      <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
+      {/* Lighting rig tuned for depth reading, not realism. A hemisphere light
+          (cool sky above, dim ground below) replaces flat ambient so a voxel's
+          upward faces read brighter than its sides — giving the blocky column
+          structure clear form — while the key/fill directionals add oriented
+          shading. Kept near-Lambert (roughness 0.7) so this scales per-face
+          luminance without shifting the nutrient-colour hue. No shadow maps:
+          self-shadowing voxels would darken cells unpredictably and misread as
+          lower values. */}
+      <hemisphereLight color="#eef4fb" groundColor="#5f6b78" intensity={0.5} />
+      <directionalLight position={[9, 13, 11]} intensity={1.0} />
+      <directionalLight position={[-7, 7, -6]} intensity={0.28} color="#b0c8e0" />
 
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>
