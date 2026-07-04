@@ -247,7 +247,6 @@ interface InstanceMeta {
 function buildBatches(
   data: ReturnType<typeof generateWeekData>,
   stops: string[],
-  selectedPoint: { x: number; z: number; y?: number } | null,
   sliceMode: DashboardState,
   sliceLevel: number,
   sliceDir: SliceDir,
@@ -278,16 +277,13 @@ function buildBatches(
         if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
         const val = data[gz]?.[gx]?.[d] ?? 0;
-        // Voxel highlight (point-select): only the exact (gx,gz,d) glows.
-        // Column highlight (depth-graph or no y): whole column glows.
-        const colMatch = selectedPoint?.x === gx && selectedPoint?.z === gz;
-        const isSelected = colMatch && (selectedPoint?.y === undefined || selectedPoint?.y === d);
+        // Selection highlight is applied imperatively per-frame in
+        // InstancedDepthLayer, so clicking a voxel never rebuilds this
+        // geometry — batches depend only on data / slice / markers.
         const markerColor = markerPixels?.get(`${gx}:${gz}`);
         const [r, g, b] = markerColor && d === 0
           ? markerColor
-          : isSelected
-            ? [1, 0.9, 0.2]
-            : lerpColor(stops, val);
+          : lerpColor(stops, val);
 
         const px = offsetX + gx * STEP + CELL_W / 2;
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
@@ -313,13 +309,14 @@ function easeInOutQuad(t: number): number {
 // so this stays cheap (a per-frame loop over this layer's instance count,
 // skipped entirely once a transition settles).
 function InstancedDepthLayer({
-  depthIdx, toBatch, fromBatchesRef, toBatchesRef, progressRef, onCellClick, onCellHover, onHover,
+  depthIdx, toBatch, fromBatchesRef, toBatchesRef, progressRef, selectedPoint, onCellClick, onCellHover, onHover,
 }: {
   depthIdx: number;
   toBatch:  LayerBatch;
   fromBatchesRef: React.MutableRefObject<LayerBatch[]>;
   toBatchesRef:   React.MutableRefObject<LayerBatch[]>;
   progressRef:    React.MutableRefObject<number>;
+  selectedPoint:  { x: number; z: number; y?: number } | null;
   onCellClick:  (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
   onHover: (h: HoveredVoxel | null) => void;
@@ -329,6 +326,13 @@ function InstancedDepthLayer({
   const lastToRef = useRef<LayerBatch | null>(null);
   const lastAppliedRef = useRef(1);
   const seededRef = useRef(false);
+  const lastSelKeyRef = useRef<string | null>(null);
+
+  // Stable key for the current selection so the per-frame loop can tell when it
+  // changed (and re-apply) without diffing objects.
+  const selKey = selectedPoint
+    ? `${selectedPoint.x}:${selectedPoint.z}:${selectedPoint.y ?? "col"}`
+    : "";
 
   // useLayoutEffect fires synchronously before the first Three.js frame.
   // This guarantees instance matrices are in their correct positions before
@@ -373,7 +377,8 @@ function InstancedDepthLayer({
     const progress = progressRef.current;
     const settled  = progress >= 1;
     const toChanged = lastToRef.current !== to;
-    if (settled && !toChanged && lastAppliedRef.current >= 1) return; // nothing changed — skip work
+    const selChanged = lastSelKeyRef.current !== selKey;
+    if (settled && !toChanged && !selChanged && lastAppliedRef.current >= 1) return; // nothing changed — skip work
 
     const from = fromBatchesRef.current[depthIdx];
     const useFrom = !settled && !!from && from.count === to.count;
@@ -386,12 +391,23 @@ function InstancedDepthLayer({
         g = from!.rgbs[i * 3 + 1] + (g - from!.rgbs[i * 3 + 1]) * t;
         b = from!.rgbs[i * 3 + 2] + (b - from!.rgbs[i * 3 + 2]) * t;
       }
+      // Imperative selection highlight, overlaid on the data colour: a single
+      // voxel (y given) or the whole column (y undefined) glows yellow. Applied
+      // here instead of baked into the batch, so selecting rebuilds no geometry.
+      if (selectedPoint) {
+        const m = to.meta[i];
+        if (m.gx === selectedPoint.x && m.gz === selectedPoint.z &&
+            (selectedPoint.y === undefined || selectedPoint.y === depthIdx)) {
+          r = 1; g = 0.9; b = 0.2;
+        }
+      }
       col.setRGB(r, g, b);
       mesh.setColorAt(i, col);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     lastToRef.current = to;
     lastAppliedRef.current = settled ? 1 : progress;
+    lastSelKeyRef.current = selKey;
   });
 
   if (count === 0) return null;
@@ -436,8 +452,8 @@ function VoxelGridInstanced({
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
   const batches = useMemo(
-    () => buildBatches(data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels),
-    [data, stops, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels],
+    () => buildBatches(data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels),
+    [data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels],
   );
 
   // Colour cross-fade state, shared with every depth layer via refs so the
@@ -457,12 +473,18 @@ function VoxelGridInstanced({
       progressRef.current = 0;
       prevWeekRef.current = week;
     } else {
-      // Structural change (slice, selection, colour scale, markers) — snap.
+      // Structural change (slice, colour scale, markers) — snap.
       toBatchesRef.current = batches;
       progressRef.current = 1;
     }
     invalidate(); // render this change under the demand frameloop
   }, [batches, week, invalidate]);
+
+  // Selection changed: batches no longer depend on it, so request a repaint here
+  // and the per-frame loop re-applies the imperative highlight (matters when paused).
+  useEffect(() => {
+    invalidate();
+  }, [selectedPoint, invalidate]);
 
   useFrame((_, delta) => {
     if (progressRef.current < 1) {
@@ -483,6 +505,7 @@ function VoxelGridInstanced({
           fromBatchesRef={fromBatchesRef}
           toBatchesRef={toBatchesRef}
           progressRef={progressRef}
+          selectedPoint={selectedPoint}
           onCellClick={onCellClick}
           onCellHover={onCellHover}
           onHover={setHovered}
