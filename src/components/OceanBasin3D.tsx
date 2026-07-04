@@ -1303,6 +1303,7 @@ interface OceanBasin3DProps {
   markerPixels?: { x: number; z: number; color: string }[];
   speed?: number;
   isPlaying?: boolean;
+  depthShading?: boolean;
 }
 
 function hexToRgb01(hex: string): [number, number, number] {
@@ -1330,6 +1331,7 @@ export default function OceanBasin3D({
   markerPixels,
   speed = 1,
   isPlaying = false,
+  depthShading = true,
 }: OceanBasin3DProps) {
   // Frameloop: render continuously while playing (the cross-fade animates every
   // frame; mounting defaults to playing, so the first paint always lands). When
@@ -1371,17 +1373,29 @@ export default function OceanBasin3D({
       data-testid="canvas-3d"
     >
       <CameraController preset={cameraPreset} tick={cameraPresetTick} orbitRef={orbitRef} />
-      {/* Lighting rig tuned for depth reading, not realism. A hemisphere light
-          (cool sky above, dim ground below) replaces flat ambient so a voxel's
-          upward faces read brighter than its sides — giving the blocky column
-          structure clear form — while the key/fill directionals add oriented
-          shading. Kept near-Lambert (roughness 0.7) so this scales per-face
-          luminance without shifting the nutrient-colour hue. No shadow maps:
-          self-shadowing voxels would darken cells unpredictably and misread as
-          lower values. */}
-      <hemisphereLight color="#eef4fb" groundColor="#5f6b78" intensity={0.5} />
-      <directionalLight position={[9, 13, 11]} intensity={1.0} />
-      <directionalLight position={[-7, 7, -6]} intensity={0.28} color="#b0c8e0" />
+      {/* Lighting rig, toggleable via depthShading:
+          ON  — a hemisphere light (cool sky above, dim ground below) plus a
+                stronger key directional, so a voxel's upward faces read
+                brighter than its sides and the blocky column + seabed structure
+                gains clear form. Near-Lambert material (roughness 0.7) means
+                this scales per-face luminance without shifting the nutrient
+                hue. No shadow maps — self-shadowing voxels would darken cells
+                unpredictably and misread as lower values.
+          OFF — the original flat, evenly-lit look (high ambient, gentle
+                directionals) for users who prefer uniform surface colour. */}
+      {depthShading ? (
+        <>
+          <hemisphereLight color="#eef4fb" groundColor="#5f6b78" intensity={0.5} />
+          <directionalLight position={[9, 13, 11]} intensity={1.0} />
+          <directionalLight position={[-7, 7, -6]} intensity={0.28} color="#b0c8e0" />
+        </>
+      ) : (
+        <>
+          <ambientLight intensity={0.8} />
+          <directionalLight position={[10, 15, 10]} intensity={0.7} />
+          <directionalLight position={[-5, 8, -5]} intensity={0.3} color="#b0c8e0" />
+        </>
+      )}
 
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>

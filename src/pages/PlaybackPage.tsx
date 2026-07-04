@@ -123,6 +123,8 @@ export default function PlaybackPage() {
   // Default: UI hidden on the Ocean Playback 3D page so the bay reads as the
   // primary visual on first paint. Pass `?ui=1` to deep-link with UI visible.
   const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
+  // Depth shading (3D lighting): dimensional by default; ?shade=0 for the flat look.
+  const [depthShading, setDepthShading] = useState(searchParams.get("shade") !== "0");
   const _initView = searchParams.get("view");
   // Accept both short ("n") and long ("north") forms for backwards-compat
   // with any older deep links, then normalise to the short code that the
@@ -202,9 +204,13 @@ export default function PlaybackPage() {
       if (cameraPreset && cameraPreset !== "iso") next.set("view", cameraPreset);
       else next.delete("view");
 
+      // Depth shading — only encode when turned off (on is the default)
+      if (!depthShading) next.set("shade", "0");
+      else next.delete("shade");
+
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceCutType, showCutPlane, sliceLevel, selectedPoint, showUI, cameraPreset]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceCutType, showCutPlane, sliceLevel, selectedPoint, showUI, cameraPreset, depthShading]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceDirIsX = sliceDir === "east" || sliceDir === "west";
@@ -416,6 +422,23 @@ export default function PlaybackPage() {
           {showUI ? "Hide UI" : "Show UI"}
         </button>
 
+        {/* Depth shading toggle — dimensional lighting vs flat */}
+        <button
+          onClick={() => setDepthShading(v => !v)}
+          title={depthShading ? "Depth shading on — click for flat lighting" : "Flat lighting — click for depth shading"}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+            depthShading
+              ? "bg-white border-border text-foreground hover:bg-muted/60"
+              : "bg-muted border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 flex-shrink-0">
+            <circle cx="8" cy="8" r="6" />
+            {depthShading && <path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor" stroke="none" />}
+          </svg>
+          Shading
+        </button>
+
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {isPlaying ? (
             <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
@@ -449,6 +472,7 @@ export default function PlaybackPage() {
               cameraPresetTick={cameraPresetTick}
               speed={speed}
               isPlaying={isPlaying}
+              depthShading={depthShading}
             />
 
             {/* Live coordinate HUD — top-right corner */}
