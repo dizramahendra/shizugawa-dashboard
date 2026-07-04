@@ -692,6 +692,9 @@ function SeabedMesh({
         roughness={0.88}
         metalness={0.04}
         side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={1}
+        polygonOffsetUnits={1}
       />
     </mesh>
   );
@@ -828,6 +831,9 @@ function RiverSeabedMesh({
         roughness={0.88}
         metalness={0.04}
         side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={1}
+        polygonOffsetUnits={1}
       />
     </mesh>
   );
