@@ -448,6 +448,7 @@ export default function PlaybackPage() {
               cameraPreset={cameraPreset}
               cameraPresetTick={cameraPresetTick}
               speed={speed}
+              isPlaying={isPlaying}
             />
 
             {/* Live coordinate HUD — top-right corner */}

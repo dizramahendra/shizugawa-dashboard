@@ -126,18 +126,39 @@ export function depthLabel(d: number): string {
   return `${DEPTH_REAL_M[d]}–${DEPTH_REAL_BOT[d]} m`;
 }
 
+// Hex→RGB with a module-level cache: lerpColor runs in the per-voxel hot loop
+// (~tens of thousands of calls per rebuild) and now reads two stops per call,
+// so memoising the parse keeps it O(1) after warmup.
+const _rgbCache = new Map<string, [number, number, number]>();
 function hexToRgb(hex: string): [number, number, number] {
-  return [
-    parseInt(hex.slice(1, 3), 16) / 255,
-    parseInt(hex.slice(3, 5), 16) / 255,
-    parseInt(hex.slice(5, 7), 16) / 255,
-  ];
+  let c = _rgbCache.get(hex);
+  if (!c) {
+    c = [
+      parseInt(hex.slice(1, 3), 16) / 255,
+      parseInt(hex.slice(3, 5), 16) / 255,
+      parseInt(hex.slice(5, 7), 16) / 255,
+    ];
+    _rgbCache.set(hex, c);
+  }
+  return c;
 }
 
+// Continuous interpolation across the ramp: map t∈[0,1] onto the stop array and
+// blend between the two adjacent stops, so the concentration field reads as a
+// smooth gradient instead of 10 hard-edged colour bands. (The legend can still
+// show discrete classes — this only affects the rendered field.)
 function lerpColor(stops: string[], t: number): [number, number, number] {
-  const n   = stops.length;
-  const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
-  return hexToRgb(stops[idx]);
+  const x = Math.min(1, Math.max(0, t)) * (stops.length - 1);
+  const i = Math.floor(x);
+  const a = hexToRgb(stops[i]);
+  const f = x - i;
+  if (f === 0 || i >= stops.length - 1) return [a[0], a[1], a[2]];
+  const b = hexToRgb(stops[i + 1]);
+  return [
+    a[0] + (b[0] - a[0]) * f,
+    a[1] + (b[1] - a[1]) * f,
+    a[2] + (b[2] - a[2]) * f,
+  ];
 }
 
 // ── Bathymetry ────────────────────────────────────────────────────────────────
@@ -197,7 +218,7 @@ interface HoveredVoxel {
   depth: number;
 }
 
-// ── VoxelGrid ─────────────────────────────────────────────────────────────────
+// ── Shared voxel-grid props ───────────────────────────────────────────────────
 interface VoxelGridProps {
   week: number;
   colorScale: string;
@@ -208,123 +229,6 @@ interface VoxelGridProps {
   sliceCutType: SliceCutType;
   onCellClick: (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
-}
-
-function VoxelGrid({
-  week,
-  colorScale,
-  selectedPoint,
-  sliceMode,
-  sliceLevel,
-  sliceDir,
-  sliceCutType,
-  onCellClick,
-  onCellHover,
-}: VoxelGridProps) {
-  const data  = useMemo(() => generateWeekData(week), [week]);
-  const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
-
-  const [hovered, setHovered] = useState<HoveredVoxel | null>(null);
-
-  const visibleDepths = useMemo(() => {
-    if (sliceMode === "slice-h")
-      // Show sliceLevel and everything deeper (below the cut)
-      return Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i);
-    return Array.from({ length: DEPTH_LAYERS }, (_, i) => i);
-  }, [sliceMode, sliceLevel]);
-
-  const meshes: React.ReactElement[] = [];
-
-  for (let gz = 0; gz < GRID_D; gz++) {
-    for (let gx = 0; gx < GRID_W; gx++) {
-      if (!BAY_MASK[gz]?.[gx]) continue;
-
-      const seabedM   = getBathymetryDepthM(gx, gz);
-      const maxLayer  = deepestVisibleLayer(seabedM);
-      if (maxLayer < 0) continue;
-
-      // ── Water voxels ────────────────────────────────────────────────────────
-      for (const d of visibleDepths) {
-        if (d > maxLayer) continue;                          // below bathymetric seabed
-        if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
-
-        const val = data[gz]?.[gx]?.[d] ?? 0;
-        const [r, g, b] = lerpColor(stops, val);
-
-        // Two highlight modes:
-        //   • Column highlight (depth-graph): no y on selection → entire column glows.
-        //   • Voxel highlight (point-select): y defined → only that single voxel glows.
-        const colMatch = selectedPoint !== null && selectedPoint.x === gx && selectedPoint.z === gz;
-        const isColumnSelected = colMatch && selectedPoint?.y === undefined;
-        const isVoxelSelected  = colMatch && selectedPoint?.y === d;
-        const isHighlighted = isColumnSelected || isVoxelSelected;
-
-        const px = offsetX + gx * STEP + CELL_W / 2;
-        const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
-        const pz = offsetZ + gz * STEP + CELL_W / 2;
-
-        const depthOpacity = 0.85 - d * 0.02;
-
-        meshes.push(
-          <mesh
-            key={`${gz}-${gx}-${d}`}
-            position={[px, py, pz]}
-            onClick={(e) => { e.stopPropagation(); onCellClick(gx, gz, d); }}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHovered({ px, py, pz, val, depth: d });
-              onCellHover?.(gx, gz);
-            }}
-            onPointerOut={() => setHovered(null)}
-          >
-            <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[d], CELL_W]} />
-            <meshStandardMaterial
-              color={
-                isHighlighted
-                  ? new THREE.Color(1, 0.9, 0.2)
-                  : new THREE.Color(r, g, b)
-              }
-              transparent={depthOpacity < 1}
-              opacity={isHighlighted ? 1 : depthOpacity}
-              roughness={0.7}
-              metalness={0.05}
-            />
-          </mesh>
-        );
-      }
-    }
-  }
-
-  return (
-    <>
-      {meshes}
-
-      {/* Hover tooltip */}
-      {hovered && (
-        <Html
-          position={[hovered.px, hovered.py + 0.15, hovered.pz]}
-          zIndexRange={[100, 100]}
-          style={{ pointerEvents: "none", transform: "translate(10px, calc(-100% - 6px))" }}
-        >
-          <div style={{
-            background: "rgba(255,255,255,0.93)",
-            border: "1px solid #ccc",
-            borderRadius: 4,
-            padding: "3px 7px",
-            fontFamily: "monospace",
-            fontSize: 10,
-            color: "#222",
-            whiteSpace: "nowrap",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-            lineHeight: 1.55,
-          }}>
-            <div style={{ fontWeight: 600 }}>{toPhysical(hovered.val, colorScale)}</div>
-            <div style={{ color: "#666" }}>{depthLabel(hovered.depth)}</div>
-          </div>
-        </Html>
-      )}
-    </>
-  );
 }
 
 // ── Instanced VoxelGrid (GPU-efficient) ──────────────────────────────────────
@@ -429,6 +333,7 @@ function InstancedDepthLayer({
   const { positions, count, opacity } = toBatch;
   const lastToRef = useRef<LayerBatch | null>(null);
   const lastAppliedRef = useRef(1);
+  const seededRef = useRef(false);
 
   // useLayoutEffect fires synchronously before the first Three.js frame.
   // This guarantees instance matrices are in their correct positions before
@@ -448,6 +353,20 @@ function InstancedDepthLayer({
     mesh.instanceMatrix.needsUpdate = true;
     // Recompute bounding sphere from actual instance positions so raycasting works.
     mesh.computeBoundingSphere();
+
+    // Seed instance colours on first mount ONLY, so the first painted frame in
+    // demand mode isn't blank white before useFrame runs. This must not repeat:
+    // `positions` gets a fresh array ref every week, so re-seeding here each time
+    // would snap colours to the new week and clobber the cross-fade useFrame owns.
+    if (!seededRef.current) {
+      const col = new THREE.Color();
+      for (let i = 0; i < count; i++) {
+        col.setRGB(toBatch.rgbs[i * 3], toBatch.rgbs[i * 3 + 1], toBatch.rgbs[i * 3 + 2]);
+        mesh.setColorAt(i, col);
+      }
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      seededRef.current = true;
+    }
   }, [positions, count]);
 
   useFrame(() => {
@@ -532,6 +451,7 @@ function VoxelGridInstanced({
   const toBatchesRef   = useRef<LayerBatch[]>(batches);
   const progressRef    = useRef(1);
   const prevWeekRef     = useRef(week);
+  const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
     if (prevWeekRef.current !== week) {
@@ -546,11 +466,13 @@ function VoxelGridInstanced({
       toBatchesRef.current = batches;
       progressRef.current = 1;
     }
-  }, [batches, week]);
+    invalidate(); // render this change under the demand frameloop
+  }, [batches, week, invalidate]);
 
   useFrame((_, delta) => {
     if (progressRef.current < 1) {
       progressRef.current = Math.min(1, progressRef.current + (delta * 1000) / transitionMs);
+      invalidate(); // keep requesting frames until the cross-fade settles
     }
   });
 
@@ -918,6 +840,9 @@ function RiverGrid({
 }) {
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
+  const invalidate = useThree((s) => s.invalidate);
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+
   // Hover state — which river group is under the pointer
   const [hoveredId, setHoveredId]  = useState<string | null>(null);
   const [hoverPos,  setHoverPos]   = useState<[number, number, number]>([0, 0, 0]);
@@ -942,58 +867,85 @@ function RiverGrid({
     return out;
   }, [week, stops]);
 
-  const elements: React.ReactNode[] = [];
-
-  for (let ri = 0; ri < RIVER_CELLS.length; ri++) {
-    const { gx, gz, riverId } = RIVER_CELLS[ri];
-    // Slice filtering
-    // Horizontal: river water lives at layer 0 — hide it when the slice is below that
-    if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
-    // Vertical: keep only the cells matching the current cut type + direction
-    if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
-
-    const isHov = hoveredId === riverId;
-    const base = riverColors[riverId] ?? lerpColor(stops, 0.5);
-    // Slightly brighten hovered river cells
-    const [r, g, b] = isHov
-      ? [Math.min(1, base[0] + 0.25), Math.min(1, base[1] + 0.25), Math.min(1, base[2] + 0.25)]
-      : base;
-
-    const px = offsetX + gx * STEP + CELL_W / 2;
-    const pz = offsetZ + gz * STEP + CELL_W / 2;
+  // Instance layout: one surface-layer voxel per visible river cell. Recomputed
+  // only when the slice state changes (positions never depend on week/colour),
+  // so playback re-tints instances in place rather than rebuilding geometry.
+  const layout = useMemo(() => {
+    const positions: [number, number, number][] = [];
+    const riverIds: string[] = [];
     const py = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0] / 2;
+    for (const { gx, gz, riverId } of RIVER_CELLS) {
+      // Horizontal slice: river water is layer 0 — hide it below that.
+      if (sliceMode === "slice-h" && sliceLevel !== 0) continue;
+      // Vertical slice: keep only cells on the kept side of the cut.
+      if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
+      positions.push([offsetX + gx * STEP + CELL_W / 2, py, offsetZ + gz * STEP + CELL_W / 2]);
+      riverIds.push(riverId);
+    }
+    return { positions, riverIds, count: positions.length };
+  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
 
-    // River cells render exactly one surface water layer
-    const depthOpacity = 0.85;
-    elements.push(
-      <mesh
-        key={`rv-${ri}`}
-        position={[px, py, pz]}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          setHoveredId(riverId);
-          setHoverPos([px, py + DEPTH_HEIGHTS[0] * 0.5 + 0.3, pz]);
-        }}
-        onPointerOut={() => setHoveredId(null)}
-      >
-        <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[0], CELL_W]} />
-        <meshStandardMaterial
-          color={new THREE.Color(r, g, b)}
-          transparent={depthOpacity < 1}
-          opacity={depthOpacity}
-          roughness={0.7}
-          metalness={0.05}
-        />
-      </mesh>
-    );
-  }
+  // Position the instances once per layout change (raycast needs a real bounding sphere).
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || layout.count === 0) return;
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < layout.count; i++) {
+      const [px, py, pz] = layout.positions[i];
+      m4.setPosition(px, py, pz);
+      mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [layout]);
+
+  // Re-tint instances whenever colours or the hovered river change. The hovered
+  // river's cells are brightened; everything else uses its base concentration
+  // colour. One code path, always consistent — no per-cell React elements.
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || layout.count === 0) return;
+    const col = new THREE.Color();
+    for (let i = 0; i < layout.count; i++) {
+      const rid = layout.riverIds[i];
+      const base = riverColors[rid] ?? lerpColor(stops, 0.5);
+      const hov = hoveredId === rid;
+      col.setRGB(
+        hov ? Math.min(1, base[0] + 0.25) : base[0],
+        hov ? Math.min(1, base[1] + 0.25) : base[1],
+        hov ? Math.min(1, base[2] + 0.25) : base[2],
+      );
+      mesh.setColorAt(i, col);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    invalidate();
+  }, [layout, riverColors, hoveredId, stops, invalidate]);
 
   // Hover tooltip — rendered once at the position of the last hovered cell
   const meta = hoveredId ? RIVER_META[hoveredId] : null;
 
   return (
     <>
-      {elements}
+      {layout.count > 0 && (
+        <instancedMesh
+          key={`river-${layout.count}`}
+          ref={meshRef}
+          args={[undefined, undefined, layout.count]}
+          frustumCulled={false}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            const iid = e.instanceId;
+            if (iid == null) return;
+            setHoveredId(layout.riverIds[iid]);
+            const [px, py, pz] = layout.positions[iid];
+            setHoverPos([px, py + DEPTH_HEIGHTS[0] * 0.5 + 0.3, pz]);
+          }}
+          onPointerOut={() => setHoveredId(null)}
+        >
+          <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[0], CELL_W]} />
+          <meshStandardMaterial transparent opacity={0.85} roughness={0.7} metalness={0.05} />
+        </instancedMesh>
+      )}
       {meta && (
         <Html
           position={hoverPos}
@@ -1332,6 +1284,7 @@ interface OceanBasin3DProps {
   cameraPresetTick?: number;
   markerPixels?: { x: number; z: number; color: string }[];
   speed?: number;
+  isPlaying?: boolean;
 }
 
 function hexToRgb01(hex: string): [number, number, number] {
@@ -1358,7 +1311,14 @@ export default function OceanBasin3D({
   cameraPresetTick = 0,
   markerPixels,
   speed = 1,
+  isPlaying = false,
 }: OceanBasin3DProps) {
+  // Frameloop: render continuously while playing (the cross-fade animates every
+  // frame; mounting defaults to playing, so the first paint always lands). When
+  // paused, drop to "demand" so an idle basin stops burning GPU — invalidate()
+  // (wired into the week / batch / hover paths) still repaints on every real
+  // change, and OrbitControls repaints on camera interaction.
+  const frameloop: "always" | "demand" = isPlaying ? "always" : "demand";
   const markerMap = useMemo(() => {
     if (!markerPixels || markerPixels.length === 0) return undefined;
     const m = new Map<string, [number, number, number]>();
@@ -1387,6 +1347,7 @@ export default function OceanBasin3D({
 
   return (
     <Canvas
+      frameloop={frameloop}
       camera={{ position: [0, 92, 8], fov: 38 }}
       style={{ background: "#f8f9fa" }}
       data-testid="canvas-3d"

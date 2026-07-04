@@ -1,1 +1,0 @@
-- [Headless WebGL/Three.js limitation](headless-webgl-limitation.md) — screenshot tool and Playwright test agent can't create a WebGL context; don't retry, verify Three.js/R3F changes via typecheck + code review + ask user to check preview.
