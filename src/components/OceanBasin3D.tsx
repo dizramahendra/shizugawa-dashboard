@@ -724,12 +724,12 @@ function RiverSeabedMesh({
   sliceCutType: SliceCutType;
 }) {
   const geometry = useMemo(() => {
-    // River water only exists at layer 0; return empty geometry for deeper horizontal slices
+    // River water only exists at layer 0; nothing to draw for deeper horizontal
+    // slices. Return null (mesh not rendered) rather than an EMPTY geometry —
+    // an empty position buffer makes three's auto bounding-sphere NaN, which
+    // logs "computeBoundingSphere: radius is NaN" errors on every such frame.
     if (sliceMode === "slice-h" && sliceLevel > 0) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute([], 3));
-      g.setAttribute("color",    new THREE.Float32BufferAttribute([], 3));
-      return g;
+      return null;
     }
 
     // In slice-h mode, clip seabed tops above this Y (top boundary of the selected layer)
