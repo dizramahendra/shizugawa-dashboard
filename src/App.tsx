@@ -8,6 +8,7 @@ import PlaybackPage from "@/pages/PlaybackPage";
 import RiverPlaybackPage from "@/pages/RiverPlaybackPage";
 import CarbonPage from "@/pages/CarbonPage";
 import SubBasinPage from "@/pages/SubBasinPage";
+import RealMapViewport from "@/components/RealMapViewport"; // SPIKE — real basemap prototype
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,7 @@ export default function App() {
             {/* <Route path="/cross-section" element={<CrossSectionPage />} /> */}{/* HIDDEN – uncomment to restore */}
             <Route path="/river" element={<RiverPlaybackPage />} />
             <Route path="/carbon" element={<CarbonPage />} />
+            <Route path="/map-real" element={<RealMapViewport />} /> {/* SPIKE — real basemap prototype */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
