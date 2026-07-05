@@ -1,3 +1,6 @@
+import { RIVER_PATHS } from "@/lib/svgPaths";
+import { sampleSvgPath } from "@/lib/svgSample";
+
 export type DashboardState =
   | "overview"
   | "playback"
@@ -103,8 +106,16 @@ export const BAY_MASK: boolean[][] = Array.from({ length: GRID_D }, (_, gz) =>
 );
 
 // ── River voxel cells ────────────────────────────────────────────────────────
-// Spines authored in 28×24 space, densified ×4 to match the 112×96 grid.
-// mouthGx / mouthGz are in 112×96 coords (original × 4).
+// RIVER_CELLS is derived PROGRAMMATICALLY from the true SVG river paths
+// (RIVER_PATHS in svgPaths.ts) so the 3D rivers land on the same courses the
+// Map Viewport renders and cover every river the map draws. Each path is:
+//   1. sampled into a dense polyline (svgSample.ts, ~1px spacing),
+//   2. transformed SVG→grid with the SAME affine the bay uses (below),
+//   3. walked as a contiguous 8-connected chain of (gx,gz) cells,
+//   4. dilated by one cell so each channel reads ~2 cells wide, and
+//   5. clipped so cells strictly inside the bay polygon are dropped (the
+//      outermost land-adjacent cell is kept, so the river meets the coast).
+// The old hand-authored SPINE_RIVER* / buildRiver / densify* machinery is gone.
 
 export interface RiverCell {
   gx: number;
@@ -114,530 +125,205 @@ export interface RiverCell {
   riverId: string; // key into RIVER_META for hover labels
 }
 
-// buildRiver: north/south rivers — sweeps along gz, spreads in gx.
-// Each entry may carry an optional `w` (half-width override in 56×48 cells);
-// if absent the width tapers linearly from halfWDelta→halfWUpstream.
-function buildRiver(
-  spine: Array<{ gz: number; cx: number; w?: number }>,
-  halfWDelta: number,
-  halfWUpstream: number,
-  mouthGx: number,
-  mouthGz: number,
-  riverId: string,
-  extraSide: number = 0, // asymmetric extension on the +x side. halfW=0,
-                         // extraSide=1 → 2-cell wide (dx ∈ {0,1}). Used to
-                         // get even widths the symmetric band can't produce.
-): RiverCell[] {
+// SVG canvas dimensions (RIVER_PATHS are authored in this space).
+const SVG_W_RIVERS = 465;
+const SVG_H_RIVERS = 586;
+
+// SVG path id → canonical river slug. IDENTICAL to MapLibreMap's MODEL_RIVER
+// (and to RIVERS[].basin below), so a river labelled "X" in 3D is the same
+// river the Map view labels "X". Defined here as a literal to avoid a circular
+// import from the map component (which imports from this module). Verified to
+// match MODEL_RIVER for every RIVER_PATHS id.
+const PATH_RIVER_ID: Record<number, string> = {
+  1: "shizugawa", 2: "oura",      3: "karakuwa",  4: "togura",    5: "urashiro",
+  6: "iriya",     7: "okawa",     8: "niida",     9: "karakuwa2", 10: "tomaya",
+  11: "shishiori", 12: "onagawa", 13: "hachiman", 14: "motoyoshi", 15: "mitobe",
+  16: "sakura",   17: "oritate",  18: "kitakami", 20: "moriya",   24: "oya",
+  25: "kamaishi",
+};
+
+// SVG→grid affine — the SAME transform the bay polygon uses (see BAY_POLYGON
+// comment above). Maps an SVG (x,y) to fractional grid coords (gx,gz).
+function svgToGrid(sx: number, sy: number): { gx: number; gz: number } {
+  const rawNx = sx / SVG_W_RIVERS;
+  const rawNz = 1 - sy / SVG_H_RIVERS;
+  const nx = (rawNx - 0.4631) * 2.1565 + 0.03;
+  const nz = (rawNz - 0.2846) * 2.1565 + 0.0919;
+  return { gx: Math.floor(nx * GRID_W), gz: Math.floor(nz * GRID_D) };
+}
+
+function inBay(gx: number, gz: number): boolean {
+  return gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D && BAY_MASK[gz][gx];
+}
+
+// Rasterize one SVG path into a contiguous, ~2-cell-wide chain of grid cells.
+// Sampling at ~1px keeps consecutive transformed points within one cell of
+// each other; any residual gap between successive cells is bridged with an
+// L-step so the spine is 8-connected with no holes. A +1 lateral dilation
+// (perpendicular to the local direction) widens the 1-cell spine to ~2 cells,
+// matching the previous visual weight.
+function rasterizeRiverPath(d: string): Array<{ gx: number; gz: number }> {
+  const pts = sampleSvgPath(d, 1);
+  // 1) spine cells, contiguous
+  const spine: Array<{ gx: number; gz: number }> = [];
+  const spineSeen = new Set<string>();
+  const pushCell = (gx: number, gz: number) => {
+    const k = `${gx},${gz}`;
+    if (spineSeen.has(k)) return;
+    spineSeen.add(k);
+    spine.push({ gx, gz });
+  };
+  let prev: { gx: number; gz: number } | null = null;
+  for (const p of pts) {
+    const { gx, gz } = svgToGrid(p.x, p.y);
+    if (prev && (gx !== prev.gx || gz !== prev.gz)) {
+      const dx = gx - prev.gx;
+      const dz = gz - prev.gz;
+      // Bridge multi-cell hops (rare) and diagonal hops with an L-step so the
+      // chain is always 8-connected.
+      if (Math.abs(dx) > 1 || Math.abs(dz) > 1) {
+        const steps = Math.max(Math.abs(dx), Math.abs(dz));
+        let px = prev.gx, pz = prev.gz;
+        for (let s = 1; s <= steps; s++) {
+          const nx = Math.round(prev.gx + (dx * s) / steps);
+          const nz = Math.round(prev.gz + (dz * s) / steps);
+          if (nx !== px && nz !== pz) pushCell(nx, pz); // L-step
+          pushCell(nx, nz);
+          px = nx; pz = nz;
+        }
+      } else if (dx !== 0 && dz !== 0) {
+        pushCell(gx, prev.gz); // L-step to keep it 4-connected-ish (no diagonal-only)
+        pushCell(gx, gz);
+      } else {
+        pushCell(gx, gz);
+      }
+    } else if (!prev) {
+      pushCell(gx, gz);
+    }
+    prev = { gx, gz };
+  }
+  // 2) dilate ~2 wide: for each spine cell add one neighbour perpendicular to
+  //    the local travel direction (falls back to +x when direction is unknown).
+  const out: Array<{ gx: number; gz: number }> = [];
+  const outSeen = new Set<string>();
+  const add = (gx: number, gz: number) => {
+    const k = `${gx},${gz}`;
+    if (outSeen.has(k)) return;
+    outSeen.add(k);
+    out.push({ gx, gz });
+  };
+  for (let i = 0; i < spine.length; i++) {
+    const c = spine[i];
+    add(c.gx, c.gz);
+    const nxt = spine[i + 1] ?? spine[i - 1] ?? c;
+    const ddx = nxt.gx - c.gx;
+    const ddz = nxt.gz - c.gz;
+    // perpendicular of (ddx,ddz) is (-ddz,ddx); pick the dominant axis so the
+    // widen is a single clean cell offset.
+    if (Math.abs(ddx) >= Math.abs(ddz)) {
+      add(c.gx, c.gz + 1); // travel ~horizontal → widen in z
+    } else {
+      add(c.gx + 1, c.gz); // travel ~vertical → widen in x
+    }
+  }
+  return out;
+}
+
+// Find the mouth (downstream/bay end) of a rasterized river: the cell whose
+// 4-neighbourhood touches bay water, clamped into the grid for sampling. If a
+// river doesn't reach the bay (fully inland after clipping), fall back to its
+// end cell nearest the grid interior. Returns valid in-grid coords.
+function computeMouth(
+  cells: Array<{ gx: number; gz: number }>,
+): { mouthGx: number; mouthGz: number } {
+  const clamp = (gx: number, gz: number) => ({
+    mouthGx: Math.max(0, Math.min(GRID_W - 1, gx)),
+    mouthGz: Math.max(0, Math.min(GRID_D - 1, gz)),
+  });
+  // Prefer a cell adjacent to bay water — that's the true outlet.
+  for (const c of cells) {
+    if (inBay(c.gx + 1, c.gz) || inBay(c.gx - 1, c.gz) ||
+        inBay(c.gx, c.gz + 1) || inBay(c.gx, c.gz - 1)) {
+      return clamp(c.gx, c.gz);
+    }
+  }
+  // Otherwise: cell nearest the grid centre (approx. bay direction).
+  const cx = GRID_W / 2, cz = GRID_D / 2;
+  let best = cells[0] ?? { gx: 0, gz: 0 };
+  let bestD = Infinity;
+  for (const c of cells) {
+    const dd = (c.gx - cx) ** 2 + (c.gz - cz) ** 2;
+    if (dd < bestD) { bestD = dd; best = c; }
+  }
+  return clamp(best.gx, best.gz);
+}
+
+// Rivers are only shown within the study-box footprint (the LAND_RING-extended
+// grid that OceanBasin3D's StudyBoxShell renders). Cells beyond it — chiefly the
+// Kesennuma-area rivers (paths 3 & 25), whose true SVG course lies north of the
+// Shizugawa bay grid — would otherwise render as channels floating past the
+// terrain edge. Margin mirrors landMask.ts's LAND_RING; kept as a local literal
+// to avoid a circular import (landMask imports RIVER_CELLS from this module).
+const RIVER_BOX_MARGIN = 16; // = LAND_RING in landMask.ts
+function inStudyBox(gx: number, gz: number): boolean {
+  return (
+    gx >= -RIVER_BOX_MARGIN && gx < GRID_W + RIVER_BOX_MARGIN &&
+    gz >= -RIVER_BOX_MARGIN && gz < GRID_D + RIVER_BOX_MARGIN
+  );
+}
+
+export const RIVER_CELLS: RiverCell[] = (() => {
   const cells: RiverCell[] = [];
-  const seen = new Set<string>();
-  const n = spine.length;
-  spine.forEach(({ gz, cx, w }, i) => {
-    const t     = n > 1 ? i / (n - 1) : 0;
-    const halfW = w !== undefined
-      ? w
-      : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
-    for (let dx = -halfW; dx <= halfW + extraSide; dx++) {
-      const gx = cx + dx;
-      // Allow negative gx — the renderer places those cells west of the grid
-      // origin, which is exactly where rivers like Oya (basin 24) live. The
-      // upper-bound check still guards against runaway eastern spread.
-      if (gx >= GRID_W) continue;
-      const key = `${gz},${gx}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      cells.push({ gx, gz, mouthGx, mouthGz, riverId });
-    }
-  });
-  return cells;
-}
-
-// buildRiverWest: west river — sweeps along gx (gx ≤ 0), spreads in gz.
-// gx values can be 0 or negative (west of the bay boundary).
-function buildRiverWest(
-  spine: Array<{ gx: number; cz: number; w?: number }>,
-  halfWDelta: number,
-  halfWUpstream: number,
-  mouthGx: number,
-  mouthGz: number,
-  riverId: string,
-  extraSide: number = 0, // asymmetric extension on the +z side. halfW=0,
-                         // extraSide=1 → 2-cell wide (dz ∈ {0,1}).
-): RiverCell[] {
-  const cells: RiverCell[] = [];
-  const seen = new Set<string>();
-  const n = spine.length;
-  spine.forEach(({ gx, cz, w }, i) => {
-    const t     = n > 1 ? i / (n - 1) : 0;
-    const halfW = w !== undefined
-      ? w
-      : Math.round(halfWDelta + (halfWUpstream - halfWDelta) * t);
-    for (let dz = -halfW; dz <= halfW + extraSide; dz++) {
-      const gz = cz + dz;
-      const key = `${gz},${gx}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      cells.push({ gx, gz, mouthGx, mouthGz, riverId });
-    }
-  });
-  return cells;
-}
-
-// ── Spine densifiers ─────────────────────────────────────────────────────────
-// Authored in 28×24 space; multiply coords ×4 and fill ALL intermediate steps
-// for the 112×96 grid.  Optional `w` (half-width override in 28×24 space) is
-// also ×4 so the physical width is preserved at STEP=0.5.
-
-// Walk a 4-connected line between two integer cells (a,b)→(c,d) along the
-// longer axis, stepping the shorter axis proportionally and inserting an
-// L-shaped intermediate whenever the next cell would otherwise be diagonal.
-// Width is interpolated linearly. The starting cell is OMITTED (caller pushes
-// it first); the ending cell IS included. Guarantees no diagonal-only jumps,
-// so a halfW=0 spine renders as a continuous 1-cell line with no gaps.
-function rasterLine(
-  ax: number, az: number, aw: number | undefined,
-  bx: number, bz: number, bw: number | undefined,
-  hasW: boolean,
-): Array<{ gx: number; gz: number; w?: number }> {
-  const out: Array<{ gx: number; gz: number; w?: number }> = [];
-  const dx = bx - ax, dz = bz - az;
-  const steps = Math.max(Math.abs(dx), Math.abs(dz));
-  if (steps === 0) return out;
-  let prevX = ax, prevZ = az;
-  for (let s = 1; s <= steps; s++) {
-    const t  = s / steps;
-    const nx = Math.round(ax + dx * t);
-    const nz = Math.round(az + dz * t);
-    const nw = hasW
-      ? Math.round((aw as number) + ((bw as number) - (aw as number)) * t)
-      : undefined;
-    // Insert an L-step if this move would be diagonal (both axes change).
-    if (nx !== prevX && nz !== prevZ) {
-      out.push({ gx: nx, gz: prevZ, ...(nw !== undefined ? { w: nw } : {}) });
-    }
-    out.push({ gx: nx, gz: nz, ...(nw !== undefined ? { w: nw } : {}) });
-    prevX = nx; prevZ = nz;
-  }
-  return out;
-}
-
-function densifyNS(
-  sparse: Array<{ gz: number; cx: number; w?: number }>,
-): Array<{ gz: number; cx: number; w?: number }> {
-  const SCALE = 4;
-  const out: Array<{ gz: number; cx: number; w?: number }> = [];
-  if (sparse.length === 0) return out;
-  // Push the first point.
-  const first = sparse[0];
-  out.push({
-    gz: first.gz * SCALE, cx: first.cx * SCALE,
-    ...(first.w !== undefined ? { w: first.w * SCALE } : {}),
-  });
-  for (let i = 0; i < sparse.length - 1; i++) {
-    const a = sparse[i], b = sparse[i + 1];
-    const hasW = a.w !== undefined && b.w !== undefined;
-    const seg = rasterLine(
-      a.cx * SCALE, a.gz * SCALE, hasW ? (a.w as number) * SCALE : undefined,
-      b.cx * SCALE, b.gz * SCALE, hasW ? (b.w as number) * SCALE : undefined,
-      hasW,
+  const seen = new Set<string>(); // `${gz},${gx}` — one river owns each cell
+  const ids = Object.keys(RIVER_PATHS).map(Number).sort((a, b) => a - b);
+  for (const id of ids) {
+    const riverId = PATH_RIVER_ID[id];
+    if (!riverId) continue; // unmapped path (none in current data)
+    const raster = rasterizeRiverPath(RIVER_PATHS[id]);
+    // Clip cells strictly inside the bay so rivers meet the coast without
+    // floating over water; keep everything on land / outside the grid.
+    const kept = raster.filter(
+      (c) => !inBay(c.gx, c.gz) && inStudyBox(c.gx, c.gz),
     );
-    for (const p of seg) out.push({ gz: p.gz, cx: p.gx, ...(p.w !== undefined ? { w: p.w } : {}) });
+    if (kept.length === 0) continue;
+    const { mouthGx, mouthGz } = computeMouth(kept);
+    for (const c of kept) {
+      const key = `${c.gz},${c.gx}`;
+      if (seen.has(key)) continue; // first river to claim a shared cell keeps it
+      seen.add(key);
+      cells.push({ gx: c.gx, gz: c.gz, mouthGx, mouthGz, riverId });
+    }
   }
-  return out;
-}
+  return cells;
+})();
 
-function densifyEW(
-  sparse: Array<{ gx: number; cz: number; w?: number }>,
-): Array<{ gx: number; cz: number; w?: number }> {
-  const SCALE = 4;
-  const out: Array<{ gx: number; cz: number; w?: number }> = [];
-  if (sparse.length === 0) return out;
-  const first = sparse[0];
-  out.push({
-    gx: first.gx * SCALE, cz: first.cz * SCALE,
-    ...(first.w !== undefined ? { w: first.w * SCALE } : {}),
-  });
-  for (let i = 0; i < sparse.length - 1; i++) {
-    const a = sparse[i], b = sparse[i + 1];
-    const hasW = a.w !== undefined && b.w !== undefined;
-    const seg = rasterLine(
-      a.gx * SCALE, a.cz * SCALE, hasW ? (a.w as number) * SCALE : undefined,
-      b.gx * SCALE, b.cz * SCALE, hasW ? (b.w as number) * SCALE : undefined,
-      hasW,
-    );
-    for (const p of seg) out.push({ gx: p.gx, cz: p.gz, ...(p.w !== undefined ? { w: p.w } : {}) });
-  }
-  return out;
-}
-
-// ── River spines (authored in 28×24 coords, densified to 112×96) ─────────────
-// Shapes traced from SVG river paths in svgPaths.ts using the affine mapping:
-//   cx  (28×24) ≈ 0.0535 × svgX + 5
-//   Δgz (28×24) ≈ −ΔsvgY / 13.3   (each 13.3 SVG pixels north = +1 gz step)
-//
-// River 24 (oya)      → NORTH:  mild left drift,  mostly straight
-// River  3 (karakuwa) → NE:     hugs right edge, slight sinusoid near boundary
-// River 13 (hachiman) → SE:     consistent left drift going south
-// River  7 (okawa)    → EAST:   gentle northward drift going east
-// River assignment summary (scaled bay: gx_112=3–107, gz_96=9–86):
-// Sub-basin 2/4/9  → WEST:  cz_28=13 (gz=52), gx gap-fill at 5 (gx=20)
-// Sub-basin 6      → WEST:  cz_28=6  (gz=24), gx gap-fill at 5 (gx=20)
-// Sub-basin 8      → NORTH: gz_28=20 (gz=80), cx_28=20 (gx=80), extends NW
-// Sub-basin 10     → SOUTH: gz_28=3  (gz=12), cx_28=6  (gx=24), runs SW
-
-// ── River spines — positions derived from SVG path start coords ──────────────
-// Bay polygon scaled 2.1565× uniformly from SVG-traced shape.
-// West wall at gz=52 is gx≈9 (gx_28=2.3); gap-fills start at gx_28=5 (gx=20).
-// North arm NW corner at gz=80 ≈ gx=79–80; sub8 enters there (cx_28=20, gx=80).
-
-// Shizugawa watershed — the SVG draws this as THREE separate river paths
-// chained head-to-tail. We expose each as its own labeled segment in 3D so
-// hovering reveals the actual sub-basin the cell belongs to.
-//
-// SVG river 2 (Shizugawa, basin 2) — mouth segment from bay edge inland.
-//   (224.314, 280.386) → (190.4, 267.478) ≈ (cx=2, gz=14) → (cx=-2, gz=16)
-const SPINE_RIVER2_MOUTH = densifyEW([
-  { gx:  5, cz: 13 }, // gap-fill inside bay (gx=20, gz=52)
-  { gx:  3, cz: 13 },
-  { gx:  1, cz: 14 },
-  { gx: -1, cz: 15 },
-  { gx: -3, cz: 16 }, // SVG endpoint — junction with river 5 (and fork river 16)
-]);
-
-// SVG river 5 (Urashiro, basin 5) — middle segment.
-//   (190.4, 267.478) → (131.936, 264.188) ≈ (cx=-2, gz=16) → (cx=-10, gz=16)
-const SPINE_RIVER5_URASHIRO = densifyEW([
-  { gx: -3, cz: 16 }, // junction with river 2 (and fork river 16)
-  { gx: -5, cz: 16 },
-  { gx: -7, cz: 16 },
-  { gx: -9, cz: 16 },
-  { gx:-11, cz: 16 }, // SVG endpoint — junction with river 1 (and fork river 15)
-]);
-
-// SVG river 1 (basin 1, "Shizugawa Upper") — headwater segment.
-//   (131.936, 264.188) → (89.6702, 254.57) ≈ (cx=-10, gz=16) → (cx=-17, gz=17)
-const SPINE_RIVER1_HEAD = densifyEW([
-  { gx:-11, cz: 16 }, // junction with river 5 (and fork river 15)
-  { gx:-13, cz: 16 },
-  { gx:-15, cz: 17 },
-  { gx:-17, cz: 17 }, // SVG endpoint (89.6702, 254.57)
-]);
-
-// Sub-basin 4 (Togura): mainstem traced from SVG river 4 path key waypoints:
-//   (234.184, 279.625) ≈ (cx=3,  gz=15) — mouth area
-//   (235.703, 269.501) ≈ (cx=4,  gz=15)
-//   (232.665, 261.909) ≈ (cx=3,  gz=16)
-//   (228.11,  250.52)  ≈ (cx=3,  gz=17)
-//   (223.048, 245.458) ≈ (cx=2,  gz=18)
-//   (219.505, 238.624) ≈ (cx=1,  gz=18)
-//   (212.925, 226.729) ≈ (cx=1,  gz=19)
-//   (204.066, 223.439) ≈ (cx=-1, gz=20)
-//   (187.109, 215.34)  ≈ (cx=-3, gz=20)
-//   (180.023, 206.229) ≈ (cx=-4, gz=21) ← endpoint, junction with rivers 7 & 24
-const SPINE_RIVER4_WEST = densifyEW([
-  { gx:  6, cz: 13 }, // gap-fill inside bay (gx=24, gz=52)
-  { gx:  4, cz: 14 },
-  { gx:  3, cz: 15 }, // SVG mouth (234.184, 279.625)
-  { gx:  3, cz: 16 },
-  { gx:  3, cz: 17 },
-  { gx:  2, cz: 18 },
-  { gx:  1, cz: 18 },
-  { gx:  1, cz: 19 },
-  { gx: -1, cz: 20 },
-  { gx: -3, cz: 20 },
-  { gx: -4, cz: 21 }, // SVG endpoint — junction with rivers 7 (Okawa) & 24 (Oya)
-]);
-
-// Sub-basin 24 (Oya): north tributary, traced from SVG river 24 waypoints.
-// Diverges off the Togura SVG endpoint (180.023, 206.229) ≈ (cx=-4, gz=21),
-// runs mostly straight north along cx=-4 to about (cx=-4, gz=24), then jogs
-// slightly NW through (cx=-5, gz=26) → (cx=-5, gz=28) and ends at the SVG
-// terminus (157.751, 108.561) ≈ (cx=-7, gz=30).
-//   (180.023, 197.266) ≈ (cx=-4, gz=22)
-//   (180.023, 176.933) ≈ (cx=-4, gz=24)
-//   (174.961, 158.749) ≈ (cx=-4, gz=25)
-//   (170.152, 152.473) ≈ (cx=-5, gz=26)
-//   (171.671, 137.563) ≈ (cx=-5, gz=28)
-//   (166.609, 128.636) ≈ (cx=-5, gz=28)
-//   (161.099, 111.052) ≈ (cx=-6, gz=29)
-//   (157.751, 108.561) ≈ (cx=-7, gz=30) ← endpoint
-const SPINE_RIVER24_NORTH = densifyNS([
-  { gz: 21, cx: -4 }, // junction with Togura (SVG 180.023, 206.229)
-  { gz: 22, cx: -4 },
-  { gz: 23, cx: -4 },
-  { gz: 24, cx: -4 },
-  { gz: 25, cx: -4 },
-  { gz: 26, cx: -5 },
-  { gz: 27, cx: -5 },
-  { gz: 28, cx: -5 },
-  { gz: 29, cx: -6 },
-  { gz: 30, cx: -7 }, // SVG endpoint (157.751, 108.561)
-]);
-
-// Sub-basin 13 (Hachiman/Mizujiri): SW fork off the river-6 (Iriya) terminus.
-// SVG path id="river 13" branches from the junction (187.616, 380.355)
-// ≈ (cx=-2, gz=6) and runs SW through key SVG waypoints down to the
-// endpoint (139.023, 440.085) ≈ (cx=-9, gz=0):
-//   (181.644, 386.825) ≈ (cx=-3, gz=5)
-//   (175.214, 394.348) ≈ (cx=-4, gz=5)
-//   (170.2,   408.693) ≈ (cx=-5, gz=3)
-//   (159.811, 417.057) ≈ (cx=-6, gz=2)
-//   (151.394, 423.917) ≈ (cx=-7, gz=2)
-//   (145.94,  429.334) ≈ (cx=-8, gz=1)
-//   (139.023, 440.085) ≈ (cx=-9, gz=0)  ← endpoint
-// NOTE: spine is authored in {gx, cz} (EW form) and rendered with
-// buildRiverWest because every cell sits west of the bay (gx ≤ 0). The
-// alternative buildRiver helper would clip negative-gx cells and the river
-// would not render in 3D at all.
-const SPINE_RIVER13_SW = densifyEW([
-  { gx: -2, cz:  6 }, // junction with river 6 (Iriya)
-  { gx: -3, cz:  5 },
-  { gx: -4, cz:  5 },
-  { gx: -5, cz:  4 },
-  { gx: -5, cz:  3 },
-  { gx: -6, cz:  2 },
-  { gx: -7, cz:  2 },
-  { gx: -8, cz:  1 },
-  { gx: -9, cz:  0 }, // SVG endpoint
-]);
-
-// (Sub-basin 3 spine removed — not connected to the ocean basin in the
-//  surveyed river network.)
-
-// ── Upstream tributary FORKS — each traced from a real SVG river path ───────
-// Every fork carries its own canonical mapview river ID (matches the slug in
-// the RIVERS registry below) so it labels independently on hover and can be
-// deep-linked from the Map view.
-//
-// The control points below are the start/key/end points of the corresponding
-// "river N" SVG path in svgPaths.ts, projected through the affine transform:
-//   cx_28 = ((svgX/465 - 0.4631) × 2.1565 + 0.03) × 28
-//   gz_28 = ((1 - svgY/586 - 0.2846) × 2.1565 + 0.0919) × 24
-// Mouth (mouthGx/mouthGz) for each fork is set to the parent mainstem's
-// bay-edge cell so values are sampled from the river system's true outlet.
-
-// SVG river 7 (Okawa, basin 7) — diverges off the Togura SVG endpoint at
-// (180.023, 206.229) ≈ (cx=-4, gz=21) and runs WNW along key SVG waypoints:
-//   (138.102, 192.818) ≈ (cx=-9, gz=22)
-//   (97.516,  167)     ≈ (cx=-14, gz=25)
-//   (67.904,  165.988) ≈ (cx=-18, gz=25)  ← endpoint
-const SPINE_RIVER7_OKAWA = densifyEW([
-  { gx: -4, cz: 21 }, // Togura junction (matches SVG 180.023, 206.229)
-  { gx: -6, cz: 21 },
-  { gx: -9, cz: 22 },
-  { gx:-12, cz: 23 },
-  { gx:-14, cz: 25 },
-  { gx:-16, cz: 25 },
-  { gx:-18, cz: 25 }, // SVG endpoint (67.904, 165.988)
-]);
-
-// SVG river 14 (Motoyoshi, basin 14) — west fork off the river-6 (Iriya)
-// terminus at SVG (187.616, 380.355) ≈ (cx=-2, gz=6). Path runs WNW through:
-//   (172.058, 382.122) ≈ (cx=-5, gz=6)
-//   (165.344, 379.596) ≈ (cx=-6, gz=6)
-//   (157.325, 381.541) ≈ (cx=-7, gz=6)
-//   (144.902, 389.989) ≈ (cx=-8, gz=5)
-//   (138.516, 392.251) ≈ (cx=-9, gz=5)  ← endpoint
-const SPINE_RIVER14_MOTOYOSHI = densifyEW([
-  { gx: -2, cz:  6 }, // junction with river 6 (Iriya)
-  { gx: -4, cz:  6 },
-  { gx: -5, cz:  6 },
-  { gx: -6, cz:  6 },
-  { gx: -7, cz:  6 },
-  { gx: -8, cz:  5 },
-  { gx: -9, cz:  5 }, // SVG endpoint
-]);
-
-// SVG river 17 (Sakura, basin 17) — short tributary off the Oura headwater at
-// SVG (255.443, 235.083) ≈ (cx=6, gz=18) → (260.505, 231.792) ≈ (cx=7, gz=19).
-const SPINE_RIVER17_SAKURA = densifyEW([
-  { gx:  6, cz: 18 }, // junction
-  { gx:  7, cz: 19 }, // SVG endpoint
-]);
-
-// SVG river 18 (Oritate, basin 18) — short NW tributary off the same Oura
-// headwater (255.444, 235.083) → (243.548, 223.188) ≈ (cx=5, gz=20).
-const SPINE_RIVER18_ORITATE = densifyEW([
-  { gx:  6, cz: 18 }, // junction
-  { gx:  5, cz: 19 },
-  { gx:  5, cz: 20 }, // SVG endpoint
-]);
-
-// SVG river 20 (Moriya, basin 20) — short tributary near Niida at
-// SVG (389.075, 196.613) ≈ (cx=23, gz=22) → (390.34, 188.261) ≈ (cx=24, gz=23).
-const SPINE_RIVER20_MORIYA = densifyNS([
-  { gz: 22, cx: 23 }, // junction near Niida (sub8) headwater
-  { gz: 23, cx: 24 }, // SVG endpoint
-]);
-
-// SVG river 15 (Onagawa, basin 15) — long SW fork off the Shizugawa mainstem
-// at the river-1/river-5 junction SVG (131.936, 264.188) ≈ (cx=-10, gz=16),
-// running SW down to (70.6885, 340.874) ≈ (cx=-18, gz=9).
-const SPINE_RIVER15_ONAGAWA = densifyEW([
-  { gx:-11, cz: 16 }, // junction with Shizugawa mainstem
-  { gx:-13, cz: 14 },
-  { gx:-15, cz: 12 },
-  { gx:-17, cz: 10 },
-  { gx:-18, cz:  9 }, // SVG endpoint (70.6885, 340.874)
-]);
-
-// SVG river 16 (Mitobe, basin 16) — short SSW fork off the Shizugawa mainstem
-// at the river-2/river-5 junction SVG (190.4, 267.478) ≈ (cx=-2, gz=16),
-// running SSW down to (164.585, 288.991) ≈ (cx=-6, gz=14).
-const SPINE_RIVER16_MITOBE = densifyEW([
-  { gx: -3, cz: 16 }, // junction with Shizugawa mainstem
-  { gx: -5, cz: 15 },
-  { gx: -6, cz: 14 }, // SVG endpoint (164.585, 288.991)
-]);
-
-// SVG river 12 (Shishiori, basin 12) — short southward stub forking off the
-// Karakuwa (River 10) mainstem. The SVG path zigzags between x≈256–259 and
-// y≈420–441, but every x value rounds to cx=6, so the trace is a vertical
-// 3-cell line. The northern end (cx=6, gz=2) is the SVG start point
-// (255.697, 419.584) — which is *also* River 10's SVG starting waypoint, so
-// the two rivers share this cell as their fork junction. Endpoint at
-// (258.734, 440.59) ≈ (cx=6, gz=0). The previous trace incorrectly extended
-// one cell north to gz=3, which is River 10's bay gap-fill cell, not part of
-// this river's SVG path.
-const SPINE_RIVER12_SHISHIORI = densifyNS([
-  { gz:  2, cx:  6 }, // SVG start (255.697, 419.584) — fork junction with River 10
-  { gz:  1, cx:  6 }, // SVG zigzag waypoints (256.962, 428.948)..(256.962, 437.047)
-  { gz:  0, cx:  6 }, // SVG endpoint (258.734, 440.59)
-]);
-
-// Sub-basin 6 (Iriya): SVG path id="river 6" runs east → west from
-//   (215.962, 381.874) ≈ (cx=1, gz=6)  ← bay-edge mouth
-// to
-//   (187.616, 380.355) ≈ (cx=-2, gz=6) ← junction with rivers 13 & 14
-// All waypoints sit on row gz=6, with the mouth one column inside the bay
-// west wall (cx=5 at gz=6) — i.e. the line is the inland river segment.
-const SPINE_RIVER6_WEST = densifyEW([
-  { gx:  5, cz: 6 }, // gap-fill at bay west wall (cx=5, gz=6)
-  { gx:  3, cz: 6 },
-  { gx:  1, cz: 6 }, // SVG mouth (215.962, 381.874)
-  { gx:  0, cz: 6 },
-  { gx: -2, cz: 6 }, // junction with rivers 13 & 14 (SVG 187.616, 380.355)
-]);
-
-// Sub-basin 8 (Karakuwa): north river — spine traced from SVG RIVER_PATHS[8].
-// Affine transform (SVG 465×586, scale 2.1565×):
-//   nx=(svgX/465−0.4631)×2.1565+0.03, nz=(1−svgY/586−0.2846)×2.1565+0.0919
-//   gx=nx×112, gz=nz×96; to 28-space: cx_28=gx÷4, gz_28=gz÷4.
-// Mouth (359.463, 216.606) → gx=80, gz=80 → gz_28=20, cx_28=20.
-// Path goes NW: (350,209)→gx=73,gz=83; (332,201)→gx=64,gz=86; (324,176)→gx=60,gz=94.
-const SPINE_RIVER8_NORTH = densifyNS([
-  { gz: 20, cx: 20 }, // gap-fill (gz=80, gx=80) — NW corner of north arm
-  { gz: 21, cx: 18 }, // (gz=84, gx=72)
-  { gz: 22, cx: 16 }, // (gz=88, gx=64)
-  { gz: 23, cx: 15 }, // source (gz=92, gx=60)
-]);
-
-// Sub-basin 9 (Oura): short west river traced from SVG river 9 path:
-//   (250.382, 276.083) → (252.913, 267.644) → (250.382, 260.067)
-//   → (249.309, 254.41) → (248.61, 244.893) → (255.444, 235.083)
-// In 28-coords: (cx=5, gz=15) → (cx=6, gz=16) → (cx=5, gz=16)
-//   → (cx=5, gz=17) → (cx=5, gz=18) → (cx=6, gz=18) [endpoint = junction
-// where SVG rivers 17 (Sakura) and 18 (Oritate) BOTH branch off].
-const SPINE_RIVER9_WEST = densifyEW([
-  { gx:  6, cz: 13 }, // gap-fill (gx=24, gz=52) inside bay
-  { gx:  5, cz: 14 },
-  { gx:  5, cz: 15 }, // SVG mouth (250.382, 276.083)
-  { gx:  5, cz: 16 },
-  { gx:  5, cz: 17 },
-  { gx:  6, cz: 18 }, // SVG endpoint — junction with rivers 17 & 18
-]);
-
-// Sub-basin 10 (Hachiman): south river — spine traced from SVG RIVER_PATHS[10].
-// Affine transform (SVG 465×586, scale 2.1565×) applied to key waypoints:
-//   Mouth (255.697, 419.584) → gx=24, gz=9 (south bay edge).
-//   Gap-fill at gz_28=3 (gz=12, gx=24) — first cell safely inside bay.
-//   Path runs SW: (251,426)→gx=22,gz=6; (237,441)→gx=15,gz=1;
-//   (228,446)→gx=10,gz=-1; (212,461)→gx=2,gz=-6; (203,474)→gx=-3,gz=-11;
-//   source (170,539)→gx=-20,gz=-34. Cells with gx<0 are clipped by buildRiver.
-const SPINE_RIVER10_SOUTH = densifyNS([
-  { gz:  3, cx:  6 }, // gap-fill (gz=12, gx=24) — inside bay south
-  { gz:  2, cx:  6 }, // (gz=8, gx=24) — south bay boundary
-  { gz:  1, cx:  5 }, // (gz=4, gx=19)
-  { gz:  0, cx:  3 }, // (gz=0, gx=12)
-  { gz: -1, cx:  1 }, // (gz=-4, gx=5)
-  { gz: -2, cx:  0 }, // (gz=-8, gx=1)
-  { gz: -3, cx: -1 }, // (gz=-12, gx=-4)
-  { gz: -4, cx: -1 }, // (gz=-16, gx=-4) — eastern jog matches SVG
-  { gz: -5, cx: -2 }, // (gz=-20, gx=-8)
-  { gz: -6, cx: -3 }, // (gz=-24, gx=-12)
-  { gz: -7, cx: -4 }, // (gz=-28, gx=-16)
-  { gz: -8, cx: -4 }, // (gz=-32, gx=-16) — source area
-]);
-
-export const RIVER_CELLS: RiverCell[] = [
-  // ── Mainstems ────────────────────────────────────────────────────────────
-  // Each riverId is a canonical slug from the mapview RIVERS registry below.
-  // Mouth coords (mouthGx, mouthGz) are valid bay cells used for value sampling.
-  // Shizugawa watershed — three SVG-distinct segments chained head-to-tail
-  // Width = 2 cells (halfWDelta=0 + extraSide=1 → dx/dz ∈ {0,1}).
-  // Symmetric `halfWDelta` only produces odd widths (1,3,5,…); the
-  // `extraSide` arg adds an asymmetric +1 offset to make even widths possible.
-  // For 1-cell hairline (option 1), drop extraSide back to 0.
-  // For 3-cell chunky (option 2), set halfWDelta=1, extraSide=0.
-  // Slug on each spine matches the map's MODEL_RIVER lookup so that the river
-  // labelled "X" in 3D is drawn at the same geographic position as basin X on
-  // the SVG mapview. Only the slug arg is touched — every spine's geometry,
-  // mouth coords and width parameters are unchanged.
-  ...buildRiverWest(SPINE_RIVER2_MOUTH,    0, 0, 32, 48, "oura", 1),          // basin 2  (river 2 SVG)
-  ...buildRiverWest(SPINE_RIVER5_URASHIRO, 0, 0, 32, 48, "urashiro", 1),      // basin 5  (river 5 SVG)
-  ...buildRiverWest(SPINE_RIVER1_HEAD,     0, 0, 32, 48, "shizugawa", 1),     // basin 1  (river 1 SVG)
-  ...buildRiverWest(SPINE_RIVER4_WEST, 0, 0, 32, 48,  "togura", 1),    // basin 4
-  ...buildRiverWest(SPINE_RIVER9_WEST, 0, 0, 32, 50,  "karakuwa2", 1), // basin 9
-  ...buildRiverWest(SPINE_RIVER6_WEST, 0, 0, 32, 22,  "iriya", 1),     // basin 6
-  ...buildRiver(SPINE_RIVER8_NORTH,    0, 0, 80, 80,  "niida", 1),     // basin 8
-  ...buildRiver(SPINE_RIVER10_SOUTH,   0, 0, 24, 12,  "tomaya", 1),    // basin 10
-  ...buildRiver(SPINE_RIVER24_NORTH,   0, 0, 32, 48,  "oya", 1),       // basin 24 (all-negative cx — buildRiver no longer clips them)
-  ...buildRiverWest(SPINE_RIVER13_SW,  0, 0, 24, 12,  "hachiman", 1),  // basin 13
-
-  // ── SVG-traced tributary forks ───────────────────────────────────────────
-  // Each fork has its own mapview riverId; its mouth is the parent
-  // mainstem's bay-edge cell so values are sampled from the true outlet.
-  ...buildRiverWest(SPINE_RIVER7_OKAWA,        0, 0, 32, 48, "okawa", 1),     // basin 7,  off togura
-  ...buildRiverWest(SPINE_RIVER14_MOTOYOSHI,   0, 0, 24, 12, "motoyoshi", 1), // basin 14, off hachiman
-  ...buildRiverWest(SPINE_RIVER17_SAKURA,      0, 0, 32, 50, "oritate", 1),   // basin 17, off oura
-  ...buildRiverWest(SPINE_RIVER18_ORITATE,     0, 0, 32, 50, "kitakami", 1),  // basin 18, off oura
-  ...buildRiver(SPINE_RIVER20_MORIYA,          0, 0, 80, 80, "moriya", 1),    // basin 20, off niida
-  ...buildRiver(SPINE_RIVER12_SHISHIORI,       0, 0, 24, 12, "onagawa", 1),   // basin 12, off karakuwa2
-  ...buildRiverWest(SPINE_RIVER15_ONAGAWA,     0, 0, 32, 48, "mitobe", 1),    // basin 15, off shizugawa
-  ...buildRiverWest(SPINE_RIVER16_MITOBE,      0, 0, 32, 48, "sakura", 1),    // basin 16, off shizugawa
-]
-  // Drop any river cell that falls inside the bay polygon. Without this,
-  // mouth gap-fill points + lateral half-widths spill several cells past the
-  // coastline (e.g. iriya, shizugawa, togura, oura), producing river voxels
-  // floating on top of ocean voxels. After clipping, each river's outermost
-  // remaining cell sits on the land tile directly adjacent to the bay edge,
-  // so the visual "river meets bay" continuity is preserved.
-  .filter(c => !(c.gz >= 0 && c.gz < GRID_D && c.gx >= 0 && c.gx < GRID_W && BAY_MASK[c.gz][c.gx]));
-
-// River metadata for hover labels in the 3D view.
-// Keys MUST match the riverId slugs assigned in RIVER_CELLS above and the
-// canonical RIVERS registry so the 3D view labels each river the same way the
-// Map view does.
+// River metadata for hover labels in the 3D view. Rebuilt to cover EVERY id in
+// RIVER_PATHS (via PATH_RIVER_ID), so previously-missing rivers — karakuwa
+// (path 3), shishiori (11), kamaishi (25) — now label correctly. Keys match the
+// riverId slugs assigned above and the canonical RIVERS registry so the 3D view
+// labels each river the same way the Map view does.
 export const RIVER_META: Record<string, { name: string; subBasin: string }> = {
-  // Mainstems
-  shizugawa: { name: "Shizugawa",       subBasin: "Sub-basin 1"  },
-  oura:      { name: "Oura",            subBasin: "Sub-basin 2"  },
-  togura:    { name: "Togura",          subBasin: "Sub-basin 4"  },
-  urashiro:  { name: "Urashiro",        subBasin: "Sub-basin 5"  },
-  iriya:     { name: "Iriya",           subBasin: "Sub-basin 6"  },
-  niida:     { name: "Niida",           subBasin: "Sub-basin 8"  },
-  karakuwa2: { name: "Karakuwa East",   subBasin: "Sub-basin 9"  },
-  tomaya:    { name: "Tomaya",          subBasin: "Sub-basin 10" },
-  hachiman:  { name: "Hachiman",        subBasin: "Sub-basin 13" },
-  oya:       { name: "Oya",             subBasin: "Sub-basin 24" },
-  // SVG-traced tributary forks
-  okawa:     { name: "Okawa",           subBasin: "Sub-basin 7"  },
-  onagawa:   { name: "Onagawa",         subBasin: "Sub-basin 12" },
-  motoyoshi: { name: "Motoyoshi",       subBasin: "Sub-basin 14" },
-  mitobe:    { name: "Mitobe",          subBasin: "Sub-basin 15" },
-  sakura:    { name: "Sakura",          subBasin: "Sub-basin 16" },
-  oritate:   { name: "Oritate",         subBasin: "Sub-basin 17" },
-  kitakami:  { name: "Kitakami",        subBasin: "Sub-basin 18" },
-  moriya:    { name: "Moriya",          subBasin: "Sub-basin 20" },
+  shizugawa: { name: "Shizugawa",     subBasin: "Sub-basin 1"  },
+  oura:      { name: "Oura",          subBasin: "Sub-basin 2"  },
+  karakuwa:  { name: "Karakuwa",      subBasin: "Sub-basin 3"  },
+  togura:    { name: "Togura",        subBasin: "Sub-basin 4"  },
+  urashiro:  { name: "Urashiro",      subBasin: "Sub-basin 5"  },
+  iriya:     { name: "Iriya",         subBasin: "Sub-basin 6"  },
+  okawa:     { name: "Okawa",         subBasin: "Sub-basin 7"  },
+  niida:     { name: "Niida",         subBasin: "Sub-basin 8"  },
+  karakuwa2: { name: "Karakuwa East", subBasin: "Sub-basin 9"  },
+  tomaya:    { name: "Tomaya",        subBasin: "Sub-basin 10" },
+  shishiori: { name: "Shishiori",     subBasin: "Sub-basin 11" },
+  onagawa:   { name: "Onagawa",       subBasin: "Sub-basin 12" },
+  hachiman:  { name: "Hachiman",      subBasin: "Sub-basin 13" },
+  motoyoshi: { name: "Motoyoshi",     subBasin: "Sub-basin 14" },
+  mitobe:    { name: "Mitobe",        subBasin: "Sub-basin 15" },
+  sakura:    { name: "Sakura",        subBasin: "Sub-basin 16" },
+  oritate:   { name: "Oritate",       subBasin: "Sub-basin 17" },
+  kitakami:  { name: "Kitakami",      subBasin: "Sub-basin 18" },
+  moriya:    { name: "Moriya",        subBasin: "Sub-basin 20" },
+  oya:       { name: "Oya",           subBasin: "Sub-basin 24" },
+  kamaishi:  { name: "Kamaishi",      subBasin: "Sub-basin 25" },
 };
 
 // ── Sub-basin metadata + steady-state indicator values ──────────────────────
