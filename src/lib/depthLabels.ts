@@ -1,10 +1,9 @@
-import { DEPTH_REAL_M } from "@/lib/simulatedData";
+import { DEPTH_REAL_M, DEPTH_REAL_BOT } from "@/lib/simulatedData";
 
-// Approx bottom depth (m) of each of the 8 water-column layers, paired with
-// DEPTH_REAL_M (their tops) to render range labels like "0–2 m", "2–5 m".
-const DEPTH_REAL_BOT = [2, 5, 10, 18, 30, 47, 69, 90];
-
-/** Human label for a depth-layer index: "0–2 m", "2–5 m", etc. */
+// Range labels like "0–2 m", "2–5 m" from each layer's real top/bottom depths.
+// Both arrays are generated in simulatedData at the active DEPTH_SUBDIV, so this
+// stays correct at any layer count. Rounded because subdivided layers land on
+// fractional metres (e.g. 3.5 m).
 export function depthLabel(d: number): string {
-  return `${DEPTH_REAL_M[d]}–${DEPTH_REAL_BOT[d]} m`;
+  return `${Math.round(DEPTH_REAL_M[d])}–${Math.round(DEPTH_REAL_BOT[d])} m`;
 }

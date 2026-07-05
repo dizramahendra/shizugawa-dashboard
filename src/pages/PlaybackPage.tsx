@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
 import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
-import { DashboardState, TOTAL_WEEKS, OCEAN_VARIABLE_OPTIONS as VARIABLE_OPTIONS, valueToVoxelMassKg as valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, OCEAN_VARIABLE_OPTIONS as VARIABLE_OPTIONS, valueToVoxelMassKg as valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, DEPTH_LAYERS, DEPTH_REAL_M } from "@/lib/simulatedData";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";
@@ -214,7 +214,7 @@ export default function PlaybackPage() {
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceDirIsX = sliceDir === "east" || sliceDir === "west";
-  const sliceMax = sliceTool === "slice-h" ? 7
+  const sliceMax = sliceTool === "slice-h" ? DEPTH_LAYERS - 1
     : sliceDirIsX ? GRID_W - 1
     : GRID_D - 1;
 
@@ -787,7 +787,7 @@ export default function PlaybackPage() {
                     />
                     <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
                       {sliceTool === "slice-h"
-                        ? `Layer ${sliceLevel + 1} of 8 · ~${[0, 5, 15, 30, 50, 75, 100, 125][sliceLevel]}m depth`
+                        ? `Layer ${sliceLevel + 1} of ${DEPTH_LAYERS} · ~${Math.round(DEPTH_REAL_M[sliceLevel])}m depth`
                         : sliceDirIsX
                           ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
                           : `Row ${sliceLevel + 1} of ${GRID_D} · ${(38.582 + (sliceLevel / (GRID_D - 1)) * 0.069).toFixed(4)}°N`}
