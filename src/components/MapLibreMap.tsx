@@ -37,7 +37,9 @@ const UNIFORM_GREY_TABLE = (() => {
   }).join(" ");
 })();
 
-const MODEL_RIVER: Record<number, string> = {
+// Exported so the real-map viewport (MapViewport.tsx) reuses the exact same
+// river mapping + colour scale as this SVG fallback.
+export const MODEL_RIVER: Record<number, string> = {
   1: "shizugawa", 2: "oura",      3: "karakuwa", 4: "togura",   5: "urashiro",
   6: "iriya",     7: "okawa",     8: "niida",    9: "karakuwa2", 10: "tomaya",
   11: "shishiori", 12: "onagawa", 13: "hachiman", 14: "motoyoshi", 15: "mitobe",
@@ -46,7 +48,7 @@ const MODEL_RIVER: Record<number, string> = {
 };
 
 
-const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
+export const MAIN_STEMS = new Set([4, 7, 10, 13, 3]);
 
 // Feature flag — hides the Soil layer UI + rendering. All soil code below is
 // preserved intentionally so we can flip this back to `true` later without
@@ -101,7 +103,7 @@ function soilHash(x: number, y: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
-const COLOR_STOPS: Record<string, string[]> = {
+export const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   phosphorus: ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
@@ -114,7 +116,7 @@ function quantizeColor(stops: string[], t: number): string {
   return stops[idx];
 }
 // keep alias so existing calls work without rename
-const interpolateColor = quantizeColor;
+export const interpolateColor = quantizeColor;
 
 // ── River channel mask (sinusoidal meander shape per river) ──────────────────
 
@@ -137,7 +139,7 @@ function buildChannelMask(riverId: string): boolean[][] {
   return mask;
 }
 
-const CHANNEL_MASKS: Record<string, boolean[][]> = {
+export const CHANNEL_MASKS: Record<string, boolean[][]> = {
   shizugawa: buildChannelMask("shizugawa"),
   kitakami:  buildChannelMask("kitakami"),
   hachiman:  buildChannelMask("hachiman"),

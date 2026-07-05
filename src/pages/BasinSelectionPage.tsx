@@ -3,7 +3,7 @@ import { Search, Map, Ruler, MapPin, Maximize2, GitFork, Waves } from "lucide-re
 import { PropRow, DeselectButton, parseRiverSub } from "@/components/IdentificationCard";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import TopNav from "@/components/TopNav";
-import MapLibreMap from "@/components/MapLibreMap";
+import MapViewport from "@/components/MapViewport";
 import WeekRangePicker from "@/components/WeekRangePicker";
 import PlaybackControls from "@/components/PlaybackControls";
 import { usePlayback } from "@/context/PlaybackContext";
@@ -467,7 +467,7 @@ export default function BasinSelectionPage() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-hidden relative">
-            <MapLibreMap
+            <MapViewport
               week={week}
               variableId={selectedVariable}
               selectedRiver={selectedRiver}
