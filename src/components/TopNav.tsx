@@ -23,7 +23,8 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
   const isRiver  = location.pathname.startsWith("/river");
   const isCarbon = location.pathname.startsWith("/carbon");
   const isSubBasin = location.pathname.startsWith("/sub-basin");
-  const isMap    = !isOcean && !isCS && !isRiver && !isCarbon && !isSubBasin;
+  const isBay3D  = location.pathname.startsWith("/ocean-3d");
+  const isMap    = !isOcean && !isCS && !isRiver && !isCarbon && !isSubBasin && !isBay3D;
 
   /*
    * Cross-section tab href:
@@ -217,6 +218,15 @@ export default function TopNav({ stateLabel, watershedName, onMapNavRequest }: T
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/60 inline-block" />
             Ocean Playback (3D)
+          </span>
+        </NavLink>
+        <NavLink
+          to="/ocean-3d"
+          className={`tab-item ${isBay3D ? "tab-item-active" : ""}`}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />
+            Bay 3D
           </span>
         </NavLink>
         {/* HIDDEN – uncomment to restore Carbon Sequestration tab

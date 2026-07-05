@@ -10,6 +10,7 @@ import CarbonPage from "@/pages/CarbonPage";
 import SubBasinPage from "@/pages/SubBasinPage";
 import RealMapViewport from "@/components/RealMapViewport"; // SPIKE — real basemap prototype
 import Terrain3DViewport from "@/components/Terrain3DViewport"; // SPIKE — voxels on real 3D terrain
+import OceanTerrain3D from "@/components/OceanTerrain3D"; // HERO — animated voxel ocean on real 3D terrain
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/carbon" element={<CarbonPage />} />
             <Route path="/map-real" element={<RealMapViewport />} /> {/* SPIKE — real basemap prototype */}
             <Route path="/terrain-3d" element={<Terrain3DViewport />} /> {/* SPIKE — voxels on real 3D terrain */}
+            <Route path="/ocean-3d" element={<OceanTerrain3D />} /> {/* HERO — animated voxel ocean on real 3D terrain */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
