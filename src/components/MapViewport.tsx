@@ -103,6 +103,7 @@ const LYR = {
   basinFill: "vp-basins-fill",
   basinLine: "vp-basins-line",
   riverHalo: "vp-rivers-halo",
+  riverCasing: "vp-rivers-casing",
   river: "vp-rivers",
   riverHit: "vp-rivers-hit",
   labels: "vp-basin-labels",
@@ -509,6 +510,21 @@ export default function MapViewport({
         },
       });
 
+      // River casing — a dark outline drawn UNDER the coloured line so every
+      // river reads against the busy terrain basemap, even at pale mid-ramp
+      // values that would otherwise wash out against the beige/green land.
+      map.addLayer({
+        id: LYR.riverCasing,
+        type: "line",
+        source: SRC.rivers,
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": "#0f172a",
+          "line-width": ["+", riverWidthExpr([]), 2.6] as any,
+          "line-opacity": 0.8,
+        },
+      });
+
       // Rivers — data-coloured lines
       map.addLayer({
         id: LYR.river,
@@ -684,6 +700,13 @@ export default function MapViewport({
       LYR.river,
       "line-opacity",
       anyFocus ? (["case", inIdsExpr(focusIds), 1, 0.15] as any) : 1,
+    );
+    // Casing tracks the river width and its focus dimming so it stays a tight outline.
+    map.setPaintProperty(LYR.riverCasing, "line-width", ["+", riverWidthExpr(activeIds), 2.6] as any);
+    map.setPaintProperty(
+      LYR.riverCasing,
+      "line-opacity",
+      anyFocus ? (["case", inIdsExpr(focusIds), 0.8, 0.12] as any) : 0.8,
     );
 
     // Halo: selected / hovered / corridor reaches only
