@@ -125,6 +125,11 @@ export default function PlaybackPage() {
   const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
   // Depth shading (3D lighting): dimensional by default; ?shade=0 for the flat look.
   const [depthShading, setDepthShading] = useState(searchParams.get("shade") !== "0");
+  // Render mode (SPIKE): blocky voxels (default) vs smooth plume isosurface.
+  // Persisted via ?render=surface, mirroring the shade param pattern.
+  const [renderMode, setRenderMode] = useState<"voxels" | "surface">(
+    searchParams.get("render") === "surface" ? "surface" : "voxels"
+  );
   const _initView = searchParams.get("view");
   // Accept both short ("n") and long ("north") forms for backwards-compat
   // with any older deep links, then normalise to the short code that the
@@ -208,9 +213,13 @@ export default function PlaybackPage() {
       if (!depthShading) next.set("shade", "0");
       else next.delete("shade");
 
+      // Render mode — only encode when surface (voxels is the default)
+      if (renderMode === "surface") next.set("render", "surface");
+      else next.delete("render");
+
       return next;
     }, { replace: true });
-  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceCutType, showCutPlane, sliceLevel, selectedPoint, showUI, cameraPreset, depthShading]);
+  }, [selectedVariable, sliceTool, inspectTool, sliceDir, sliceCutType, showCutPlane, sliceLevel, selectedPoint, showUI, cameraPreset, depthShading, renderMode]);
 
   // ── Slice helpers ────────────────────────────────────────────────────────────
   const sliceDirIsX = sliceDir === "east" || sliceDir === "west";
@@ -439,6 +448,26 @@ export default function PlaybackPage() {
           Shading
         </button>
 
+        {/* Render mode toggle (SPIKE) — blocky voxel grid vs smooth plume isosurface */}
+        <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+          {(["voxels", "surface"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setRenderMode(mode)}
+              title={mode === "voxels"
+                ? "Blocky voxel grid (full inspect + slice interactivity)"
+                : "Smooth plume isosurface (experimental preview)"}
+              className={`px-2 py-1 text-[11px] font-medium rounded-sm transition-colors ${
+                renderMode === mode
+                  ? "bg-white text-foreground shadow-sm font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {mode === "voxels" ? "Voxels" : "Surface"}
+            </button>
+          ))}
+        </div>
+
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {isPlaying ? (
             <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /><span className="text-green-600">Playing</span></>
@@ -473,6 +502,7 @@ export default function PlaybackPage() {
               speed={speed}
               isPlaying={isPlaying}
               depthShading={depthShading}
+              renderMode={renderMode}
             />
 
             {/* Live coordinate HUD — top-right corner */}

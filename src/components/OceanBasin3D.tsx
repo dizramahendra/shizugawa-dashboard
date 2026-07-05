@@ -2,6 +2,7 @@ import { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
+import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import {
   BAY_MASK,
   RIVER_CELLS,
@@ -532,6 +533,195 @@ function VoxelGridInstanced({
         </Html>
       )}
     </>
+  );
+}
+
+// ── Smooth plume isosurface (SPIKE) ───────────────────────────────────────────
+// Alternative "surface" render mode: a marching-cubes isosurface of the current
+// week's nutrient field, showing the high-concentration plume as one smooth
+// CFD-style shell instead of the blocky voxel grid. Purely additive — the voxel
+// path above is untouched and remains the default.
+//
+// three's MarchingCubes works on a cubic lattice of MC_RES³ samples spanning
+// local space [-1,1]³; the bay domain (112×96×8 cells) is embedded in a
+// sub-box of that lattice and the resulting mesh is scaled non-uniformly so it
+// lands exactly on the voxel grid's world bounds.
+const MC_RES   = 64;  // cubic lattice resolution (MarchingCubes requires a cube)
+const MC_START = 2;   // first lattice index used — keeps a zero margin all round
+                      // so the isosurface always closes at the domain boundary
+const MC_NX = 58;     // lattice cells spanning GRID_W (west→east)
+const MC_NZ = 50;     // lattice cells spanning GRID_D (south→north)
+const MC_NY = 12;     // lattice cells spanning the water column vertically
+// Fixed isovalue — cells above this read as "plume". The simulated field is
+// ambient ~0.05 in winter and peaks ~1.0 near river mouths at the June bloom,
+// so 0.35 keeps the plume invisible off-season and grows it through spring —
+// the playback reads as the bloom swelling and collapsing.
+const PLUME_ISO = 0.35;
+const MC_MAX_POLYS = 80000;  // triangle budget for the marching-cubes buffers
+
+// world = scale · local + position, where local(i) = (i − MC_RES/2)/(MC_RES/2).
+// Solved so lattice index MC_START ↦ the domain's min world coord and
+// MC_START+N ↦ its max — i.e. the plume sits exactly inside the voxel bounds.
+const MC_HALF = MC_RES / 2;
+const PLUME_SX = (GRID_W * STEP) * MC_HALF / MC_NX;
+const PLUME_SY = DEPTH_TOTAL_H   * MC_HALF / MC_NY;
+const PLUME_SZ = (GRID_D * STEP) * MC_HALF / MC_NZ;
+const PLUME_PX = offsetX                     - PLUME_SX * (MC_START - MC_HALF) / MC_HALF;
+const PLUME_PY = (Y_SURFACE - DEPTH_TOTAL_H) - PLUME_SY * (MC_START - MC_HALF) / MC_HALF;
+const PLUME_PZ = offsetZ                     - PLUME_SZ * (MC_START - MC_HALF) / MC_HALF;
+
+// Maps a depth below the water surface (scene units, 0 = surface) to a
+// continuous depth-layer coordinate where integer d lands on the centre of
+// layer d — so the non-uniform layer heights sample correctly onto the
+// uniform marching lattice.
+function depthToLayerCoord(depthScene: number): number {
+  if (depthScene <= DEPTH_TOPS[0] + DEPTH_HEIGHTS[0] / 2) return 0;
+  for (let d = 1; d < DEPTH_LAYERS; d++) {
+    const c = DEPTH_TOPS[d] + DEPTH_HEIGHTS[d] / 2;
+    if (depthScene <= c) {
+      const cPrev = DEPTH_TOPS[d - 1] + DEPTH_HEIGHTS[d - 1] / 2;
+      return (d - 1) + (depthScene - cPrev) / (c - cPrev);
+    }
+  }
+  return DEPTH_LAYERS - 1;
+}
+
+function PlumeSurface({
+  week, colorScale, sliceMode, sliceLevel, sliceDir, sliceCutType,
+}: {
+  week: number;
+  colorScale: string;
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
+}) {
+  const invalidate = useThree((s) => s.invalidate);
+  const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
+  const data = useMemo(() => generateWeekData(week), [week]);
+
+  // One MarchingCubes mesh for the component's lifetime; its field is refilled
+  // and re-polygonised in place on every week / slice / colour-scale change.
+  const mc = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.35,
+      metalness: 0.05,
+    });
+    const m = new MarchingCubes(MC_RES, mat, false, true, MC_MAX_POLYS);
+    m.isolation = PLUME_ISO;
+    m.frustumCulled = false;
+    return m;
+  }, []);
+
+  useEffect(() => () => {
+    mc.geometry.dispose();
+    (mc.material as THREE.Material).dispose();
+  }, [mc]);
+
+  useEffect(() => {
+    // Deepest visible layer per cell — mirrors the voxel grid's bathymetry mask.
+    const maxLayer = new Int8Array(GRID_W * GRID_D);
+    for (let gz = 0; gz < GRID_D; gz++)
+      for (let gx = 0; gx < GRID_W; gx++)
+        maxLayer[gz * GRID_W + gx] = deepestVisibleLayer(getBathymetryDepthM(gx, gz));
+
+    // Value at an integer corner of the DATA grid: 0 outside the bay, below the
+    // seabed, or on the removed side of the active slice — so the isosurface
+    // closes along the coastline, the seabed and any cut plane.
+    const corner = (gx: number, gz: number, d: number): number => {
+      if (gx < 0 || gx >= GRID_W || gz < 0 || gz >= GRID_D || d < 0 || d >= DEPTH_LAYERS) return 0;
+      if (!BAY_MASK[gz]?.[gx]) return 0;
+      if (d > maxLayer[gz * GRID_W + gx]) return 0;
+      if (sliceMode === "slice-h" && d < sliceLevel) return 0;
+      if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) return 0;
+      return data[gz]?.[gx]?.[d] ?? 0;
+    };
+
+    // Trilinear sample of the masked data field at continuous grid coordinates.
+    const sample = (gxf: number, gzf: number, df: number): number => {
+      const x0 = Math.floor(gxf), z0 = Math.floor(gzf), d0 = Math.floor(df);
+      const tx = gxf - x0, tz = gzf - z0, td = df - d0;
+      let v = 0;
+      for (let i = 0; i <= 1; i++)
+        for (let j = 0; j <= 1; j++)
+          for (let k = 0; k <= 1; k++) {
+            const w = (i ? tx : 1 - tx) * (j ? tz : 1 - tz) * (k ? td : 1 - td);
+            if (w > 0) v += w * corner(x0 + i, z0 + j, d0 + k);
+          }
+      return v;
+    };
+
+    // Skin colour: an isosurface is a level set — every point on it sits at
+    // PLUME_ISO, so colouring by the local value would paint the whole shell a
+    // single colour. Colour by the column's peak concentration instead, so the
+    // plume core (river mouths) reads red and the fringes read amber, matching
+    // the voxel legend's ramp.
+    const colMax = new Float32Array(GRID_W * GRID_D);
+    for (let gz = 0; gz < GRID_D; gz++)
+      for (let gx = 0; gx < GRID_W; gx++) {
+        let m = 0;
+        for (let d = 0; d < DEPTH_LAYERS; d++) m = Math.max(m, corner(gx, gz, d));
+        colMax[gz * GRID_W + gx] = m;
+      }
+    const sampleColMax = (gxf: number, gzf: number): number => {
+      const x0 = Math.floor(gxf), z0 = Math.floor(gzf);
+      const tx = gxf - x0, tz = gzf - z0;
+      let v = 0;
+      for (let i = 0; i <= 1; i++)
+        for (let j = 0; j <= 1; j++) {
+          const gx = x0 + i, gz = z0 + j;
+          if (gx < 0 || gx >= GRID_W || gz < 0 || gz >= GRID_D) continue;
+          v += (i ? tx : 1 - tx) * (j ? tz : 1 - tz) * colMax[gz * GRID_W + gx];
+        }
+      return v;
+    };
+
+    mc.reset(); // zero field + palette
+    const { field, palette } = mc;
+    // Iterate one lattice point beyond the domain box on every axis: the ring
+    // points keep field = 0 (so the shell always closes) but still get a
+    // palette colour — MC vertex colours interpolate between the two corners of
+    // each crossed edge, and an unfilled (black) outside corner would smear
+    // dark edges across every boundary face of the plume.
+    for (let iy = MC_START - 1; iy <= MC_START + MC_NY + 1; iy++) {
+      // iy grows upward in world space; iy = MC_START+MC_NY is the water surface
+      const fy = Math.min(1, Math.max(0, (iy - MC_START) / MC_NY));
+      const df = depthToLayerCoord(DEPTH_TOTAL_H * (1 - fy));
+      for (let iz = MC_START - 1; iz <= MC_START + MC_NZ + 1; iz++) {
+        const gzfRaw = ((iz - MC_START) / MC_NZ) * GRID_D - 0.5;
+        const gzf = Math.min(GRID_D - 1, Math.max(0, gzfRaw));
+        for (let ix = MC_START - 1; ix <= MC_START + MC_NX + 1; ix++) {
+          const gxfRaw = ((ix - MC_START) / MC_NX) * GRID_W - 0.5;
+          const gxf = Math.min(GRID_W - 1, Math.max(0, gxfRaw));
+          const idx = iz * MC_RES * MC_RES + iy * MC_RES + ix;
+
+          const inBox =
+            ix >= MC_START && ix <= MC_START + MC_NX &&
+            iy >= MC_START && iy <= MC_START + MC_NY &&
+            iz >= MC_START && iz <= MC_START + MC_NZ;
+          if (inBox) {
+            const v = sample(gxfRaw, gzfRaw, df);
+            if (v > 0) field[idx] = v;
+          }
+
+          const [r, g, b] = lerpColor(stops, sampleColMax(gxf, gzf));
+          palette[idx * 3]     = r;
+          palette[idx * 3 + 1] = g;
+          palette[idx * 3 + 2] = b;
+        }
+      }
+    }
+    mc.update();
+    invalidate(); // repaint under the demand frameloop when paused
+  }, [mc, data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType, invalidate]);
+
+  return (
+    <primitive
+      object={mc}
+      position={[PLUME_PX, PLUME_PY, PLUME_PZ]}
+      scale={[PLUME_SX, PLUME_SY, PLUME_SZ]}
+    />
   );
 }
 
@@ -1310,6 +1500,8 @@ interface OceanBasin3DProps {
   speed?: number;
   isPlaying?: boolean;
   depthShading?: boolean;
+  /** SPIKE: "voxels" (default) = existing blocky grid, "surface" = smooth plume isosurface. */
+  renderMode?: "voxels" | "surface";
 }
 
 function hexToRgb01(hex: string): [number, number, number] {
@@ -1338,6 +1530,7 @@ export default function OceanBasin3D({
   speed = 1,
   isPlaying = false,
   depthShading = true,
+  renderMode = "voxels",
 }: OceanBasin3DProps) {
   // Frameloop: render continuously while playing (the cross-fade animates every
   // frame; mounting defaults to playing, so the first paint always lands). When
@@ -1405,7 +1598,20 @@ export default function OceanBasin3D({
 
       {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
       <group scale={[1, 1, -1]}>
-        <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
+        {renderMode === "surface" ? (
+          /* SPIKE: smooth plume isosurface replaces the voxel grid only —
+             seabed, rivers, box, compass and slicing context stay as-is. */
+          <PlumeSurface
+            week={week}
+            colorScale={colorScale}
+            sliceMode={dashboardState}
+            sliceLevel={sliceLevel}
+            sliceDir={sliceDir}
+            sliceCutType={sliceCutType}
+          />
+        ) : (
+          <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
+        )}
 
         <SeabedMesh
           sliceMode={dashboardState}
