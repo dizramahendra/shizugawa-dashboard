@@ -20,6 +20,7 @@ import {
   DashboardState,
 } from "@/lib/simulatedData";
 import { depthLabel } from "@/lib/depthLabels";
+import { getLandMask } from "@/lib/landMask";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
 const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
@@ -699,6 +700,175 @@ function SeabedMesh({
         polygonOffset
         polygonOffsetFactor={1}
         polygonOffsetUnits={1}
+      />
+    </mesh>
+  );
+}
+
+// ── Coastal land solid ────────────────────────────────────────────────────────
+// The REAL surrounding land: every grid cell (plus a border ring beyond the
+// grid) whose centre falls inside one of the SUB_BASIN_PATHS watershed
+// polygons — and is neither bay water nor a river channel — is rendered as a
+// solid grey terrain mass. Because the sub-basins and the bay outline share
+// the same SVG source + transform, the land rings the bay along the real
+// coastline, and the rivers (excluded cells) read as sunken channels.
+//
+// Geometry per land cell (modeled on SeabedMesh):
+//   • Top face    — flat at LAND_TOP (just above the water surface)
+//   • Bottom face — flat at BOX_BOT
+//   • Side walls  — on edges where the neighbour is NOT visible land:
+//       → visible bay water: wall covers only the strip above the water
+//         surface (below it the opaque water voxels + seabed walls own that
+//         plane — avoids coplanar z-fighting)
+//       → visible river cell: full wall to BOX_BOT (plugs the void beneath
+//         the shallow river solid; polygonOffset 2 keeps the river geometry
+//         in front on the small coplanar strip)
+//       → nothing (outer ring edge, slice cut, unbasined gap): full wall
+// Vertex colour: light grey top, sightly darker grey down the walls for form.
+const LAND_TOP = Y_SURFACE + 0.7;
+
+function CoastalLandMesh({
+  sliceMode,
+  sliceLevel,
+  sliceDir,
+  sliceCutType,
+}: {
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
+}) {
+  const geometry = useMemo(() => {
+    // Land sits entirely above the water surface, so any horizontal slice
+    // plane (all of which are at/below the surface) removes it completely.
+    if (sliceMode === "slice-h") return null;
+
+    const mask = getLandMask();
+    const ring = mask.ring;
+    const riverSet = new Set(RIVER_CELLS.map((c) => `${c.gz},${c.gx}`));
+
+    function passesSlice(gx: number, gz: number): boolean {
+      if (sliceMode === "slice-v") {
+        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
+      }
+      return true;
+    }
+    function landVisible(gx: number, gz: number): boolean {
+      return mask.isLand(gx, gz) && passesSlice(gx, gz);
+    }
+    // Water (bay voxel column or river tile) rendered at (gx, gz)?
+    function bayVisible(gx: number, gz: number): boolean {
+      return gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D &&
+        !!BAY_MASK[gz]?.[gx] && passesSlice(gx, gz);
+    }
+    function riverVisible(gx: number, gz: number): boolean {
+      return riverSet.has(`${gz},${gx}`) && passesSlice(gx, gz);
+    }
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indices:   number[] = [];
+
+    // Vertex colour: t=0 → light grey top, t=1 → darker grey at BOX_BOT
+    function addVert(px: number, py: number, pz: number): number {
+      const t = Math.max(0, Math.min(1, (LAND_TOP - py) / (LAND_TOP - BOX_BOT)));
+      positions.push(px, py, pz);
+      colors.push(0.80 - t * 0.26, 0.80 - t * 0.25, 0.79 - t * 0.22);
+      return (positions.length / 3) - 1;
+    }
+
+    // Wall bottom for one lateral edge (null → no wall needed).
+    const wallBottom = (nx: number, nz: number): number | null => {
+      if (landVisible(nx, nz)) return null;     // flat shared face — no wall
+      if (bayVisible(nx, nz))  return Y_SURFACE; // freeboard strip only
+      return BOX_BOT;                            // river channel / open edge
+    };
+
+    for (let gz = -ring; gz < GRID_D + ring; gz++) {
+      for (let gx = -ring; gx < GRID_W + ring; gx++) {
+        if (!landVisible(gx, gz)) continue;
+
+        const x0 = offsetX + gx       * STEP;
+        const x1 = offsetX + (gx + 1) * STEP;
+        const z0 = offsetZ + gz       * STEP;
+        const z1 = offsetZ + (gz + 1) * STEP;
+
+        // ── Top face (flat at LAND_TOP, faces upward) ─────────────────────────
+        const t00 = addVert(x0, LAND_TOP, z0);
+        const t10 = addVert(x1, LAND_TOP, z0);
+        const t01 = addVert(x0, LAND_TOP, z1);
+        const t11 = addVert(x1, LAND_TOP, z1);
+        indices.push(t00, t11, t10,  t00, t01, t11);
+
+        // ── Bottom face (flat at BOX_BOT, faces downward) ─────────────────────
+        const b00 = addVert(x0, BOX_BOT, z0);
+        const b10 = addVert(x1, BOX_BOT, z0);
+        const b01 = addVert(x0, BOX_BOT, z1);
+        const b11 = addVert(x1, BOX_BOT, z1);
+        indices.push(b00, b10, b11,  b00, b11, b01);
+
+        // ── Side walls — down to the coastline water surface or BOX_BOT ───────
+
+        // West face (-X): x=x0, z0→z1
+        {
+          const wb = wallBottom(gx - 1, gz);
+          if (wb !== null) {
+            const a = addVert(x0, LAND_TOP, z0); const b = addVert(x0, wb, z0);
+            const c = addVert(x0, wb, z1);       const d = addVert(x0, LAND_TOP, z1);
+            indices.push(a, b, c,  a, c, d);
+          }
+        }
+        // East face (+X): x=x1, z0→z1
+        {
+          const wb = wallBottom(gx + 1, gz);
+          if (wb !== null) {
+            const a = addVert(x1, LAND_TOP, z0); const b = addVert(x1, wb, z0);
+            const c = addVert(x1, wb, z1);       const d = addVert(x1, LAND_TOP, z1);
+            indices.push(a, c, b,  a, d, c);
+          }
+        }
+        // North face (-Z): z=z0, x0→x1
+        {
+          const wb = wallBottom(gx, gz - 1);
+          if (wb !== null) {
+            const a = addVert(x0, LAND_TOP, z0); const b = addVert(x0, wb, z0);
+            const c = addVert(x1, wb, z0);       const d = addVert(x1, LAND_TOP, z0);
+            indices.push(a, c, b,  a, d, c);
+          }
+        }
+        // South face (+Z): z=z1, x0→x1
+        {
+          const wb = wallBottom(gx, gz + 1);
+          if (wb !== null) {
+            const a = addVert(x0, LAND_TOP, z1); const b = addVert(x0, wb, z1);
+            const c = addVert(x1, wb, z1);       const d = addVert(x1, LAND_TOP, z1);
+            indices.push(a, b, c,  a, c, d);
+          }
+        }
+      }
+    }
+
+    if (indices.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
+
+  if (!geometry) return null;
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial
+        vertexColors
+        roughness={0.95}
+        metalness={0}
+        side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={2}
+        polygonOffsetUnits={2}
       />
     </mesh>
   );
@@ -1408,6 +1578,13 @@ export default function OceanBasin3D({
         <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
 
         <SeabedMesh
+          sliceMode={dashboardState}
+          sliceLevel={sliceLevel}
+          sliceDir={sliceDir}
+          sliceCutType={sliceCutType}
+        />
+
+        <CoastalLandMesh
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
           sliceDir={sliceDir}
