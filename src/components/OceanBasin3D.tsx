@@ -29,6 +29,16 @@ const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
 const offsetZ = -(GRID_D * STEP) / 2;
 
+// Aspect correction. The SVG trace normalises X by 465 and Z by 586, but the
+// grid is 112×96 with a UNIFORM step, so the rendered bay comes out ~1.43× too
+// wide E–W vs the real bay (which the Map Viewport draws correctly). Compress X
+// so the 3D footprint matches the real bay's E–W:N–S ratio
+// (14.06 km : 17.21 km ≈ 0.817) — the same proportions as the map. Applied as a
+// scene-group X-scale: geometry corrects together; the drei <Html> labels keep
+// their (compressed) anchor without squishing; picking is instanceId-based so
+// click-to-inspect is unaffected.
+const ASPECT_X = 0.70; // ≈ 0.8169 (real ratio) ÷ 1.1667 (112:96 grid ratio)
+
 const Y_SURFACE = 1.2; // y-coord of the top surface face
 
 // Bounding box
@@ -1941,8 +1951,10 @@ export default function OceanBasin3D({
         </>
       )}
 
-      {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z */}
-      <group scale={[1, 1, -1]}>
+      {/* Z-flip group: negates all scene Z so gz=0(south)→+Z, gz=95(north)→−Z.
+          ASPECT_X compresses X so the bay renders at the real E–W:N–S proportions
+          (matching the Map Viewport) instead of ~1.43× too wide. */}
+      <group scale={[ASPECT_X, 1, -1]}>
         <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
 
         <SeabedMesh
