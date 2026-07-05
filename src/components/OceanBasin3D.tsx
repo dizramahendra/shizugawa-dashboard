@@ -1420,6 +1420,264 @@ function GridFloor() {
   );
 }
 
+// ── Cut-face gradient plane ───────────────────────────────────────────────────
+// When the volume is sliced, the exposed cross-section otherwise shows the blocky
+// side faces of the surviving voxels. This paints a single smooth, interpolated
+// plane exactly on the cut, sampling the nutrient field at the cut line and using
+// per-vertex colours (finely subdivided) so it reads as a continuous scientific
+// section — the ArcGIS Voxel-Explorer "temperature section plane" look.
+//
+// Coordinate math is derived directly from the existing meshes so the plane lands
+// precisely on the cut:
+//   • Horizontal cell edges reuse buildBatches / SeabedMesh:  offsetX + gx*STEP,
+//     offsetZ + gz*STEP  (a cell spans [g*STEP, (g+1)*STEP]).
+//   • Depth→Y reuses the voxel mapping:  top of layer d = Y_SURFACE - DEPTH_TOPS[d];
+//     bottom = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d].
+//   • The vertical cut position reuses SliceIndicator's formula
+//     (offsetX/offsetZ + level*STEP + STEP/2) for both-sides, and the exposed
+//     cell face for one-side.
+//   • Colour reuses lerpColor(stops, val) with the field sample data[gz][gx][d]
+//     — identical to the voxels — so the plane matches them exactly and recolours
+//     on the same `data` dependency when the week changes.
+//
+// SUBDIV subdivides each grid cell / depth layer so vertex-colour interpolation
+// blends smoothly across cell boundaries instead of showing hard voxel bands.
+const FACE_SUBDIV = 2;
+
+// Deepest layer index that holds a water voxel at (gx,gz), or -1 if none. Mirrors
+// the voxel visibility test in buildBatches (BAY_MASK + bathymetry).
+function waterMaxLayer(gx: number, gz: number): number {
+  if (gz < 0 || gz >= GRID_D || gx < 0 || gx >= GRID_W) return -1;
+  if (!BAY_MASK[gz]?.[gx]) return -1;
+  return deepestVisibleLayer(getBathymetryDepthM(gx, gz));
+}
+
+interface SliceFacePlaneProps {
+  data: ReturnType<typeof generateWeekData>;
+  stops: string[];
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
+}
+
+function SliceFacePlane({ data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType }: SliceFacePlaneProps) {
+  const geometry = useMemo(() => {
+    if (sliceMode !== "slice-v" && sliceMode !== "slice-h") return null;
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indices:   number[] = [];
+
+    // Continuous world-Y for a fractional depth-layer coordinate dRow∈[0,DEPTH_LAYERS]
+    // (0 = surface top, DEPTH_LAYERS = column bottom). Interpolates within a layer's
+    // scene-unit height so the depth axis subdivides smoothly.
+    const depthRowY = (dRow: number): number => {
+      const clamped = Math.max(0, Math.min(DEPTH_LAYERS, dRow));
+      const li = Math.min(DEPTH_LAYERS - 1, Math.floor(clamped));
+      const frac = clamped - li;
+      const top = Y_SURFACE - DEPTH_TOPS[li];
+      return top - DEPTH_HEIGHTS[li] * frac;
+    };
+    // Nutrient value at the integer layer nearest a fractional depth row.
+    const sampleDepthVal = (col: (d: number) => number, dRow: number): number => {
+      const d = Math.max(0, Math.min(DEPTH_LAYERS - 1, Math.round(dRow - 0.5)));
+      return col(d);
+    };
+
+    if (sliceMode === "slice-v") {
+      const axis = sliceDirAxis(sliceDir);
+      const both = sliceCutType === "both-sides";
+
+      // The perpendicular horizontal grid axis we sweep across, and the fixed
+      // grid index of the cut line (the last kept row/column).
+      const perpMax = axis === "x" ? GRID_D : GRID_W; // sweep gz (x-cut) or gx (z-cut)
+      const fixed   = sliceLevel;
+
+      // World position of the cut plane along the sliced axis. For both-sides we
+      // show the single kept slab at its cell centre (matches SliceIndicator). For
+      // one-side we sit on the exposed face of the last kept cell so the plane caps
+      // the blocky voxel sides:
+      //   east  keeps gx≤level → exposed east  face at (level+1)*STEP
+      //   west  keeps gx≥level → exposed west  face at  level   *STEP
+      //   north keeps gz≤level → exposed north face at (level+1)*STEP
+      //   south keeps gz≥level → exposed south face at  level   *STEP
+      const baseOff = axis === "x" ? offsetX : offsetZ;
+      let cutPos: number;
+      if (both) {
+        cutPos = baseOff + fixed * STEP + STEP / 2;
+      } else if (sliceDir === "east" || sliceDir === "north") {
+        cutPos = baseOff + (fixed + 1) * STEP;
+      } else {
+        cutPos = baseOff + fixed * STEP;
+      }
+
+      // Field accessor for the cut column/row at a given perpendicular index p and
+      // depth layer d. (x-cut → column gx=fixed, varying gz=p; z-cut → row gz=fixed,
+      // varying gx=p.)
+      const gxOf = (p: number) => (axis === "x" ? fixed : p);
+      const gzOf = (p: number) => (axis === "x" ? p : fixed);
+      const fieldAt = (p: number, d: number): number =>
+        data[gzOf(p)]?.[gxOf(p)]?.[d] ?? 0;
+
+      // Sweep the perpendicular axis one water cell at a time. For each cell that
+      // has water at the cut line, emit a finely subdivided quad-strip spanning its
+      // horizontal extent × its water-column depth. Cells with no water (land / dry
+      // column) are skipped, so the plane only covers the wet cross-section and
+      // reads with a clean coastline edge.
+      for (let p = 0; p < perpMax; p++) {
+        const maxLayer = waterMaxLayer(gxOf(p), gzOf(p));
+        if (maxLayer < 0) continue;
+
+        const depthRows = (maxLayer + 1) * FACE_SUBDIV; // sub-rows down the column
+        const horizStart = baseOff + p * STEP;
+
+        for (let hs = 0; hs < FACE_SUBDIV; hs++) {
+          const h0 = horizStart + (hs / FACE_SUBDIV) * STEP;
+          const h1 = horizStart + ((hs + 1) / FACE_SUBDIV) * STEP;
+          // Fractional perpendicular grid position at each sub-edge, so colours can
+          // interpolate toward the neighbouring water cell instead of banding.
+          const hp0 = p + hs / FACE_SUBDIV;
+          const hp1 = p + (hs + 1) / FACE_SUBDIV;
+
+          const colorAt = (hp: number, dRow: number): [number, number, number] => {
+            // Sample the two horizontally-adjacent cells and blend; if a neighbour
+            // is dry, fall back to this cell's own value (no bleed into land).
+            const pc = Math.floor(hp - 0.5 + 1e-6);
+            const f  = hp - 0.5 - pc;
+            const vHere = sampleDepthVal((d) => fieldAt(p, d), dRow);
+            const pA = pc, pB = pc + 1;
+            const aOk = pA >= 0 && pA < perpMax && waterMaxLayer(gxOf(pA), gzOf(pA)) >= 0;
+            const bOk = pB >= 0 && pB < perpMax && waterMaxLayer(gxOf(pB), gzOf(pB)) >= 0;
+            let val = vHere;
+            if (aOk && bOk) {
+              const vA = sampleDepthVal((d) => fieldAt(pA, d), dRow);
+              const vB = sampleDepthVal((d) => fieldAt(pB, d), dRow);
+              val = vA + (vB - vA) * f;
+            }
+            return lerpColor(stops, val);
+          };
+
+          // Build the vertical strip of vertices for both horizontal sub-edges.
+          const base = positions.length / 3;
+          for (let dr = 0; dr <= depthRows; dr++) {
+            const dRow = (dr / FACE_SUBDIV);
+            const y = depthRowY(dRow);
+            const [r0, g0, b0] = colorAt(hp0, dRow);
+            const [r1, g1, b1] = colorAt(hp1, dRow);
+            if (axis === "x") {
+              positions.push(cutPos, y, h0);
+              positions.push(cutPos, y, h1);
+            } else {
+              positions.push(h0, y, cutPos);
+              positions.push(h1, y, cutPos);
+            }
+            colors.push(r0, g0, b0, r1, g1, b1);
+          }
+          // Two triangles per depth sub-cell of the strip (double-sided material
+          // makes winding irrelevant).
+          for (let dr = 0; dr < depthRows; dr++) {
+            const a = base + dr * 2;
+            const b = a + 1;
+            const c = a + 2;
+            const d = a + 3;
+            indices.push(a, b, d, a, d, c);
+          }
+        }
+      }
+    } else {
+      // ── Horizontal slice: a flat plane at the selected depth's top ────────────
+      // y = Y_SURFACE - DEPTH_TOPS[sliceLevel] (the SeabedMesh clip plane). Domain
+      // = gx × gz over the bay water cells whose column reaches this depth. Colours
+      // sample data[gz][gx][sliceLevel].
+      const y = Y_SURFACE - DEPTH_TOPS[sliceLevel];
+      const cellOk = (gx: number, gz: number): boolean =>
+        waterMaxLayer(gx, gz) >= sliceLevel;
+      const valAt = (gx: number, gz: number): number => data[gz]?.[gx]?.[sliceLevel] ?? 0;
+
+      for (let gz = 0; gz < GRID_D; gz++) {
+        for (let gx = 0; gx < GRID_W; gx++) {
+          if (!cellOk(gx, gz)) continue;
+          const x0 = offsetX + gx * STEP;
+          const z0 = offsetZ + gz * STEP;
+
+          const colorAtXZ = (fx: number, fz: number): [number, number, number] => {
+            // Bilinear blend toward neighbouring wet cells (cell-centre sampling).
+            const gxc = Math.floor(fx - 0.5 + 1e-6);
+            const gzc = Math.floor(fz - 0.5 + 1e-6);
+            const tx = fx - 0.5 - gxc;
+            const tz = fz - 0.5 - gzc;
+            const sample = (cx: number, cz: number): number =>
+              cellOk(cx, cz) ? valAt(cx, cz) : valAt(gx, gz);
+            const v00 = sample(gxc, gzc);
+            const v10 = sample(gxc + 1, gzc);
+            const v01 = sample(gxc, gzc + 1);
+            const v11 = sample(gxc + 1, gzc + 1);
+            const vx0 = v00 + (v10 - v00) * tx;
+            const vx1 = v01 + (v11 - v01) * tx;
+            return lerpColor(stops, vx0 + (vx1 - vx0) * tz);
+          };
+
+          for (let sz = 0; sz < FACE_SUBDIV; sz++) {
+            for (let sx = 0; sx < FACE_SUBDIV; sx++) {
+              const cx0 = x0 + (sx / FACE_SUBDIV) * STEP;
+              const cx1 = x0 + ((sx + 1) / FACE_SUBDIV) * STEP;
+              const cz0 = z0 + (sz / FACE_SUBDIV) * STEP;
+              const cz1 = z0 + ((sz + 1) / FACE_SUBDIV) * STEP;
+              const fx0 = gx + sx / FACE_SUBDIV;
+              const fx1 = gx + (sx + 1) / FACE_SUBDIV;
+              const fz0 = gz + sz / FACE_SUBDIV;
+              const fz1 = gz + (sz + 1) / FACE_SUBDIV;
+              const base = positions.length / 3;
+              const push = (px: number, pz: number, fpx: number, fpz: number) => {
+                positions.push(px, y, pz);
+                const [r, g, b] = colorAtXZ(fpx, fpz);
+                colors.push(r, g, b);
+              };
+              push(cx0, cz0, fx0, fz0);
+              push(cx1, cz0, fx1, fz0);
+              push(cx0, cz1, fx0, fz1);
+              push(cx1, cz1, fx1, fz1);
+              indices.push(base, base + 1, base + 3, base, base + 3, base + 2);
+            }
+          }
+        }
+      }
+    }
+
+    if (indices.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType]);
+
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    // Repaint under the demand frameloop when the plane rebuilds (week / slice change).
+    invalidate();
+  }, [geometry, invalidate]);
+
+  if (!geometry) return null;
+  return (
+    <mesh geometry={geometry} raycast={() => null}>
+      {/* Unlit vertex-colour material so the gradient reads true (no shading tint),
+          double-sided so it shows from either orbit side, with polygonOffset pulling
+          it slightly in front of the coplanar blocky voxel faces to avoid z-fighting. */}
+      <meshBasicMaterial
+        vertexColors
+        side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={-2}
+        polygonOffsetUnits={-2}
+      />
+    </mesh>
+  );
+}
+
 // ── Slice indicator ───────────────────────────────────────────────────────────
 interface SliceIndicatorProps {
   mode: DashboardState;
@@ -1645,6 +1903,12 @@ export default function OceanBasin3D({
     onCellHover,
   };
 
+  // Field + colour ramp for the cut-face gradient plane. Reuses the SAME data the
+  // voxels read (generateWeekData(week)) and the active colour stops, so the plane
+  // recolours on the same week/scale change and matches the voxel colours exactly.
+  const faceData  = useMemo(() => generateWeekData(week), [week]);
+  const faceStops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
+
   return (
     <Canvas
       frameloop={frameloop}
@@ -1724,6 +1988,20 @@ export default function OceanBasin3D({
 
         {/* Coordinate ticks (X/Y/Z values): toggleable */}
         {showAnnotations && <CoordTickLabels />}
+
+        {/* Smooth interpolated gradient painted on the exposed cut face, so the
+            section reads as a clean scientific cross-section instead of blocky
+            voxel sides. Renders only when a slice is active. */}
+        {(dashboardState === "slice-h" || dashboardState === "slice-v") && (
+          <SliceFacePlane
+            data={faceData}
+            stops={faceStops}
+            sliceMode={dashboardState}
+            sliceLevel={sliceLevel}
+            sliceDir={sliceDir}
+            sliceCutType={sliceCutType}
+          />
+        )}
 
         <SliceIndicator mode={dashboardState} level={sliceLevel} sliceDir={sliceDir} showCutPlane={showCutPlane} />
       </group>
