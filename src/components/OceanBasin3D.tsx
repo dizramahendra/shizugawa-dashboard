@@ -20,7 +20,7 @@ import {
   DashboardState,
 } from "@/lib/simulatedData";
 import { depthLabel } from "@/lib/depthLabels";
-import { getLandMask } from "@/lib/landMask";
+import { getLandMask, LAND_RING } from "@/lib/landMask";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
 const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
@@ -727,6 +727,21 @@ function SeabedMesh({
 // Vertex colour: light grey top, sightly darker grey down the walls for form.
 const LAND_TOP = Y_SURFACE + 0.7;
 
+// ── Study-box extent (the LAND_RING outer rectangle) ──────────────────────────
+// The land mask is computed over a grid extended by LAND_RING cells on every
+// side. These are the scene-space edges of that extended rectangle — the outer
+// bounds of everything the model can draw. The bounded "study box" (solid side
+// walls + floor) is built at exactly these bounds so the whole region sits
+// inside a clean container, ArcGIS Voxel-Explorer style.
+const EXT_WEST_X  = offsetX + (-LAND_RING)          * STEP;
+const EXT_EAST_X  = offsetX + (GRID_W + LAND_RING)  * STEP;
+const EXT_SOUTH_Z = offsetZ + (-LAND_RING)          * STEP;
+const EXT_NORTH_Z = offsetZ + (GRID_D + LAND_RING)  * STEP;
+// Box lid height: the land surface. Walls/floor cap the model from LAND_TOP
+// down to BOX_BOT (the absolute bottom the seabed/land/river solids reach).
+const STUDY_BOX_TOP = LAND_TOP;
+const STUDY_BOX_BOT = BOX_BOT;
+
 function CoastalLandMesh({
   sliceMode,
   sliceLevel,
@@ -871,6 +886,95 @@ function CoastalLandMesh({
         polygonOffsetUnits={2}
       />
     </mesh>
+  );
+}
+
+// ── Bounded study box (side walls + floor) ────────────────────────────────────
+// A clean rectangular container at the extended-grid (LAND_RING) extent, so the
+// whole region reads as a bounded voxel "study box" instead of shapes floating
+// on white — matching an ArcGIS-Pro Voxel-Explorer look.
+//
+//   • Floor  — one quad at STUDY_BOX_BOT (= BOX_BOT), spanning the full extent,
+//              capping the bottom. DoubleSide so it reads from above and below.
+//   • Walls  — four vertical quads at the extent edges, from STUDY_BOX_TOP
+//              (= LAND_TOP) down to STUDY_BOX_BOT. Rendered BackSide only, so
+//              the near walls facing the camera are culled and the far/interior
+//              walls remain — the box frames the data without ever occluding it,
+//              from any orbit angle (the container is open toward the viewer).
+//
+// The bay water column + rivers are carved into the model INSIDE this box; the
+// walls sit LAND_RING cells beyond the coastline, so nothing walls over the
+// open water surface. Colour reuses the land/soil tint, a shade darker for depth.
+function StudyBoxShell() {
+  const wallGeometry = useMemo(() => {
+    const positions: number[] = [];
+    const indices:   number[] = [];
+
+    // Add a vertical wall quad along one horizontal edge (two endpoints at the
+    // box top, dropping to the box bottom). Winding is irrelevant — the material
+    // is BackSide/DoubleSide and lit flat — so we emit both triangles simply.
+    const addWall = (
+      ax: number, az: number, bx: number, bz: number,
+    ) => {
+      const base = positions.length / 3;
+      positions.push(
+        ax, STUDY_BOX_TOP, az,   // 0 top-a
+        bx, STUDY_BOX_TOP, bz,   // 1 top-b
+        bx, STUDY_BOX_BOT, bz,   // 2 bot-b
+        ax, STUDY_BOX_BOT, az,   // 3 bot-a
+      );
+      indices.push(base, base + 1, base + 2,  base, base + 2, base + 3);
+    };
+
+    // Four side walls at the extended-grid rectangle.
+    addWall(EXT_WEST_X,  EXT_SOUTH_Z, EXT_EAST_X,  EXT_SOUTH_Z); // south (-Z edge)
+    addWall(EXT_WEST_X,  EXT_NORTH_Z, EXT_EAST_X,  EXT_NORTH_Z); // north (+Z edge)
+    addWall(EXT_WEST_X,  EXT_SOUTH_Z, EXT_WEST_X,  EXT_NORTH_Z); // west  (-X edge)
+    addWall(EXT_EAST_X,  EXT_SOUTH_Z, EXT_EAST_X,  EXT_NORTH_Z); // east  (+X edge)
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, []);
+
+  const floorGeometry = useMemo(() => {
+    const positions = new Float32Array([
+      EXT_WEST_X, STUDY_BOX_BOT, EXT_SOUTH_Z,
+      EXT_EAST_X, STUDY_BOX_BOT, EXT_SOUTH_Z,
+      EXT_EAST_X, STUDY_BOX_BOT, EXT_NORTH_Z,
+      EXT_WEST_X, STUDY_BOX_BOT, EXT_NORTH_Z,
+    ]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setIndex([0, 1, 2, 0, 2, 3]);
+    geo.computeVertexNormals();
+    return geo;
+  }, []);
+
+  return (
+    <group>
+      {/* Side walls: BackSide so the camera-facing near walls are culled and the
+          data stays visible; the far interior walls give the box its form. */}
+      <mesh geometry={wallGeometry}>
+        <meshStandardMaterial
+          color="#8a8a86"
+          roughness={0.97}
+          metalness={0}
+          side={THREE.BackSide}
+        />
+      </mesh>
+      {/* Floor: caps the bottom, visible from any angle. */}
+      <mesh geometry={floorGeometry}>
+        <meshStandardMaterial
+          color="#7f7f7b"
+          roughness={0.97}
+          metalness={0}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -1590,6 +1694,10 @@ export default function OceanBasin3D({
           sliceDir={sliceDir}
           sliceCutType={sliceCutType}
         />
+
+        {/* Bounded "study box": solid side walls + floor at the LAND_RING
+            extent, framing the whole region like an ArcGIS voxel study box. */}
+        <StudyBoxShell />
 
         <RiverGrid
           week={week}

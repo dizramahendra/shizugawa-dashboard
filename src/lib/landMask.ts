@@ -136,12 +136,21 @@ export function getLandMask(): LandMask {
   const mask = new Uint8Array(w * d);
   const riverSet = new Set(RIVER_CELLS.map((c) => `${c.gz},${c.gx}`));
 
+  // Helper: is (gx, gz) bay water? (bay cells only exist inside the grid)
+  function isBay(gx: number, gz: number): boolean {
+    return gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D && !!BAY_MASK[gz]?.[gx];
+  }
+  // Helper: is (gx, gz) a river channel cell? (rivers may extend beyond the grid)
+  function isRiver(gx: number, gz: number): boolean {
+    return riverSet.has(`${gz},${gx}`);
+  }
+
   for (let gz = -ring; gz < GRID_D + ring; gz++) {
     for (let gx = -ring; gx < GRID_W + ring; gx++) {
       // Water exclusions: bay cells (only exist inside the grid) and river
       // channel cells (which DO extend beyond the grid) are never land.
-      if (gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D && BAY_MASK[gz]?.[gx]) continue;
-      if (riverSet.has(`${gz},${gx}`)) continue;
+      if (isBay(gx, gz)) continue;
+      if (isRiver(gx, gz)) continue;
 
       // Multi-point membership: centre + 4 sub-quadrant samples. The traced
       // sub-basin polygons tile the watershed only approximately — adjacent
@@ -169,6 +178,81 @@ export function getLandMask(): LandMask {
             break outer;
           }
         }
+      }
+    }
+  }
+
+  // ── Enclosed-cell fill (morphological close) ────────────────────────────────
+  // The base membership above only marks cells INSIDE a traced sub-basin. Cells
+  // that fall BETWEEN the bay outline and the sub-basin outlines — and cells
+  // inside the 5 sub-basins that were never traced (ids 7, 11, 17, 23, 24) —
+  // land in neither the land mask nor the water masks, leaving holes at the
+  // coastline seam and interior gaps.
+  //
+  // Fix: an "empty" cell is one that is NOT bay water, NOT a river channel, and
+  // NOT (base) land. Flood-fill from the extended grid's border through empty
+  // cells (4-connectivity). Any empty cell the flood does NOT reach is fully
+  // enclosed by land/bay/river → it is an interior hole and becomes LAND. Empty
+  // cells reachable from the border are the open seaward frontier and stay open.
+  //
+  // Bay water (BAY_MASK) and river channels (RIVER_CELLS) are never touched:
+  // they are excluded from "empty" so they neither propagate the flood nor get
+  // reclassified — the water column and rivers stay carved out intact.
+  {
+    // Local (extended-grid) index space: lx∈[0,w), lz∈[0,d).
+    // lx = gx + ring, lz = gz + ring  ⇔  gx = lx − ring, gz = lz − ring.
+    const isEmptyLocal = (lx: number, lz: number): boolean => {
+      const gx = lx - ring;
+      const gz = lz - ring;
+      if (mask[lz * w + lx] === 1) return false; // base land
+      if (isBay(gx, gz)) return false;           // bay water
+      if (isRiver(gx, gz)) return false;         // river channel
+      return true;
+    };
+
+    // reached[i] = 1 once the border flood has visited empty local cell i.
+    const reached = new Uint8Array(w * d);
+    // Explicit stack of local indices (avoids recursion depth limits on the
+    // full extended grid, which is (112+32)×(96+32) = 144×128 = 18432 cells).
+    const stack: number[] = [];
+
+    const pushIfOpen = (lx: number, lz: number) => {
+      if (lx < 0 || lx >= w || lz < 0 || lz >= d) return;
+      const i = lz * w + lx;
+      if (reached[i]) return;
+      if (!isEmptyLocal(lx, lz)) return; // land/bay/river block the flood
+      reached[i] = 1;
+      stack.push(i);
+    };
+
+    // Seed from every border cell of the extended grid (top/bottom rows, left/
+    // right columns) so the flood starts from the open outside on all four sides.
+    for (let lx = 0; lx < w; lx++) {
+      pushIfOpen(lx, 0);
+      pushIfOpen(lx, d - 1);
+    }
+    for (let lz = 0; lz < d; lz++) {
+      pushIfOpen(0, lz);
+      pushIfOpen(w - 1, lz);
+    }
+
+    // 4-connectivity flood.
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      const lx = i % w;
+      const lz = (i - lx) / w;
+      pushIfOpen(lx - 1, lz);
+      pushIfOpen(lx + 1, lz);
+      pushIfOpen(lx, lz - 1);
+      pushIfOpen(lx, lz + 1);
+    }
+
+    // Any empty cell NOT reached by the border flood is enclosed → mark LAND.
+    for (let lz = 0; lz < d; lz++) {
+      for (let lx = 0; lx < w; lx++) {
+        const i = lz * w + lx;
+        if (reached[i]) continue;           // open (seaward) — leave empty
+        if (isEmptyLocal(lx, lz)) mask[i] = 1; // enclosed hole → land
       }
     }
   }
