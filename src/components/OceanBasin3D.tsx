@@ -170,18 +170,7 @@ function lerpColor(stops: string[], t: number): [number, number, number] {
   ];
 }
 
-// ── Bathymetry ────────────────────────────────────────────────────────────────
-// Linear east-deep profile: depth increases from west (~8 m) to east (~55 m,
-// open-ocean side).  No river enters from the east.  A gentle N-S taper makes
-// the northern/southern edges slightly shallower than the centre channel.
-function getBathymetryDepthM(gx: number, gz: number): number {
-  const frac   = gx / (GRID_W - 1);          // 0 = west (shallow), 1 = east (deep)
-  const nsFrac = gz / (GRID_D - 1);
-  const nsBias = 1 - 0.18 * Math.abs(nsFrac - 0.5) * 2;
-  return Math.min(55, Math.max(3, (8 + 47 * frac) * nsBias));
-}
-
-// ── Islands: water gate + shallowing apron ────────────────────────────────────
+// ── Islands: water gate ───────────────────────────────────────────────────────
 // A cell inside an island footprint is LAND, not bay water — it is excluded from
 // every water path (voxels, seabed solid, cut-face plane, coastal-land freeboard)
 // so the ocean hole becomes a mound (see IslandMesh).
@@ -189,10 +178,93 @@ function isBayWater(gx: number, gz: number): boolean {
   return !!BAY_MASK[gz]?.[gx] && !isIsland(gx, gz);
 }
 
-// Effective seabed depth for a WATER cell: the open-bay bathymetry scaled DOWN
-// toward each island by islandApronFactor, so the seafloor slopes up to the
-// island's waterline over a few cells (an underwater apron) instead of a cliff.
-// Away from every island the factor is 1, so open-bay bathymetry is unchanged.
+// ── Bathymetry (coast-relative, distance-from-shore) ──────────────────────────
+// Shizugawa is a ria bay: shallow at the head/coast, deepening toward the mouth
+// / open sea (real max ≈ 54 m). A horizontal W→E gradient made the seabed deep
+// right at the shoreline → a cliff where the land met the sea. Instead we drive
+// depth by DISTANCE FROM SHORE so the seabed rises to ~0 m at every coastline on
+// every side and eases down to the deepest ~54 m at the farthest-offshore cells.
+//
+// `SHORE_DIST_M` below is an 8-connected multi-source BFS distance (in cells)
+// from every bay-water cell to the nearest NON-water cell (land / island / grid
+// edge = shore). Shore-adjacent cells → dist 1; the bay interior / mouth → the
+// max. `getBathymetryDepthM` maps that normalised distance through a gentle
+// shape so it's shallow at the coast and deep offshore. Because BOTH the water
+// voxel columns (via effectiveSeabedM → deepestVisibleLayer) AND the terrain
+// seabed E (via bayColumnBottomY / openSeaSeabedY) read this ONE function, the
+// voxels sit exactly on the seabed and the seabed slopes up to the shore.
+export const MAX_DEPTH_M = 54;              // Shizugawa Bay real max ≈ 54 m
+const MIN_COAST_DEPTH_M = 1.5;              // seabed just below the waterline at shore
+const DEPTH_SHAPE_POW = 0.8;                // t^0.8 → quick rise off the coast, gentle offshore
+
+// 8-connected distance (in cells) from each bay-water cell to the nearest
+// non-water cell (shore). Computed once at module load over the 112×96 grid.
+// Non-water cells are 0; a water cell touching shore is ≈1 (orthogonal) or
+// ≈1.41 (diagonal). Cells outside the grid count as shore (bay never touches
+// the grid edge, but this keeps the seed set well-defined).
+const { shoreDist: SHORE_DIST_ARR, maxShoreDist: MAX_SHORE_DIST } = (() => {
+  const INF = Infinity;
+  const arr = new Float32Array(GRID_W * GRID_D).fill(INF);
+  const at = (gx: number, gz: number) => gz * GRID_W + gx;
+  const q: number[] = [];
+  // Seed: every NON-water cell (land/island) inside the grid is a shore source
+  // at distance 0, so its water neighbours resolve to ~1.
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      if (!isBayWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
+    }
+  }
+  let head = 0, maxD = 0;
+  while (head < q.length) {
+    const i = q[head++];
+    const gx = i % GRID_W, gz = (i - gx) / GRID_W;
+    const base = arr[i];
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dz === 0) continue;
+        const nx = gx + dx, nz = gz + dz;
+        if (nx < 0 || nx >= GRID_W || nz < 0 || nz >= GRID_D) continue;
+        if (!isBayWater(nx, nz)) continue; // only propagate INTO water
+        const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
+        if (base + step < arr[at(nx, nz)]) {
+          arr[at(nx, nz)] = base + step;
+          q.push(at(nx, nz));
+        }
+      }
+    }
+  }
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      const v = arr[at(gx, gz)];
+      if (isBayWater(gx, gz) && Number.isFinite(v) && v > maxD) maxD = v;
+    }
+  }
+  return { shoreDist: arr, maxShoreDist: maxD || 1 };
+})();
+
+function shoreDistCells(gx: number, gz: number): number {
+  if (gx < 0 || gx >= GRID_W || gz < 0 || gz >= GRID_D) return MAX_SHORE_DIST;
+  const v = SHORE_DIST_ARR[gz * GRID_W + gx];
+  return Number.isFinite(v) ? v : MAX_SHORE_DIST;
+}
+
+// Coast-relative depth (m). Shallow (~MIN_COAST_DEPTH_M) right at the shoreline,
+// easing to MAX_DEPTH_M at the farthest-from-shore / mouth cells via a gentle
+// t^DEPTH_SHAPE_POW shape — a real slope, no cliff. For non-water cells this
+// still returns a sensible depth (used by the open-sea floor, which carries the
+// deep end outward past the grid).
+function getBathymetryDepthM(gx: number, gz: number): number {
+  const t = Math.max(0, Math.min(1, shoreDistCells(gx, gz) / MAX_SHORE_DIST));
+  const shaped = Math.pow(t, DEPTH_SHAPE_POW);
+  return MIN_COAST_DEPTH_M + (MAX_DEPTH_M - MIN_COAST_DEPTH_M) * shaped;
+}
+
+// Effective seabed depth for a WATER cell. Depth is already coast-relative
+// (shallow at every shoreline, including beside islands, because island cells
+// are shore sources in the BFS above), so the seafloor already slopes up to the
+// waterline with no cliff. The island apron is retained as a gentle extra
+// shallowing right against each island so the mound's underwater skirt reads
+// cleanly; away from islands the factor is 1 (open-bay depth unchanged).
 function effectiveSeabedM(gx: number, gz: number): number {
   return getBathymetryDepthM(gx, gz) * islandApronFactor(gx, gz);
 }
@@ -270,9 +342,12 @@ function bathyDepthToSceneY(depthM: number): number {
   return Y_SURFACE - DEPTH_TOTAL_H;
 }
 
-// Open-sea seabed (continuous Pacific floor). Sampled from the same bathymetry
-// as the bay, clamped to grid bounds so cells in the LAND_RING beyond the grid
-// carry the deep-east floor outward instead of extrapolating out of range.
+// Open-sea seabed (continuous Pacific floor). Sampled from the same coast-
+// relative bathymetry as the bay, clamped to grid bounds so cells in the
+// LAND_RING beyond the grid carry the deep offshore floor outward instead of
+// extrapolating out of range. Open-water cells are far from any shore source in
+// the BFS, so they read the deep end (~MAX_DEPTH_M) — continuous with the bay's
+// deepest cells at the mouth (no step at the bay↔open-sea boundary).
 function openSeaSeabedY(gx: number, gz: number): number {
   const cx = Math.max(0, Math.min(GRID_W - 1, gx));
   const cz = Math.max(0, Math.min(GRID_D - 1, gz));
@@ -666,26 +741,50 @@ function VoxelGridInstanced({
 //   • slice-v — hide cells on the far side of the cut (isVoxelVisible); the cut
 //     face becomes a full wall to BOX_BOT, so the section is solid soil.
 
-// Vertex colour helpers shared by SolidTerrain.
-// BELOW sea level (seabed): sandy tan (top) → dark muddy brown (deep).
-function seabedColor(y: number): [number, number, number] {
-  const t = Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
-  return [0.66 - t * 0.32, 0.52 - t * 0.26, 0.34 - t * 0.16];
-}
-// ABOVE sea level (land/island): grey-brown that lifts a touch greener toward
-// the peak, matching the old CoastalLandMesh / IslandMesh tints. `above` is the
-// height over Y_SURFACE; `hiRef` normalises the green lift by the tallest rise.
-function landColor(y: number, hiRef: number): [number, number, number] {
-  // Depth ramp shared with the seabed just below the surface for a seamless
-  // coast: from the surface down to BOX_BOT, grey darkens with depth.
-  const t = Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
-  const above = Math.max(0, y - Y_SURFACE);
-  const hi = hiRef > 0 ? Math.max(0, Math.min(1, above / hiRef)) : 0;
-  return [
-    0.80 - t * 0.30 - hi * 0.08,
-    0.80 - t * 0.28 + hi * 0.02,
-    0.79 - t * 0.24 - hi * 0.06,
-  ];
+// ── Unified soil colour ramp (ONE continuous ground colouring) ────────────────
+// A single ramp keyed to ABSOLUTE elevation (world-Y), continuous across sea
+// level, so land and seabed read as the SAME continuous ground — no grey↔brown
+// seam at the coast. Muted green/khaki on the high land → tan/sand right at the
+// shoreline (sea level) → mid sandy-brown → darker muddy brown at depth. The
+// stops are placed relative to Y_SURFACE (the waterline) so the transition eases
+// smoothly THROUGH the surface, not at a hard boundary.
+//
+// Stops (elevation offset from Y_SURFACE → colour):
+//   +LAND_MAX_H  high land   muted khaki-green
+//   +0.35        low hills   khaki
+//    0.00        shoreline   warm tan / sand   ← waterline, no seam
+//   −0.9         shallows    sandy brown
+//   −4.0         mid seabed  mid brown
+//   deep floor   deep seabed dark muddy brown
+const GROUND_STOPS: Array<{ y: number; c: [number, number, number] }> = [
+  { y: Y_SURFACE + LAND_MAX_H, c: [0.60, 0.63, 0.44] }, // muted khaki-green upland
+  { y: Y_SURFACE + 0.35,       c: [0.72, 0.69, 0.50] }, // khaki lowland
+  { y: Y_SURFACE + 0.02,       c: [0.82, 0.73, 0.55] }, // tan just above the shore
+  { y: Y_SURFACE,              c: [0.80, 0.70, 0.52] }, // sand AT the waterline (continuous)
+  { y: Y_SURFACE - 0.9,        c: [0.66, 0.54, 0.38] }, // sandy brown shallows
+  { y: Y_SURFACE - 4.0,        c: [0.52, 0.42, 0.29] }, // mid brown
+  { y: BOX_BOT,                c: [0.34, 0.26, 0.18] }, // dark muddy brown at depth
+];
+
+// Interpolate the ground ramp at a world-Y. Stops are ordered high→low; find the
+// bracketing pair and lerp. Above the top / below the bottom clamps to the end
+// colour, so the whole solid — land peak to box floor — is one smooth gradient.
+function groundColor(y: number): [number, number, number] {
+  if (y >= GROUND_STOPS[0].y) return GROUND_STOPS[0].c;
+  const last = GROUND_STOPS[GROUND_STOPS.length - 1];
+  if (y <= last.y) return last.c;
+  for (let i = 0; i < GROUND_STOPS.length - 1; i++) {
+    const hi = GROUND_STOPS[i], lo = GROUND_STOPS[i + 1];
+    if (y <= hi.y && y >= lo.y) {
+      const f = (hi.y - y) / (hi.y - lo.y || 1); // 0 at hi → 1 at lo
+      return [
+        hi.c[0] + (lo.c[0] - hi.c[0]) * f,
+        hi.c[1] + (lo.c[1] - hi.c[1]) * f,
+        hi.c[2] + (lo.c[2] - hi.c[2]) * f,
+      ];
+    }
+  }
+  return last.c;
 }
 
 function SolidTerrain({
@@ -768,10 +867,11 @@ function SolidTerrain({
     const colors:    number[] = [];
     const indices:   number[] = [];
 
-    // The tallest rise above the surface, to normalise the green peak lift.
-    const HI_REF = Math.max(0.001, BOX_TOP - Y_SURFACE);
+    // ONE continuous soil ramp keyed to absolute elevation — land, coast and
+    // seabed share the same gradient, so there is no grey↔brown seam at the
+    // shore (see groundColor above).
     const addVert = (px: number, py: number, pz: number): number => {
-      const [r, g, b] = py > Y_SURFACE ? landColor(py, HI_REF) : seabedColor(py);
+      const [r, g, b] = groundColor(py);
       positions.push(px, py, pz);
       colors.push(r, g, b);
       return (positions.length / 3) - 1;
@@ -1105,13 +1205,13 @@ function RiverSeabedMesh({
     const colors:    number[] = [];
     const indices:   number[] = [];
 
-    function dT(y: number): number {
-      return Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
-    }
+    // River bed uses the SAME unified soil ramp as SolidTerrain (groundColor),
+    // so the carved channel bed matches the bay seabed where they meet — one
+    // continuous ground colour, no brown seam at the river mouths.
     function addVert(px: number, py: number, pz: number): number {
-      const t = dT(py);
+      const [r, g, b] = groundColor(py);
       positions.push(px, py, pz);
-      colors.push(0.66 - t * 0.32, 0.52 - t * 0.26, 0.34 - t * 0.16);
+      colors.push(r, g, b);
       return (positions.length / 3) - 1;
     }
 

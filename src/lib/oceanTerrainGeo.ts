@@ -17,6 +17,7 @@ import {
   DEPTH_LAYERS,
   DEPTH_REAL_M,
   DEPTH_REAL_BOT,
+  BAY_MASK,
 } from "@/lib/simulatedData";
 
 // ── Georeference (SOLVED in RealMapViewport — FITTED_TRANSFORM) ──────────────
@@ -89,12 +90,61 @@ export function lerpColor(stops: string[], t: number): [number, number, number] 
   ];
 }
 
-/** Same synthetic bathymetry as OceanBasin3D: west ~8 m → east ~55 m. */
+// ── Coast-relative bathymetry (matches OceanBasin3D) ─────────────────────────
+// Shizugawa is a ria bay: shallow at the head/coast, deepening toward the mouth
+// / open sea (real max ≈ 54 m). Depth is driven by DISTANCE FROM SHORE (BFS over
+// BAY_MASK, 8-connected, seeded from every non-bay cell) so the seabed rises to
+// ~0 m at the coast on every side and eases to the deepest ~54 m offshore — no
+// cliff at the shore. This mirrors the B-view (OceanBasin3D) so the /ocean-3d
+// voxel columns are shallow at the coast too.
+export const MAX_DEPTH_M = 54;
+const MIN_COAST_DEPTH_M = 1.5;
+const DEPTH_SHAPE_POW = 0.8;
+
+const { shoreDist: _SHORE_DIST, maxShoreDist: _MAX_SHORE_DIST } = (() => {
+  const arr = new Float32Array(GRID_W * GRID_D).fill(Infinity);
+  const at = (gx: number, gz: number) => gz * GRID_W + gx;
+  const isWater = (gx: number, gz: number) => !!BAY_MASK[gz]?.[gx];
+  const q: number[] = [];
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      if (!isWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
+    }
+  }
+  let head = 0, maxD = 0;
+  while (head < q.length) {
+    const i = q[head++];
+    const gx = i % GRID_W, gz = (i - gx) / GRID_W;
+    const base = arr[i];
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dz === 0) continue;
+        const nx = gx + dx, nz = gz + dz;
+        if (nx < 0 || nx >= GRID_W || nz < 0 || nz >= GRID_D) continue;
+        if (!isWater(nx, nz)) continue;
+        const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
+        if (base + step < arr[at(nx, nz)]) { arr[at(nx, nz)] = base + step; q.push(at(nx, nz)); }
+      }
+    }
+  }
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      const v = arr[at(gx, gz)];
+      if (isWater(gx, gz) && Number.isFinite(v) && v > maxD) maxD = v;
+    }
+  }
+  return { shoreDist: arr, maxShoreDist: maxD || 1 };
+})();
+
+/** Coast-relative depth (m): shallow at the shoreline → ~MAX_DEPTH_M offshore. */
 export function getBathymetryDepthM(gx: number, gz: number): number {
-  const frac = gx / (GRID_W - 1);
-  const nsFrac = gz / (GRID_D - 1);
-  const nsBias = 1 - 0.18 * Math.abs(nsFrac - 0.5) * 2;
-  return Math.min(55, Math.max(3, (8 + 47 * frac) * nsBias));
+  const clampedX = Math.max(0, Math.min(GRID_W - 1, gx));
+  const clampedZ = Math.max(0, Math.min(GRID_D - 1, gz));
+  const raw = _SHORE_DIST[clampedZ * GRID_W + clampedX];
+  const dist = Number.isFinite(raw) ? raw : _MAX_SHORE_DIST;
+  const t = Math.max(0, Math.min(1, dist / _MAX_SHORE_DIST));
+  const shaped = Math.pow(t, DEPTH_SHAPE_POW);
+  return MIN_COAST_DEPTH_M + (MAX_DEPTH_M - MIN_COAST_DEPTH_M) * shaped;
 }
 
 export function deepestVisibleLayer(seabedM: number): number {

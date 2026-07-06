@@ -8,7 +8,7 @@ export const OCEAN_DETAILS = {
   region:    "Shizugawa, Miyagi",
   waterBody: "Shizugawa Bay (Pacific)",
   area:      "32.8 km²",
-  depth:     "−5 to −40 m",
+  depth:     "0 to −54 m",
   landUse:   "Coastal / Open Water",
 };
 
