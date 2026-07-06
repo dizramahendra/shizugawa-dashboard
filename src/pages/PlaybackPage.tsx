@@ -92,6 +92,11 @@ export default function PlaybackPage() {
     searchParams.get("cut") === "both" ? "both-sides" : "one-side"
   );
   const [showCutPlane, setShowCutPlane] = useState(searchParams.get("plane") !== "0");
+  // How the slice cut face is displayed: smooth interpolated gradient plane
+  // ("heatmap", the current default look) or the raw blocky voxel cross-section
+  // ("voxels", which hides the SliceFacePlane). Only relevant while a slice is
+  // active; not URL-encoded (purely a view preference).
+  const [sliceFaceMode, setSliceFaceMode] = useState<"voxels" | "heatmap">("heatmap");
   const [sliceLevel, setSliceLevel] = useState(() => {
     if (_initLevel !== null) return Number(_initLevel);
     if (_initTool === "slice-v") return Math.floor((GRID_D - 1) / 2);
@@ -468,6 +473,7 @@ export default function PlaybackPage() {
               sliceDir={sliceDir}
               sliceCutType={sliceCutType}
               showCutPlane={showCutPlane}
+              sliceFaceMode={sliceFaceMode}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
               showAnnotations={showUI}
@@ -822,6 +828,39 @@ export default function PlaybackPage() {
                         : sliceDirIsX
                           ? `Column ${sliceLevel + 1} of ${GRID_W} · ${(141.383 + (sliceLevel / (GRID_W - 1)) * 0.085).toFixed(3)}°E`
                           : `Row ${sliceLevel + 1} of ${GRID_D} · ${(38.582 + (sliceLevel / (GRID_D - 1)) * 0.069).toFixed(4)}°N`}
+                    </div>
+                  </div>
+
+                  {/* Cut-face display: smooth heat-map plane vs raw voxel ends. */}
+                  <div>
+                    <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1.5 font-medium">
+                      Cut face
+                    </div>
+                    <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
+                      {([
+                        { id: "voxels" as const,  label: "Voxels" },
+                        { id: "heatmap" as const, label: "Heat map" },
+                      ]).map(({ id, label }) => {
+                        const active = sliceFaceMode === id;
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setSliceFaceMode(id)}
+                            className={`flex-1 py-1.5 px-1 rounded-sm text-[11px] transition-colors flex items-center justify-center gap-1 ${
+                              active
+                                ? "bg-white text-foreground shadow-sm font-semibold"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <span>{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1.5 leading-snug">
+                      {sliceFaceMode === "heatmap"
+                        ? "Smooth interpolated gradient over the cut."
+                        : "Raw blocky voxel cross-section at the cut."}
                     </div>
                   </div>
                 </div>

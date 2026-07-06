@@ -929,9 +929,9 @@ function CoastalLandMesh({
 // grey ramp (a touch greener/earthier up top) so it sits with the surrounding
 // land. The underwater apron (effectiveSeabedM) already slopes the seabed UP to
 // meet each island, giving a continuous slope: seabed → shore → mound peak.
-const ISLAND_PEAK_H = 1.5; // scene units the centroid rises ABOVE Y_SURFACE.
-                           // Enough to read as islands (the dilated footprint
-                           // gives width) without becoming sharp cones.
+const ISLAND_PEAK_H = 1.0; // scene units the centroid rises ABOVE Y_SURFACE.
+                           // Low island rise; the dilated footprint gives width
+                           // so it reads as land without a cone.
 
 function IslandMesh({
   sliceMode,
@@ -2169,6 +2169,10 @@ interface OceanBasin3DProps {
   sliceDir: SliceDir;
   sliceCutType?: SliceCutType;
   showCutPlane?: boolean;
+  /** How the exposed cut face reads: the smooth interpolated gradient plane
+   *  ("heatmap", default) or the raw blocky voxel cross-section ("voxels",
+   *  which hides the SliceFacePlane so the voxel ends carry the section). */
+  sliceFaceMode?: "voxels" | "heatmap";
   onCellClick: (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
   showAnnotations?: boolean;
@@ -2197,6 +2201,7 @@ export default function OceanBasin3D({
   sliceDir,
   sliceCutType = "one-side",
   showCutPlane = true,
+  sliceFaceMode = "heatmap",
   onCellClick,
   onCellHover,
   showAnnotations = true,
@@ -2354,8 +2359,10 @@ export default function OceanBasin3D({
 
         {/* Smooth interpolated gradient painted on the exposed cut face, so the
             section reads as a clean scientific cross-section instead of blocky
-            voxel sides. Renders only when a slice is active. */}
-        {(dashboardState === "slice-h" || dashboardState === "slice-v") && (
+            voxel sides. Renders only when a slice is active AND the cut-face
+            mode is "heatmap"; in "voxels" mode it's hidden so the raw blocky
+            voxel ends carry the section (the voxels stay either way). */}
+        {(dashboardState === "slice-h" || dashboardState === "slice-v") && sliceFaceMode === "heatmap" && (
           <SliceFacePlane
             data={faceData}
             stops={faceStops}
