@@ -125,6 +125,9 @@ export default function PlaybackPage() {
   const [showUI, setShowUI] = useState(searchParams.get("ui") === "1");
   // Depth shading (3D lighting): dimensional by default; ?shade=0 for the flat look.
   const [depthShading, setDepthShading] = useState(searchParams.get("shade") !== "0");
+  // Slice mini-map overlay visibility. Shown by default; hiding it keeps the
+  // slice cut applied — only the top-down bay panel disappears.
+  const [showSliceMap, setShowSliceMap] = useState(true);
   const _initView = searchParams.get("view");
   // Accept both short ("n") and long ("north") forms for backwards-compat
   // with any older deep links, then normalise to the short code that the
@@ -525,7 +528,7 @@ export default function PlaybackPage() {
             </div>
 
             {/* ── Vertical-slice mini-map overlay ────────────────────────────── */}
-            {showUI && activeTool === "slice-v" && (
+            {showUI && activeTool === "slice-v" && showSliceMap && (
               <div className="absolute bottom-3 right-3 z-20 pointer-events-auto select-none">
                 <div className="bg-white/96 border border-border rounded-lg shadow-lg overflow-hidden" style={{ backdropFilter: "blur(4px)" }}>
                   {/* Header */}
@@ -534,6 +537,16 @@ export default function PlaybackPage() {
                     <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
                       From {sliceDir.charAt(0).toUpperCase() + sliceDir.slice(1)} · drag to reposition
                     </span>
+                    <button
+                      onClick={() => setShowSliceMap(false)}
+                      title="Hide slice map"
+                      className="ml-auto -mr-1 p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                        <line x1="3" y1="3" x2="13" y2="13" />
+                        <line x1="13" y1="3" x2="3" y2="13" />
+                      </svg>
+                    </button>
                   </div>
                   {/* Bay top-down SVG */}
                   <svg
@@ -584,6 +597,24 @@ export default function PlaybackPage() {
                     )}
                   </svg>
                 </div>
+              </div>
+            )}
+
+            {/* Restore affordance — shown in the mini-map's corner when hidden */}
+            {showUI && activeTool === "slice-v" && !showSliceMap && (
+              <div className="absolute bottom-3 right-3 z-20 pointer-events-auto">
+                <button
+                  onClick={() => setShowSliceMap(true)}
+                  title="Show slice map"
+                  className="flex items-center gap-1.5 bg-white/96 border border-border rounded-lg shadow-lg px-2.5 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide transition-colors"
+                  style={{ backdropFilter: "blur(4px)" }}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 flex-shrink-0">
+                    <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+                    <circle cx="8" cy="8" r="2" />
+                  </svg>
+                  Slice map
+                </button>
               </div>
             )}
           </div>
