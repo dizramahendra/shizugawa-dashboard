@@ -12,6 +12,7 @@ import {
   DEPTH_HEIGHTS,
   DEPTH_TOPS,
   DEPTH_REAL_M,
+  DEPTH_REAL_BOT,
   DEPTH_TOTAL_H,
   generateWeekData,
   generateRiverData,
@@ -22,6 +23,7 @@ import {
 import { depthLabel } from "@/lib/depthLabels";
 import { getLandMask, isOpenSea, LAND_RING } from "@/lib/landMask";
 import { ISLAND_CELLS, isIsland, islandApronFactor } from "@/lib/islands";
+import { buildTerrainField, type TerrainField, LAND_MAX_H } from "@/lib/terrainField";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
 const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
@@ -234,6 +236,74 @@ const SHORE_DIST: Map<string, number> = (() => {
   }
   return map;
 })();
+
+// ── Ground-elevation helpers (feed the unified SolidTerrain heightfield) ───────
+// Scene-Y of the BOTTOM of the deepest visible water voxel at a bay cell — i.e.
+// the seabed the nutrient voxels sit ON. This is exactly the value buildBatches
+// uses for that column's deepest voxel bottom AND the value the old SeabedMesh
+// used for its (unclipped) top, so the terrain top == voxel bottom with no gap.
+function bayColumnBottomY(gx: number, gz: number): number | null {
+  if (!isBayWater(gx, gz)) return null;
+  const maxLayer = deepestVisibleLayer(effectiveSeabedM(gx, gz));
+  if (maxLayer < 0) return null;
+  return Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
+}
+
+// Map a real bathymetric depth (metres) to a scene-Y BELOW the surface by
+// linearly interpolating through the same layer table the voxels use, so the
+// open-sea floor is continuous with the bay's quantised seabed at the boundary
+// (a metre depth landing on a layer bottom yields that layer's scene bottom).
+function bathyDepthToSceneY(depthM: number): number {
+  const dmax = DEPTH_REAL_BOT[DEPTH_LAYERS - 1];
+  const dm = Math.max(0, Math.min(dmax, depthM));
+  // Find the layer whose [topM, botM] contains dm and lerp within its scene span.
+  for (let d = 0; d < DEPTH_LAYERS; d++) {
+    const topM = DEPTH_REAL_M[d];
+    const botM = DEPTH_REAL_BOT[d];
+    if (dm <= botM || d === DEPTH_LAYERS - 1) {
+      const span = botM - topM || 1;
+      const f = Math.max(0, Math.min(1, (dm - topM) / span));
+      const topY = Y_SURFACE - DEPTH_TOPS[d];
+      return topY - DEPTH_HEIGHTS[d] * f;
+    }
+  }
+  return Y_SURFACE - DEPTH_TOTAL_H;
+}
+
+// Open-sea seabed (continuous Pacific floor). Sampled from the same bathymetry
+// as the bay, clamped to grid bounds so cells in the LAND_RING beyond the grid
+// carry the deep-east floor outward instead of extrapolating out of range.
+function openSeaSeabedY(gx: number, gz: number): number {
+  const cx = Math.max(0, Math.min(GRID_W - 1, gx));
+  const cz = Math.max(0, Math.min(GRID_D - 1, gz));
+  return bathyDepthToSceneY(getBathymetryDepthM(cx, cz));
+}
+
+// Per-cell island peakT lookup (0 shore → 1 peak), or null if not an island cell.
+const ISLAND_PEAK_BY_CELL: Map<string, number> = (() => {
+  const m = new Map<string, number>();
+  for (const c of ISLAND_CELLS) m.set(`${c.gz},${c.gx}`, c.peakT);
+  return m;
+})();
+function islandPeakT(gx: number, gz: number): number | null {
+  const v = ISLAND_PEAK_BY_CELL.get(`${gz},${gx}`);
+  return v === undefined ? null : v;
+}
+
+// Unified ground-elevation field E(gx,gz), built once (needs the DOM land mask).
+let _terrainField: TerrainField | null = null;
+function getTerrainField(): TerrainField {
+  if (_terrainField) return _terrainField;
+  _terrainField = buildTerrainField({
+    Y_SURFACE,
+    isBayWater,
+    isIsland,
+    islandPeakT,
+    bayColumnBottomY,
+    openSeaSeabedY,
+  });
+  return _terrainField;
+}
 
 // ── Hover tooltip ─────────────────────────────────────────────────────────────
 interface HoveredVoxel {
@@ -564,19 +634,61 @@ function VoxelGridInstanced({
   );
 }
 
-// ── Volumetric seabed solid ───────────────────────────────────────────────────
-// A closed solid that fills from the bathymetric seabed contour down to the
-// absolute bottom of the bounding cube (BOX_BOT), making the overall 3-D model
-// read as a complete block — water voxels sit in the bowl carved into the top.
+// ── Unified solid terrain (one continuous ground heightfield) ─────────────────
+// ONE solid ground surface — land → coast → seabed — replacing the old three
+// hollow shells (CoastalLandMesh, SeabedMesh, IslandMesh) and the box FLOOR.
+// Every ground cell of the extended (LAND_RING) grid is a SOLID column from its
+// ground-top elevation E(gx,gz) (see src/lib/terrainField.ts) down to BOX_BOT,
+// so a horizontal slice reveals continuous soil (no hollow columns) and a
+// vertical slice shows the land→coast→seabed profile as one continuous slope.
 //
-// Geometry per active cell:
-//   • Top face   — 4 corners at true seabed depth (averaged for smooth contour)
-//   • Bottom face — flat quad at BOX_BOT
-//   • Side walls  — vertical quads on every edge where the neighbour is NOT an
-//                   active (renderable) cell, i.e. the shoreline / slice cut face
+// Top elevation per cell:
+//   • water / open sea (BELOW sea level) — a FLAT top at the seabed the nutrient
+//     voxels sit on (water = deepest-voxel bottom, open sea = bathymetry floor),
+//     so voxels rest exactly on the ground with no gap/overlap.
+//   • land / island (ABOVE sea level) — SMOOTHED corner heights (field.cornerElev)
+//     so adjacent columns share vertex heights and the coast slopes gradually.
 //
-// Vertex colour: sandy tan (shallow/top) → dark muddy brown (deep/bottom)
-function SeabedMesh({
+// Walls: on each of the 4 lateral edges, a quad drops from THIS cell's edge-top
+// down to the neighbour's edge-top (or BOX_BOT when the neighbour has no solid —
+// shoreline into a shorter column, outer ring, or a slice cut face). Adjacent
+// above-water cells share corner heights, so their common edge needs no wall
+// (continuous surface); a land↔water edge gets a wall = the coastal slope face.
+//
+// Colour: one soil ramp for the whole ground. ABOVE sea level uses a land grey-
+// brown (lighter, greener near the peaks); BELOW sea level uses the seabed sandy-
+// tan→muddy-brown gradient. Both darken with depth so the block reads as soil.
+//
+// Slicing:
+//   • slice-h — clip every top at the slice plane Y and render ONLY below-water
+//     cells (land/island sit above the surface, so a horizontal cut removes them,
+//     matching the old behaviour); the exposed soil cross-section shows below.
+//   • slice-v — hide cells on the far side of the cut (isVoxelVisible); the cut
+//     face becomes a full wall to BOX_BOT, so the section is solid soil.
+
+// Vertex colour helpers shared by SolidTerrain.
+// BELOW sea level (seabed): sandy tan (top) → dark muddy brown (deep).
+function seabedColor(y: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
+  return [0.66 - t * 0.32, 0.52 - t * 0.26, 0.34 - t * 0.16];
+}
+// ABOVE sea level (land/island): grey-brown that lifts a touch greener toward
+// the peak, matching the old CoastalLandMesh / IslandMesh tints. `above` is the
+// height over Y_SURFACE; `hiRef` normalises the green lift by the tallest rise.
+function landColor(y: number, hiRef: number): [number, number, number] {
+  // Depth ramp shared with the seabed just below the surface for a seamless
+  // coast: from the surface down to BOX_BOT, grey darkens with depth.
+  const t = Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
+  const above = Math.max(0, y - Y_SURFACE);
+  const hi = hiRef > 0 ? Math.max(0, Math.min(1, above / hiRef)) : 0;
+  return [
+    0.80 - t * 0.30 - hi * 0.08,
+    0.80 - t * 0.28 + hi * 0.02,
+    0.79 - t * 0.24 - hi * 0.06,
+  ];
+}
+
+function SolidTerrain({
   sliceMode,
   sliceLevel,
   sliceDir,
@@ -588,75 +700,103 @@ function SeabedMesh({
   sliceCutType: SliceCutType;
 }) {
   const geometry = useMemo(() => {
-    // In slice-h mode, everything above this Y is hidden (top of the selected layer)
+    const field = getTerrainField();
+
+    // slice-h clip plane: everything above this Y is hidden (top of the layer).
     const sliceClipY = sliceMode === "slice-h"
       ? Y_SURFACE - DEPTH_TOPS[sliceLevel]
-      : Infinity;  // no clip
+      : Infinity;
 
-    // Is cell (gx, gz) part of the rendered solid?
-    function shouldRender(gx: number, gz: number): boolean {
-      if (!isBayWater(gx, gz)) return false; // islands carry their own mound solid
-      if (sliceMode === "slice-v") {
-        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
-      }
-      return true;
-    }
+    const passesSliceV = (gx: number, gz: number): boolean =>
+      sliceMode !== "slice-v" || isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
 
-    // Per-cell seabed top (scene-Y): the bottom of THIS cell's deepest water
-    // voxel, clipped at the horizontal slice plane. Returns null when the cell
-    // has no solid (outside the bay, sliced away, or no visible column) — the
-    // wall logic treats that as "open down to BOX_BOT". Flat per-cell tops (no
-    // smoothing) keep the seabed blocky so it meets every voxel column exactly:
-    // no gaps beneath shallow columns, no over-height intrusion into deep ones.
-    function cellTop(gx: number, gz: number): number | null {
-      if (!shouldRender(gx, gz)) return null;
-      const seabedM  = effectiveSeabedM(gx, gz);
-      const maxLayer = deepestVisibleLayer(seabedM);
-      if (maxLayer < 0) return null;
-      const y = Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
+    // River/gap ("none") cells still get a SOLID plug beneath them, so the ground
+    // has no hollow under a river channel (the box floor is gone). Their top sits
+    // at the river-bed level (layer-0 bottom), matching RiverSeabedMesh, so the
+    // channel stays carved while soil fills from that bed down to BOX_BOT.
+    const NONE_TOP_Y = Y_SURFACE - DEPTH_TOPS[0] - DEPTH_HEIGHTS[0];
+
+    const inExt = (gx: number, gz: number): boolean =>
+      gx >= field.gxMin && gx < field.gxMax && gz >= field.gzMin && gz < field.gzMax;
+
+    // Is this cell part of the rendered solid under the current slice?
+    const isGround = (gx: number, gz: number): boolean => {
+      if (!inExt(gx, gz)) return false;               // outside the box → no solid
+      const k = field.kind(gx, gz);
+      // A horizontal slice cuts at/below the surface, so it removes the ABOVE-
+      // water land/island (matching the old CoastalLand/Island behaviour) and
+      // keeps only the seabed under water / open sea (and the river-bed plug).
+      if (sliceMode === "slice-h" && (k === "land" || k === "island")) return false;
+      return passesSliceV(gx, gz);
+    };
+    const isAboveWater = (gx: number, gz: number): boolean => {
+      const k = field.kind(gx, gz);
+      return k === "land" || k === "island";
+    };
+
+    // Ground top at a grid CORNER for a given cell: above-water cells use the
+    // smoothed shared corner height (continuous slope); below-water cells use
+    // their flat cell top so voxels sit flat on them. Clipped at the slice plane.
+    const cellFlatTop = (gx: number, gz: number): number => {
+      const y = field.kind(gx, gz) === "none" ? NONE_TOP_Y : field.elev(gx, gz);
       return Math.min(y, sliceClipY);
-    }
+    };
+    const cornerTopFor = (
+      gx: number, gz: number, cgx: number, cgz: number,
+    ): number => {
+      if (isAboveWater(gx, gz)) {
+        const c = field.cornerElev(cgx, cgz);
+        const y = Number.isNaN(c) ? field.elev(gx, gz) : c;
+        return Math.min(y, sliceClipY);
+      }
+      return cellFlatTop(gx, gz);
+    };
+
+    // Level the neighbour presents along a shared edge (for wall bottoms). When
+    // the neighbour is not ground → BOX_BOT (full wall down to the floor).
+    const neighbourEdgeTop = (
+      nx: number, nz: number, cgx0: number, cgz0: number, cgx1: number, cgz1: number,
+    ): { a: number; b: number } | null => {
+      if (!isGround(nx, nz)) return null;
+      return {
+        a: cornerTopFor(nx, nz, cgx0, cgz0),
+        b: cornerTopFor(nx, nz, cgx1, cgz1),
+      };
+    };
 
     const positions: number[] = [];
     const colors:    number[] = [];
     const indices:   number[] = [];
 
-    // Vertex colour: depthT=0 → sandy tan top, depthT=1 → dark muddy brown base
-    function dT(y: number): number {
-      return Math.max(0, Math.min(1, (Y_SURFACE - y) / DEPTH_TOTAL_H));
-    }
-    function addVert(px: number, py: number, pz: number): number {
-      const t = dT(py);
+    // The tallest rise above the surface, to normalise the green peak lift.
+    const HI_REF = Math.max(0.001, BOX_TOP - Y_SURFACE);
+    const addVert = (px: number, py: number, pz: number): number => {
+      const [r, g, b] = py > Y_SURFACE ? landColor(py, HI_REF) : seabedColor(py);
       positions.push(px, py, pz);
-      colors.push(0.66 - t * 0.32, 0.52 - t * 0.26, 0.34 - t * 0.16);
+      colors.push(r, g, b);
       return (positions.length / 3) - 1;
-    }
-
-    // Wall bottom for one lateral edge: down to the neighbour's own top when the
-    // neighbour is a shorter (deeper-topped... i.e. lower) solid, or to BOX_BOT
-    // when the neighbour has no solid (shore / slice cut). Returns null when the
-    // neighbour is level or taller — it already covers this face, so no wall.
-    const wallBottom = (topY: number, nx: number, nz: number): number | null => {
-      const nT = cellTop(nx, nz);
-      const wb = nT === null ? BOX_BOT : nT;
-      return wb < topY ? wb : null;
     };
 
-    for (let gz = 0; gz < GRID_D; gz++) {
-      for (let gx = 0; gx < GRID_W; gx++) {
-        const topY = cellTop(gx, gz);
-        if (topY === null) continue;
+    for (let gz = field.gzMin; gz < field.gzMax; gz++) {
+      for (let gx = field.gxMin; gx < field.gxMax; gx++) {
+        if (!isGround(gx, gz)) continue;
 
         const x0 = offsetX + gx       * STEP;
         const x1 = offsetX + (gx + 1) * STEP;
         const z0 = offsetZ + gz       * STEP;
         const z1 = offsetZ + (gz + 1) * STEP;
 
-        // ── Top face (flat at this cell's own column bottom, faces upward) ────
-        const t00 = addVert(x0, topY, z0);
-        const t10 = addVert(x1, topY, z0);
-        const t01 = addVert(x0, topY, z1);
-        const t11 = addVert(x1, topY, z1);
+        // Corner heights (shared with neighbours for above-water → continuous).
+        const y00 = cornerTopFor(gx, gz, gx,     gz);
+        const y10 = cornerTopFor(gx, gz, gx + 1, gz);
+        const y01 = cornerTopFor(gx, gz, gx,     gz + 1);
+        const y11 = cornerTopFor(gx, gz, gx + 1, gz + 1);
+
+        // ── Top face (faces upward) ───────────────────────────────────────────
+        const t00 = addVert(x0, y00, z0);
+        const t10 = addVert(x1, y10, z0);
+        const t01 = addVert(x0, y01, z1);
+        const t11 = addVert(x1, y11, z1);
         indices.push(t00, t11, t10,  t00, t01, t11);
 
         // ── Bottom face (flat at BOX_BOT, faces downward) ─────────────────────
@@ -666,44 +806,42 @@ function SeabedMesh({
         const b11 = addVert(x1, BOX_BOT, z1);
         indices.push(b00, b10, b11,  b00, b11, b01);
 
-        // ── Side / step walls — down to the neighbour's top, or BOX_BOT ───────
+        // ── Side walls: drop from this cell's edge to the neighbour's edge ────
+        // (or BOX_BOT when the neighbour is not ground). A wall is emitted only
+        // where this cell stands ABOVE the neighbour's level, so two continuous
+        // above-water cells (shared corner heights) produce no wall.
+        const emitWall = (
+          ax: number, az: number, bx: number, bz: number,   // shared edge endpoints (world XZ)
+          topA: number, topB: number,                       // this cell's tops at those endpoints
+          nEdge: { a: number; b: number } | null,           // neighbour level, or null → BOX_BOT
+          flip: boolean,
+        ) => {
+          const botA = nEdge ? nEdge.a : BOX_BOT;
+          const botB = nEdge ? nEdge.b : BOX_BOT;
+          // Nothing to fill if the neighbour is level or higher on both ends.
+          if (botA >= topA && botB >= topB) return;
+          const lowA = Math.min(botA, topA);
+          const lowB = Math.min(botB, topB);
+          const a = addVert(ax, topA, az);
+          const b = addVert(ax, lowA, az);
+          const c = addVert(bx, lowB, bz);
+          const d = addVert(bx, topB, bz);
+          if (flip) indices.push(a, c, b,  a, d, c);
+          else      indices.push(a, b, c,  a, c, d);
+        };
 
-        // West face (-X): x=x0, z0→z1
-        {
-          const wb = wallBottom(topY, gx - 1, gz);
-          if (wb !== null) {
-            const a = addVert(x0, topY, z0); const b = addVert(x0, wb, z0);
-            const c = addVert(x0, wb, z1);   const d = addVert(x0, topY, z1);
-            indices.push(a, b, c,  a, c, d);
-          }
-        }
-        // East face (+X): x=x1, z0→z1
-        {
-          const wb = wallBottom(topY, gx + 1, gz);
-          if (wb !== null) {
-            const a = addVert(x1, topY, z0); const b = addVert(x1, wb, z0);
-            const c = addVert(x1, wb, z1);   const d = addVert(x1, topY, z1);
-            indices.push(a, c, b,  a, d, c);
-          }
-        }
-        // North face (-Z): z=z0, x0→x1
-        {
-          const wb = wallBottom(topY, gx, gz - 1);
-          if (wb !== null) {
-            const a = addVert(x0, topY, z0); const b = addVert(x0, wb, z0);
-            const c = addVert(x1, wb, z0);   const d = addVert(x1, topY, z0);
-            indices.push(a, c, b,  a, d, c);
-          }
-        }
-        // South face (+Z): z=z1, x0→x1
-        {
-          const wb = wallBottom(topY, gx, gz + 1);
-          if (wb !== null) {
-            const a = addVert(x0, topY, z1); const b = addVert(x0, wb, z1);
-            const c = addVert(x1, wb, z1);   const d = addVert(x1, topY, z1);
-            indices.push(a, b, c,  a, c, d);
-          }
-        }
+        // West (-X): edge z0→z1 at x0; neighbour (gx-1,gz)
+        emitWall(x0, z0, x0, z1, y00, y01,
+          neighbourEdgeTop(gx - 1, gz, gx, gz, gx, gz + 1), false);
+        // East (+X): edge z0→z1 at x1; neighbour (gx+1,gz)
+        emitWall(x1, z0, x1, z1, y10, y11,
+          neighbourEdgeTop(gx + 1, gz, gx + 1, gz, gx + 1, gz + 1), true);
+        // North (-Z): edge x0→x1 at z0; neighbour (gx,gz-1)
+        emitWall(x0, z0, x1, z0, y00, y10,
+          neighbourEdgeTop(gx, gz - 1, gx, gz, gx + 1, gz), true);
+        // South (+Z): edge x0→x1 at z1; neighbour (gx,gz+1)
+        emitWall(x0, z1, x1, z1, y01, y11,
+          neighbourEdgeTop(gx, gz + 1, gx, gz + 1, gx + 1, gz + 1), false);
       }
     }
 
@@ -722,8 +860,8 @@ function SeabedMesh({
     <mesh geometry={geometry}>
       <meshStandardMaterial
         vertexColors
-        roughness={0.88}
-        metalness={0.04}
+        roughness={0.9}
+        metalness={0.03}
         side={THREE.DoubleSide}
         polygonOffset
         polygonOffsetFactor={1}
@@ -733,26 +871,9 @@ function SeabedMesh({
   );
 }
 
-// ── Coastal land solid ────────────────────────────────────────────────────────
-// The REAL surrounding land: every grid cell (plus a border ring beyond the
-// grid) whose centre falls inside one of the SUB_BASIN_PATHS watershed
-// polygons — and is neither bay water nor a river channel — is rendered as a
-// solid grey terrain mass. Because the sub-basins and the bay outline share
-// the same SVG source + transform, the land rings the bay along the real
-// coastline, and the rivers (excluded cells) read as sunken channels.
-//
-// Geometry per land cell (modeled on SeabedMesh):
-//   • Top face    — flat at LAND_TOP (just above the water surface)
-//   • Bottom face — flat at BOX_BOT
-//   • Side walls  — on edges where the neighbour is NOT visible land:
-//       → visible bay water: wall covers only the strip above the water
-//         surface (below it the opaque water voxels + seabed walls own that
-//         plane — avoids coplanar z-fighting)
-//       → visible river cell: full wall to BOX_BOT (plugs the void beneath
-//         the shallow river solid; polygonOffset 2 keeps the river geometry
-//         in front on the small coplanar strip)
-//       → nothing (outer ring edge, slice cut, unbasined gap): full wall
-// Vertex colour: light grey top, sightly darker grey down the walls for form.
+// LAND_TOP retained: the study-box lid height (see STUDY_BOX_TOP below). The
+// land now RISES to Y_SURFACE + LAND_MAX_H, so the box top tracks that instead
+// of a flat land plateau.
 const LAND_TOP = Y_SURFACE + 0.7;
 
 // ── Study-box extent (the LAND_RING outer rectangle) ──────────────────────────
@@ -765,315 +886,13 @@ const EXT_WEST_X  = offsetX + (-LAND_RING)          * STEP;
 const EXT_EAST_X  = offsetX + (GRID_W + LAND_RING)  * STEP;
 const EXT_SOUTH_Z = offsetZ + (-LAND_RING)          * STEP;
 const EXT_NORTH_Z = offsetZ + (GRID_D + LAND_RING)  * STEP;
-// Box lid height: the land surface. Walls/floor cap the model from LAND_TOP
-// down to BOX_BOT (the absolute bottom the seabed/land/river solids reach).
-const STUDY_BOX_TOP = LAND_TOP;
+// Box lid height: the highest ground (risen land) so the walls fully enclose the
+// terrain. Walls cap the model from the land peak down to BOX_BOT (the absolute
+// bottom every solid column reaches). +0.05 clears the tallest smoothed corner.
+const STUDY_BOX_TOP = Math.max(LAND_TOP, Y_SURFACE + LAND_MAX_H + 0.05);
 const STUDY_BOX_BOT = BOX_BOT;
 
-function CoastalLandMesh({
-  sliceMode,
-  sliceLevel,
-  sliceDir,
-  sliceCutType,
-}: {
-  sliceMode: DashboardState;
-  sliceLevel: number;
-  sliceDir: SliceDir;
-  sliceCutType: SliceCutType;
-}) {
-  const geometry = useMemo(() => {
-    // Land sits entirely above the water surface, so any horizontal slice
-    // plane (all of which are at/below the surface) removes it completely.
-    if (sliceMode === "slice-h") return null;
-
-    const mask = getLandMask();
-    const ring = mask.ring;
-    const riverSet = new Set(RIVER_CELLS.map((c) => `${c.gz},${c.gx}`));
-
-    function passesSlice(gx: number, gz: number): boolean {
-      if (sliceMode === "slice-v") {
-        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
-      }
-      return true;
-    }
-    function landVisible(gx: number, gz: number): boolean {
-      return mask.isLand(gx, gz) && passesSlice(gx, gz);
-    }
-    // Water (bay voxel column or river tile) rendered at (gx, gz)?
-    // Island cells are land (they carry their own mound), so they are NOT water
-    // here — a coastal-land edge against an island gets a full wall, not a
-    // water-surface freeboard strip.
-    function bayVisible(gx: number, gz: number): boolean {
-      return gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D &&
-        isBayWater(gx, gz) && passesSlice(gx, gz);
-    }
-    function riverVisible(gx: number, gz: number): boolean {
-      return riverSet.has(`${gz},${gx}`) && passesSlice(gx, gz);
-    }
-
-    const positions: number[] = [];
-    const colors:    number[] = [];
-    const indices:   number[] = [];
-
-    // Vertex colour: t=0 → light grey top, t=1 → darker grey at BOX_BOT
-    function addVert(px: number, py: number, pz: number): number {
-      const t = Math.max(0, Math.min(1, (LAND_TOP - py) / (LAND_TOP - BOX_BOT)));
-      positions.push(px, py, pz);
-      colors.push(0.80 - t * 0.26, 0.80 - t * 0.25, 0.79 - t * 0.22);
-      return (positions.length / 3) - 1;
-    }
-
-    // Wall bottom for one lateral edge (null → no wall needed).
-    const wallBottom = (nx: number, nz: number): number | null => {
-      if (landVisible(nx, nz)) return null;     // flat shared face — no wall
-      if (bayVisible(nx, nz))  return Y_SURFACE; // freeboard strip only
-      return BOX_BOT;                            // river channel / open edge
-    };
-
-    for (let gz = -ring; gz < GRID_D + ring; gz++) {
-      for (let gx = -ring; gx < GRID_W + ring; gx++) {
-        if (!landVisible(gx, gz)) continue;
-
-        const x0 = offsetX + gx       * STEP;
-        const x1 = offsetX + (gx + 1) * STEP;
-        const z0 = offsetZ + gz       * STEP;
-        const z1 = offsetZ + (gz + 1) * STEP;
-
-        // ── Top face (flat at LAND_TOP, faces upward) ─────────────────────────
-        const t00 = addVert(x0, LAND_TOP, z0);
-        const t10 = addVert(x1, LAND_TOP, z0);
-        const t01 = addVert(x0, LAND_TOP, z1);
-        const t11 = addVert(x1, LAND_TOP, z1);
-        indices.push(t00, t11, t10,  t00, t01, t11);
-
-        // ── Bottom face (flat at BOX_BOT, faces downward) ─────────────────────
-        const b00 = addVert(x0, BOX_BOT, z0);
-        const b10 = addVert(x1, BOX_BOT, z0);
-        const b01 = addVert(x0, BOX_BOT, z1);
-        const b11 = addVert(x1, BOX_BOT, z1);
-        indices.push(b00, b10, b11,  b00, b11, b01);
-
-        // ── Side walls — down to the coastline water surface or BOX_BOT ───────
-
-        // West face (-X): x=x0, z0→z1
-        {
-          const wb = wallBottom(gx - 1, gz);
-          if (wb !== null) {
-            const a = addVert(x0, LAND_TOP, z0); const b = addVert(x0, wb, z0);
-            const c = addVert(x0, wb, z1);       const d = addVert(x0, LAND_TOP, z1);
-            indices.push(a, b, c,  a, c, d);
-          }
-        }
-        // East face (+X): x=x1, z0→z1
-        {
-          const wb = wallBottom(gx + 1, gz);
-          if (wb !== null) {
-            const a = addVert(x1, LAND_TOP, z0); const b = addVert(x1, wb, z0);
-            const c = addVert(x1, wb, z1);       const d = addVert(x1, LAND_TOP, z1);
-            indices.push(a, c, b,  a, d, c);
-          }
-        }
-        // North face (-Z): z=z0, x0→x1
-        {
-          const wb = wallBottom(gx, gz - 1);
-          if (wb !== null) {
-            const a = addVert(x0, LAND_TOP, z0); const b = addVert(x0, wb, z0);
-            const c = addVert(x1, wb, z0);       const d = addVert(x1, LAND_TOP, z0);
-            indices.push(a, c, b,  a, d, c);
-          }
-        }
-        // South face (+Z): z=z1, x0→x1
-        {
-          const wb = wallBottom(gx, gz + 1);
-          if (wb !== null) {
-            const a = addVert(x0, LAND_TOP, z1); const b = addVert(x0, wb, z1);
-            const c = addVert(x1, wb, z1);       const d = addVert(x1, LAND_TOP, z1);
-            indices.push(a, b, c,  a, c, d);
-          }
-        }
-      }
-    }
-
-    if (indices.length === 0) return null;
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    return geo;
-  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
-
-  if (!geometry) return null;
-  return (
-    <mesh geometry={geometry}>
-      <meshStandardMaterial
-        vertexColors
-        roughness={0.95}
-        metalness={0}
-        side={THREE.DoubleSide}
-        polygonOffset
-        polygonOffsetFactor={2}
-        polygonOffsetUnits={2}
-      />
-    </mesh>
-  );
-}
-
-// ── Islands (Arajima + Tsubakishima) as tapering mounds ───────────────────────
-// The two ocean-outline holes are rendered as small mountainous islands: each
-// island cell is a solid column from BOX_BOT up to a smoothed peak. Peak height
-// tapers from ISLAND_PEAK_H at the island's centroid down to the waterline
-// (Y_SURFACE) at its edge cells, so the island reads as a cone/mound rather than
-// a flat-top block or a vertical pillar. Vertex tint reuses CoastalLandMesh's
-// grey ramp (a touch greener/earthier up top) so it sits with the surrounding
-// land. The underwater apron (effectiveSeabedM) already slopes the seabed UP to
-// meet each island, giving a continuous slope: seabed → shore → mound peak.
-const ISLAND_PEAK_H = 1.0; // scene units the centroid rises ABOVE Y_SURFACE.
-                           // Low island rise; the dilated footprint gives width
-                           // so it reads as land without a cone.
-
-function IslandMesh({
-  sliceMode,
-  sliceLevel,
-  sliceDir,
-  sliceCutType,
-}: {
-  sliceMode: DashboardState;
-  sliceLevel: number;
-  sliceDir: SliceDir;
-  sliceCutType: SliceCutType;
-}) {
-  const geometry = useMemo(() => {
-    // Islands sit above the water surface, so any horizontal slice (all at/below
-    // the surface) removes them — matches CoastalLandMesh's behaviour.
-    if (sliceMode === "slice-h") return null;
-
-    // Per-cell peakT lookup (0 edge → 1 peak). Corner heights average the peakT
-    // of the (up to) four cells sharing that corner, so adjacent columns share a
-    // vertex height and the surface reads as a smooth mound, not a stack of steps.
-    const peakByCell = new Map<string, number>();
-    for (const c of ISLAND_CELLS) peakByCell.set(`${c.gz},${c.gx}`, c.peakT);
-    const cellPeak = (gx: number, gz: number): number | null => {
-      const v = peakByCell.get(`${gz},${gx}`);
-      return v === undefined ? null : v;
-    };
-
-    function passesSlice(gx: number, gz: number): boolean {
-      if (sliceMode === "slice-v") {
-        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
-      }
-      return true;
-    }
-    const islandVisible = (gx: number, gz: number): boolean =>
-      cellPeak(gx, gz) !== null && passesSlice(gx, gz);
-
-    // Smoothed surface height at a grid CORNER (gx,gz = the corner shared by
-    // cells [gx-1,gy-1]..[gx,gz]). Averages peakT over the neighbouring island
-    // cells present; edge corners (fewer neighbours) sit lower → taper to shore.
-    const cornerY = (cornerGx: number, cornerGz: number): number => {
-      let sum = 0, n = 0;
-      for (const [dx, dz] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) {
-        const p = cellPeak(cornerGx + dx, cornerGz + dz);
-        if (p !== null) { sum += p; n++; }
-      }
-      const t = n > 0 ? sum / 4 : 0; // divide by 4 (missing neighbours = waterline)
-      return Y_SURFACE + t * ISLAND_PEAK_H;
-    };
-
-    const positions: number[] = [];
-    const colors:    number[] = [];
-    const indices:   number[] = [];
-
-    // Vertex tint: earthy green-grey at the peak → the CoastalLandMesh grey lower
-    // down, so the mound belongs with the surrounding land but reads as a hill.
-    function addVert(px: number, py: number, pz: number): number {
-      const above = Math.max(0, py - Y_SURFACE);
-      const hi = Math.max(0, Math.min(1, above / ISLAND_PEAK_H)); // 0 shore → 1 peak
-      const t  = Math.max(0, Math.min(1, (LAND_TOP - py) / (LAND_TOP - BOX_BOT)));
-      // base = CoastalLandMesh ramp; lift green a touch as we climb toward the peak.
-      positions.push(px, py, pz);
-      colors.push(
-        0.80 - t * 0.26 - hi * 0.08,
-        0.80 - t * 0.25 + hi * 0.02,
-        0.79 - t * 0.22 - hi * 0.06,
-      );
-      return (positions.length / 3) - 1;
-    }
-
-    // Full side wall down to BOX_BOT wherever the neighbour is not island (so the
-    // mound is a closed solid meeting the seabed apron). Between two island cells
-    // the shared face is skipped.
-    const wall = (
-      x0: number, z0: number, x1: number, z1: number, topA: number, topB: number,
-    ) => {
-      const a = addVert(x0, topA, z0);
-      const b = addVert(x0, BOX_BOT, z0);
-      const c = addVert(x1, BOX_BOT, z1);
-      const d = addVert(x1, topB, z1);
-      indices.push(a, b, c, a, c, d);
-    };
-
-    for (const { gx, gz } of ISLAND_CELLS) {
-      if (!islandVisible(gx, gz)) continue;
-
-      const x0 = offsetX + gx       * STEP;
-      const x1 = offsetX + (gx + 1) * STEP;
-      const z0 = offsetZ + gz       * STEP;
-      const z1 = offsetZ + (gz + 1) * STEP;
-
-      // Smoothed corner heights (shared with neighbours → continuous surface).
-      const y00 = cornerY(gx,     gz);
-      const y10 = cornerY(gx + 1, gz);
-      const y01 = cornerY(gx,     gz + 1);
-      const y11 = cornerY(gx + 1, gz + 1);
-
-      // Top surface (mound face, upward).
-      const t00 = addVert(x0, y00, z0);
-      const t10 = addVert(x1, y10, z0);
-      const t01 = addVert(x0, y01, z1);
-      const t11 = addVert(x1, y11, z1);
-      indices.push(t00, t11, t10,  t00, t01, t11);
-
-      // Bottom (at BOX_BOT, downward).
-      const b00 = addVert(x0, BOX_BOT, z0);
-      const b10 = addVert(x1, BOX_BOT, z0);
-      const b01 = addVert(x0, BOX_BOT, z1);
-      const b11 = addVert(x1, BOX_BOT, z1);
-      indices.push(b00, b10, b11,  b00, b11, b01);
-
-      // Side walls on edges where the neighbour is not a visible island cell.
-      if (!islandVisible(gx - 1, gz)) wall(x0, z0, x0, z1, y00, y01); // west
-      if (!islandVisible(gx + 1, gz)) wall(x1, z1, x1, z0, y11, y10); // east
-      if (!islandVisible(gx, gz - 1)) wall(x1, z0, x0, z0, y10, y00); // north (-Z)
-      if (!islandVisible(gx, gz + 1)) wall(x0, z1, x1, z1, y01, y11); // south (+Z)
-    }
-
-    if (indices.length === 0) return null;
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    return geo;
-  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
-
-  if (!geometry) return null;
-  return (
-    <mesh geometry={geometry}>
-      <meshStandardMaterial
-        vertexColors
-        roughness={0.95}
-        metalness={0}
-        side={THREE.DoubleSide}
-        polygonOffset
-        polygonOffsetFactor={2}
-        polygonOffsetUnits={2}
-      />
-    </mesh>
-  );
-}
+// (CoastalLandMesh + IslandMesh removed — folded into SolidTerrain above.)
 
 // ── Open Pacific (Sanriku) — a static CONTEXT ocean ───────────────────────────
 // East (and the open south) of the bay is open sea. It is modelled as a single
@@ -1170,18 +989,19 @@ function OpenSeaMesh({
   );
 }
 
-// ── Bounded study box (side walls + floor) ────────────────────────────────────
+// ── Bounded study box (side walls only) ───────────────────────────────────────
 // A clean rectangular container at the extended-grid (LAND_RING) extent, so the
 // whole region reads as a bounded voxel "study box" instead of shapes floating
 // on white — matching an ArcGIS-Pro Voxel-Explorer look.
 //
-//   • Floor  — one quad at STUDY_BOX_BOT (= BOX_BOT), spanning the full extent,
-//              capping the bottom. DoubleSide so it reads from above and below.
-//   • Walls  — four vertical quads at the extent edges, from STUDY_BOX_TOP
-//              (= LAND_TOP) down to STUDY_BOX_BOT. Rendered BackSide only, so
-//              the near walls facing the camera are culled and the far/interior
-//              walls remain — the box frames the data without ever occluding it,
-//              from any orbit angle (the container is open toward the viewer).
+//   • Walls  — four vertical quads at the extent edges, from STUDY_BOX_TOP down
+//              to STUDY_BOX_BOT. Rendered BackSide only, so the near walls facing
+//              the camera are culled and the far/interior walls remain — the box
+//              frames the data without ever occluding it, from any orbit angle
+//              (the container is open toward the viewer).
+//   • Floor  — REMOVED: SolidTerrain now caps the bottom of every extended-grid
+//              cell (each solid column reaches BOX_BOT), so the ground itself is
+//              the box floor — one continuous solid, no separate floor plane.
 //
 // The bay water column + rivers are carved into the model INSIDE this box; the
 // walls sit LAND_RING cells beyond the coastline, so nothing walls over the
@@ -1220,20 +1040,6 @@ function StudyBoxShell() {
     return geo;
   }, []);
 
-  const floorGeometry = useMemo(() => {
-    const positions = new Float32Array([
-      EXT_WEST_X, STUDY_BOX_BOT, EXT_SOUTH_Z,
-      EXT_EAST_X, STUDY_BOX_BOT, EXT_SOUTH_Z,
-      EXT_EAST_X, STUDY_BOX_BOT, EXT_NORTH_Z,
-      EXT_WEST_X, STUDY_BOX_BOT, EXT_NORTH_Z,
-    ]);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geo.setIndex([0, 1, 2, 0, 2, 3]);
-    geo.computeVertexNormals();
-    return geo;
-  }, []);
-
   return (
     <group>
       {/* Side walls: BackSide so the camera-facing near walls are culled and the
@@ -1244,15 +1050,6 @@ function StudyBoxShell() {
           roughness={0.97}
           metalness={0}
           side={THREE.BackSide}
-        />
-      </mesh>
-      {/* Floor: caps the bottom, visible from any angle. */}
-      <mesh geometry={floorGeometry}>
-        <meshStandardMaterial
-          color="#7f7f7b"
-          roughness={0.97}
-          metalness={0}
-          side={THREE.DoubleSide}
         />
       </mesh>
     </group>
@@ -2289,24 +2086,12 @@ export default function OceanBasin3D({
       <group scale={[ASPECT_X, 1, -1]}>
         <VoxelGridInstanced {...voxelProps} markerPixels={markerMap} transitionMs={transitionMs} />
 
-        <SeabedMesh
-          sliceMode={dashboardState}
-          sliceLevel={sliceLevel}
-          sliceDir={sliceDir}
-          sliceCutType={sliceCutType}
-        />
-
-        <CoastalLandMesh
-          sliceMode={dashboardState}
-          sliceLevel={sliceLevel}
-          sliceDir={sliceDir}
-          sliceCutType={sliceCutType}
-        />
-
-        {/* Arajima + Tsubakishima: the two ocean-outline holes, rendered as
-            tapering mountainous islands (peak → waterline), with the seabed
-            sloping up to meet them (see effectiveSeabedM apron). */}
-        <IslandMesh
+        {/* Unified solid terrain: ONE continuous ground surface — land slopes
+            down the coast into the seabed (bay + open-sea floor) and up into the
+            island mounds — replacing the old separate seabed / coastal-land /
+            island shells and the study-box floor. Each cell is a solid column to
+            BOX_BOT, so slicing reveals continuous soil (no hollows). */}
+        <SolidTerrain
           sliceMode={dashboardState}
           sliceLevel={sliceLevel}
           sliceDir={sliceDir}
@@ -2323,8 +2108,9 @@ export default function OceanBasin3D({
           sliceCutType={sliceCutType}
         />
 
-        {/* Bounded "study box": solid side walls + floor at the LAND_RING
-            extent, framing the whole region like an ArcGIS voxel study box. */}
+        {/* Bounded "study box": solid side walls at the LAND_RING extent, framing
+            the whole region like an ArcGIS voxel study box. The floor is gone —
+            SolidTerrain caps the bottom of every cell. */}
         <StudyBoxShell />
 
         <RiverGrid
