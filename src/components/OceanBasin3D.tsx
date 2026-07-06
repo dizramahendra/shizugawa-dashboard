@@ -178,85 +178,112 @@ function isBayWater(gx: number, gz: number): boolean {
   return !!BAY_MASK[gz]?.[gx] && !isIsland(gx, gz);
 }
 
-// ── Bathymetry (coast-relative, distance-from-shore) ──────────────────────────
-// Shizugawa is a ria bay: shallow at the head/coast, deepening toward the mouth
-// / open sea (real max ≈ 54 m). A horizontal W→E gradient made the seabed deep
-// right at the shoreline → a cliff where the land met the sea. Instead we drive
-// depth by DISTANCE FROM SHORE so the seabed rises to ~0 m at every coastline on
-// every side and eases down to the deepest ~54 m at the farthest-offshore cells.
+// ── Unified seabed — ONE distance-to-LAND field over bay + open sea ────────────
+// Shizugawa is a ria bay: shallow at the enclosed head, deepening toward the
+// mouth and CONTINUING to deepen into the open Pacific. So the seabed is a SINGLE
+// continuous surface across the bay AND the open sea, and it meets the
+// surrounding land at ~sea level on every side — one continuous solid ground.
 //
-// `SHORE_DIST_M` below is an 8-connected multi-source BFS distance (in cells)
-// from every bay-water cell to the nearest NON-water cell (land / island / grid
-// edge = shore). Shore-adjacent cells → dist 1; the bay interior / mouth → the
-// max. `getBathymetryDepthM` maps that normalised distance through a gentle
-// shape so it's shallow at the coast and deep offshore. Because BOTH the water
-// voxel columns (via effectiveSeabedM → deepestVisibleLayer) AND the terrain
-// seabed E (via bayColumnBottomY / openSeaSeabedY) read this ONE function, the
-// voxels sit exactly on the seabed and the seabed slopes up to the shore.
-export const MAX_DEPTH_M = 54;              // Shizugawa Bay real max ≈ 54 m
-const MIN_COAST_DEPTH_M = 1.5;              // seabed just below the waterline at shore
-const DEPTH_SHAPE_POW = 1.5;                // t^1.5 → gentle, wide shallows off the coast, deepening toward the mouth
+// The old model measured distance-to-SHORE within the bay only, and counted the
+// OPEN SEA itself as "shore" — so the bay MOUTH came out shallow while the sea
+// beside it was deep, i.e. a cliff at the boundary. Now depth is driven by
+// distance to the nearest LAND over bay + open-sea water TOGETHER (8-connected
+// BFS seeded from every land/island cell of the extended grid, propagated
+// through all water). Therefore:
+//   • every coastline (bay shore, island, open Pacific coast) starts shallow →
+//     the land meets the water as a beach, not a wall;
+//   • the bay HEAD (ringed by land) is shallow, the MOUTH (far from land) deep;
+//   • the open sea keeps deepening seaward (farther from land) with NO step at
+//     the bay↔sea boundary — it is literally the same field, the same surface.
+// The distance is mapped piecewise-continuously to metres: shallow → MAX_DEPTH_M
+// (54 m) across the bay's distance range, then 54 → OPEN_SEA_MAX_DEPTH_M (80 m)
+// across the farther-offshore range (both segments meet at 54 m, so the seabed
+// never steps). The voxel column reaches 90 m, so SolidTerrain still fills a
+// visible seabed from the floor to BOX_BOT. Built lazily (needs the land mask).
+export const MAX_DEPTH_M = 54;             // Shizugawa Bay real max ≈ 54 m (bay floor)
+const MIN_COAST_DEPTH_M = 1.5;             // seabed just below the waterline at every shore
+const OPEN_SEA_MAX_DEPTH_M = 80;           // open Pacific floor offshore — deeper than the bay
+const BAY_DEPTH_POW = 1.5;                 // gentle, wide shallows across the bay's range
+const SEA_DEPTH_POW = 1.0;                 // steady deepening offshore
 
-// 8-connected distance (in cells) from each bay-water cell to the nearest
-// non-water cell (shore). Computed once at module load over the 112×96 grid.
-// Non-water cells are 0; a water cell touching shore is ≈1 (orthogonal) or
-// ≈1.41 (diagonal). Cells outside the grid count as shore (bay never touches
-// the grid edge, but this keeps the seed set well-defined).
-const { shoreDist: SHORE_DIST_ARR, maxShoreDist: MAX_SHORE_DIST } = (() => {
-  const INF = Infinity;
-  const arr = new Float32Array(GRID_W * GRID_D).fill(INF);
-  const at = (gx: number, gz: number) => gz * GRID_W + gx;
+let _landDist: {
+  arr: Float32Array; ring: number; w: number; h: number; bayMax: number; globMax: number;
+} | null = null;
+function getLandDistField() {
+  if (_landDist) return _landDist;
+  const ring = getLandMask().ring;
+  const w = GRID_W + ring * 2;
+  const h = GRID_D + ring * 2;
+  const arr = new Float32Array(w * h).fill(Infinity);
+  const at = (gx: number, gz: number) => (gz + ring) * w + (gx + ring);
+  const isWater = (gx: number, gz: number) => isBayWater(gx, gz) || isOpenSea(gx, gz);
   const q: number[] = [];
-  // Seed: every NON-water cell (land/island) inside the grid is a shore source
-  // at distance 0, so its water neighbours resolve to ~1.
-  for (let gz = 0; gz < GRID_D; gz++) {
-    for (let gx = 0; gx < GRID_W; gx++) {
-      if (!isBayWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
+  // Seed every NON-water cell (land / island) of the extended grid as shore = 0.
+  for (let gz = -ring; gz < GRID_D + ring; gz++) {
+    for (let gx = -ring; gx < GRID_W + ring; gx++) {
+      if (!isWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
     }
   }
-  let head = 0, maxD = 0;
+  let head = 0;
   while (head < q.length) {
     const i = q[head++];
-    const gx = i % GRID_W, gz = (i - gx) / GRID_W;
+    const lx = i % w, lz = (i - lx) / w;
+    const gx = lx - ring, gz = lz - ring;
     const base = arr[i];
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dz === 0) continue;
         const nx = gx + dx, nz = gz + dz;
-        if (nx < 0 || nx >= GRID_W || nz < 0 || nz >= GRID_D) continue;
-        if (!isBayWater(nx, nz)) continue; // only propagate INTO water
+        if (nx < -ring || nx >= GRID_W + ring || nz < -ring || nz >= GRID_D + ring) continue;
+        if (!isWater(nx, nz)) continue; // only propagate INTO water
         const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
-        if (base + step < arr[at(nx, nz)]) {
-          arr[at(nx, nz)] = base + step;
-          q.push(at(nx, nz));
-        }
+        const ni = at(nx, nz);
+        if (base + step < arr[ni]) { arr[ni] = base + step; q.push(ni); }
       }
     }
   }
-  for (let gz = 0; gz < GRID_D; gz++) {
-    for (let gx = 0; gx < GRID_W; gx++) {
+  // Distance ranges: the bay's max (end of the 0→54 m segment) and the global max
+  // (deepest offshore → 80 m).
+  let bayMax = 0, globMax = 0;
+  for (let gz = -ring; gz < GRID_D + ring; gz++) {
+    for (let gx = -ring; gx < GRID_W + ring; gx++) {
       const v = arr[at(gx, gz)];
-      if (isBayWater(gx, gz) && Number.isFinite(v) && v > maxD) maxD = v;
+      if (!Number.isFinite(v)) continue;
+      if (v > globMax) globMax = v;
+      if (isBayWater(gx, gz) && v > bayMax) bayMax = v;
     }
   }
-  return { shoreDist: arr, maxShoreDist: maxD || 1 };
-})();
-
-function shoreDistCells(gx: number, gz: number): number {
-  if (gx < 0 || gx >= GRID_W || gz < 0 || gz >= GRID_D) return MAX_SHORE_DIST;
-  const v = SHORE_DIST_ARR[gz * GRID_W + gx];
-  return Number.isFinite(v) ? v : MAX_SHORE_DIST;
+  bayMax = bayMax || 1;
+  _landDist = { arr, ring, w, h, bayMax, globMax: Math.max(globMax, bayMax + 1) };
+  return _landDist;
 }
 
-// Coast-relative depth (m). Shallow (~MIN_COAST_DEPTH_M) right at the shoreline,
-// easing to MAX_DEPTH_M at the farthest-from-shore / mouth cells via a gentle
-// t^DEPTH_SHAPE_POW shape — a real slope, no cliff. For non-water cells this
-// still returns a sensible depth (used by the open-sea floor, which carries the
-// deep end outward past the grid).
+// Distance (cells) to the nearest land at a water cell; deep-end fallback elsewhere.
+function landDistCells(gx: number, gz: number): number {
+  const f = getLandDistField();
+  const lx = gx + f.ring, lz = gz + f.ring;
+  if (lx < 0 || lx >= f.w || lz < 0 || lz >= f.h) return f.globMax;
+  const v = f.arr[lz * f.w + lx];
+  return Number.isFinite(v) ? v : f.globMax;
+}
+
+// Continuous seabed depth (m) at ANY water cell — bay or open sea — from the one
+// land-distance field. Piecewise but continuous at the bay/sea seam (both
+// segments meet at MAX_DEPTH_M), so the seabed never steps.
+function unifiedDepthM(gx: number, gz: number): number {
+  const f = getLandDistField();
+  const D = landDistCells(gx, gz);
+  if (D <= f.bayMax) {
+    const t = Math.pow(Math.max(0, Math.min(1, D / f.bayMax)), BAY_DEPTH_POW);
+    return MIN_COAST_DEPTH_M + (MAX_DEPTH_M - MIN_COAST_DEPTH_M) * t;
+  }
+  const t = Math.pow(Math.max(0, Math.min(1, (D - f.bayMax) / (f.globMax - f.bayMax))), SEA_DEPTH_POW);
+  return MAX_DEPTH_M + (OPEN_SEA_MAX_DEPTH_M - MAX_DEPTH_M) * t;
+}
+
+// Bay bathymetry (name kept for the voxel path) = the unified seabed depth.
 function getBathymetryDepthM(gx: number, gz: number): number {
-  const t = Math.max(0, Math.min(1, shoreDistCells(gx, gz) / MAX_SHORE_DIST));
-  const shaped = Math.pow(t, DEPTH_SHAPE_POW);
-  return MIN_COAST_DEPTH_M + (MAX_DEPTH_M - MIN_COAST_DEPTH_M) * shaped;
+  return unifiedDepthM(gx, gz);
 }
 
 // Effective seabed depth for a WATER cell. Depth is already coast-relative
@@ -342,78 +369,15 @@ function bathyDepthToSceneY(depthM: number): number {
   return Y_SURFACE - DEPTH_TOTAL_H;
 }
 
-// ── Open Pacific floor — DEEP, deepening SEAWARD from the bay mouth ────────────
-// The open sea is NOT a shallow shelf and its floor must never rise as you head
-// out to sea. Two requirements:
-//   (a) continuous with the bay — a cell touching the bay starts at the bay's
-//       deepest (mouth) level, so there is no upward step at the boundary;
-//   (b) deepening seaward — every cell farther offshore is DEEPER, easing to
-//       OPEN_SEA_MAX_DEPTH_M (deeper than the bay's 54 m) over OPEN_SEA_DEEPEN_CELLS.
-// So depth is driven by distance FROM THE BAY: a BFS seeded from every bay-water
-// cell, propagated out through the open-sea cells. The voxel column already
-// reaches 90 m (DEPTH_TOTAL_H) while the bay only uses 54 m, so the open-sea
-// floor deepens into that spare range and SolidTerrain still fills a visible
-// seabed from the floor down to BOX_BOT (the open sea is not a bottomless blue
-// box; it sits on real ground).
-const OPEN_SEA_DEEPEN_CELLS = 9;   // cells over which the floor eases to full depth
-const OPEN_SEA_MAX_DEPTH_M  = 80;  // open Pacific floor offshore (m) — deeper than the bay
+// ── Open Pacific floor = the SAME unified seabed (continuous with the bay) ─────
+// Open-sea cells read the identical unified depth field (unifiedDepthM), so the
+// Pacific floor and the bay seabed are ONE surface — no seam, no cliff — and it
+// keeps deepening seaward (distance-to-land grows) to OPEN_SEA_MAX_DEPTH_M far
+// offshore. SolidTerrain fills a visible seabed from this floor down to BOX_BOT,
+// so the open sea sits on real ground.
 const OPEN_SEA_DEEP_Y = bathyDepthToSceneY(OPEN_SEA_MAX_DEPTH_M); // deepest floor (colour ramp)
-
-function smoothstep01(t: number): number {
-  const x = Math.max(0, Math.min(1, t));
-  return x * x * (3 - 2 * x);
-}
-
-// Distance (in cells) from the nearest BAY-WATER cell, propagated out through
-// OPEN-SEA cells over the extended (LAND_RING) grid. Built lazily (land mask).
-let _openSeaBayDist: { arr: Float32Array; ring: number; w: number; h: number } | null = null;
-function getOpenSeaBayDist() {
-  if (_openSeaBayDist) return _openSeaBayDist;
-  const ring = getLandMask().ring;
-  const w = GRID_W + ring * 2;
-  const h = GRID_D + ring * 2;
-  const arr = new Float32Array(w * h).fill(Infinity);
-  const at = (gx: number, gz: number) => (gz + ring) * w + (gx + ring);
-  const q: number[] = [];
-  // Seed: every bay-water cell is distance 0 (the deep mouth is the near end).
-  for (let gz = 0; gz < GRID_D; gz++) {
-    for (let gx = 0; gx < GRID_W; gx++) {
-      if (isBayWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
-    }
-  }
-  let head = 0;
-  while (head < q.length) {
-    const i = q[head++];
-    const lx = i % w, lz = (i - lx) / w;
-    const gx = lx - ring, gz = lz - ring;
-    const base = arr[i];
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dz === 0) continue;
-        const nx = gx + dx, nz = gz + dz;
-        if (nx < -ring || nx >= GRID_W + ring || nz < -ring || nz >= GRID_D + ring) continue;
-        if (!isOpenSea(nx, nz)) continue; // only propagate INTO open sea
-        const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
-        const ni = at(nx, nz);
-        if (base + step < arr[ni]) { arr[ni] = base + step; q.push(ni); }
-      }
-    }
-  }
-  _openSeaBayDist = { arr, ring, w, h };
-  return _openSeaBayDist;
-}
-
-// Scene-Y of the open Pacific floor: starts at the bay's max depth right at the
-// bay boundary (continuous, no upward step) and eases DEEPER offshore.
 function openSeaSeabedY(gx: number, gz: number): number {
-  const { arr, ring, w, h } = getOpenSeaBayDist();
-  const lx = gx + ring, lz = gz + ring;
-  const dist = (lx >= 0 && lx < w && lz >= 0 && lz < h && Number.isFinite(arr[lz * w + lx]))
-    ? arr[lz * w + lx]
-    : OPEN_SEA_DEEPEN_CELLS; // unreachable open sea → treat as fully offshore (deep)
-  const t = smoothstep01(dist / OPEN_SEA_DEEPEN_CELLS);
-  const depthM = MAX_DEPTH_M + (OPEN_SEA_MAX_DEPTH_M - MAX_DEPTH_M) * t;
-  return bathyDepthToSceneY(depthM);
+  return bathyDepthToSceneY(unifiedDepthM(gx, gz));
 }
 
 // Per-cell island peakT lookup (0 shore → 1 peak), or null if not an island cell.
