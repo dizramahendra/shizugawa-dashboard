@@ -1759,6 +1759,34 @@ const CAMERA_PRESETS: Record<string, [number, number, number]> = {
   west:  [-75,  50,   0],
 };
 
+/** Guarantees the scene paints on first mount. The demand frameloop can
+ *  otherwise leave the canvas blank until a manual camera/play interaction:
+ *  the first frames may fire before the container has a non-zero size (CSS /
+ *  layout not settled) or before the ~44k-instance voxel geometry finishes
+ *  building, and under "demand" nothing re-requests a frame afterwards. This
+ *  runs a short rAF burst on mount (each tick requests a frame) and re-requests
+ *  on window resize, so the first real paint always lands. Must be inside
+ *  <Canvas>. */
+function InitialPaintKick() {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    let raf = 0;
+    let frames = 0;
+    const tick = () => {
+      invalidate();
+      if (frames++ < 90) raf = requestAnimationFrame(tick); // ~1.5s @ 60fps
+    };
+    raf = requestAnimationFrame(tick);
+    const onResize = () => invalidate();
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [invalidate]);
+  return null;
+}
+
 /** Moves camera + OrbitControls target whenever `preset` changes OR when the
  *  caller bumps `tick` (so re-clicking the same preset button after manually
  *  orbiting still snaps the camera back). Must be inside <Canvas>.
@@ -1927,6 +1955,7 @@ export default function OceanBasin3D({
       data-testid="canvas-3d"
     >
       <CameraController preset={cameraPreset} tick={cameraPresetTick} orbitRef={orbitRef} />
+      <InitialPaintKick />
       {/* Lighting rig, toggleable via depthShading:
           ON  — a hemisphere light (cool sky above, dim ground below) plus a
                 stronger key directional, so a voxel's upward faces read
