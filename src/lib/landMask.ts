@@ -299,17 +299,30 @@ export function getLandMask(): LandMask {
   //
   // `sea[i] = 1` ⇔ local cell i is open sea. Everything in the box that is not
   // sea/bay/island/river is then land (extends inland land to the box border).
-  // Southernmost bay row. The bay opens EAST/SE to the Pacific, so the sea must
-  // not wrap around the south: everything below the bay is the Mt Horowa /
-  // Cape Kamiwarisaki peninsula (land) out to the box border. Without this the
-  // east flood leaks west along the open water south of the bay and paints the
-  // peninsula as ocean.
-  let bayMinGz = GRID_D;
-  for (let gz = 0; gz < GRID_D; gz++) {
-    for (let gx = 0; gx < GRID_W; gx++) {
-      if (BAY_MASK[gz]?.[gx]) { if (gz < bayMinGz) bayMinGz = gz; break; }
+  // Per-column bay south shore. The bay opens EAST/SE to the Pacific; south of
+  // its shore is the Mt Horowa / Cape Kamiwarisaki peninsula (land). To keep the
+  // land flush against the bay (no sea strip wrapping along the south shore), the
+  // coastline must FOLLOW the bay's south voxel edge per column, not a straight
+  // row. bayFloor[gx] = southernmost bay cell in column gx; columns with no bay
+  // borrow the nearest bay column's shore so the coast runs continuously east
+  // (the SE peninsula) and west. The flood is then blocked anywhere south of it.
+  const bayFloor = new Int16Array(GRID_W).fill(-1);
+  for (let gx = 0; gx < GRID_W; gx++) {
+    for (let gz = 0; gz < GRID_D; gz++) {
+      if (BAY_MASK[gz]?.[gx]) { bayFloor[gx] = gz; break; }
     }
   }
+  const coast = new Int16Array(GRID_W);
+  for (let gx = 0; gx < GRID_W; gx++) {
+    if (bayFloor[gx] >= 0) { coast[gx] = bayFloor[gx]; continue; }
+    let best = -1, bestD = Infinity;
+    for (let k = 0; k < GRID_W; k++) {
+      if (bayFloor[k] >= 0 && Math.abs(k - gx) < bestD) { bestD = Math.abs(k - gx); best = bayFloor[k]; }
+    }
+    coast[gx] = best;
+  }
+  const bayCoastGz = (gx: number): number =>
+    coast[Math.max(0, Math.min(GRID_W - 1, gx))];
 
   const sea = new Uint8Array(w * d);
   {
@@ -325,7 +338,10 @@ export function getLandMask(): LandMask {
     const isOpenWater = (lx: number, lz: number): boolean => {
       const gx = lx - ring;
       const gz = lz - ring;
-      if (gz < bayMinGz) return false;           // south of the bay = peninsula land
+      // Block the flood anywhere SOUTH of the bay's south shore in this column,
+      // so the peninsula sits flush against the bay's voxel edge (no sea strip
+      // wraps along the south shore, and the peninsula runs out to the SE).
+      if (gz < bayCoastGz(gx)) return false;
       if (mask[lz * w + lx] === 1) return false; // sub-basin / enclosed land
       if (isBay(gx, gz)) return false;           // bay water (its own volume)
       if (isIsland(gx, gz)) return false;        // island footprint = land
