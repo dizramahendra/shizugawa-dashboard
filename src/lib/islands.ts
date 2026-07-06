@@ -93,20 +93,39 @@ function buildIsland(subpath: string): Island {
   }
 
   const raw: Array<{ gx: number; gz: number }> = [];
-  let csx = 0, csz = 0;
   for (let gz = Math.floor(minZ) - 1; gz <= Math.ceil(maxZ) + 1; gz++) {
     for (let gx = Math.floor(minX) - 1; gx <= Math.ceil(maxX) + 1; gx++) {
       if (gx < 0 || gx >= GRID_W || gz < 0 || gz >= GRID_D) continue;
-      if (pointInPolyGrid(gx + 0.5, gz + 0.5, poly)) {
-        raw.push({ gx, gz });
-        csx += gx;
-        csz += gz;
-      }
+      if (pointInPolyGrid(gx + 0.5, gz + 0.5, poly)) raw.push({ gx, gz });
     }
   }
 
-  const centroidGx = raw.length ? csx / raw.length : (minX + maxX) / 2;
-  const centroidGz = raw.length ? csz / raw.length : (minZ + maxZ) / 2;
+  // Showcase exaggeration: real Arajima/Tsubakishima are tiny (13 & 8 cells), so
+  // dilate each footprint by a 1-cell ring so they read as landmark islands
+  // rather than specks (paired with a taller peak + wider apron below).
+  const ISLAND_DILATE = 1;
+  if (raw.length) {
+    const have = new Set(raw.map((c) => `${c.gz},${c.gx}`));
+    const ringCells: Array<{ gx: number; gz: number }> = [];
+    for (const c of raw) {
+      for (let dz = -ISLAND_DILATE; dz <= ISLAND_DILATE; dz++) {
+        for (let dx = -ISLAND_DILATE; dx <= ISLAND_DILATE; dx++) {
+          const gx = c.gx + dx, gz = c.gz + dz;
+          if (gx < 0 || gx >= GRID_W || gz < 0 || gz >= GRID_D) continue;
+          const k = `${gz},${gx}`;
+          if (have.has(k)) continue;
+          have.add(k);
+          ringCells.push({ gx, gz });
+        }
+      }
+    }
+    raw.push(...ringCells);
+  }
+
+  let cgx = 0, cgz = 0;
+  for (const c of raw) { cgx += c.gx; cgz += c.gz; }
+  const centroidGx = raw.length ? cgx / raw.length : (minX + maxX) / 2;
+  const centroidGz = raw.length ? cgz / raw.length : (minZ + maxZ) / 2;
 
   // Peak taper: 1 at the centroid cell, → 0 at the outermost cell. Uses the
   // island's own max cell-radius so a big island and a small island both taper
@@ -156,7 +175,7 @@ export function isIsland(gx: number, gz: number): boolean {
 // ── Underwater apron ──────────────────────────────────────────────────────────
 // Distance (in grid cells) over which the seabed shallows toward an island, so
 // the seafloor slopes UP to meet the shore instead of dropping off a cliff.
-export const ISLAND_APRON_CELLS = 4;
+export const ISLAND_APRON_CELLS = 6;
 
 /**
  * Depth-scaling factor in [0,1] for a WATER cell, based on nearness to the
