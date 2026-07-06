@@ -929,9 +929,9 @@ function CoastalLandMesh({
 // grey ramp (a touch greener/earthier up top) so it sits with the surrounding
 // land. The underwater apron (effectiveSeabedM) already slopes the seabed UP to
 // meet each island, giving a continuous slope: seabed → shore → mound peak.
-const ISLAND_PEAK_H = 3.0; // scene units the centroid rises ABOVE Y_SURFACE
-                           // (exaggerated: real Arajima/Tsubakishima are tiny,
-                           //  so a taller peak makes them read as landmarks)
+const ISLAND_PEAK_H = 1.5; // scene units the centroid rises ABOVE Y_SURFACE.
+                           // Enough to read as islands (the dilated footprint
+                           // gives width) without becoming sharp cones.
 
 function IslandMesh({
   sliceMode,
