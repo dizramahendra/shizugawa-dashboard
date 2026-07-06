@@ -299,6 +299,18 @@ export function getLandMask(): LandMask {
   //
   // `sea[i] = 1` ⇔ local cell i is open sea. Everything in the box that is not
   // sea/bay/island/river is then land (extends inland land to the box border).
+  // Southernmost bay row. The bay opens EAST/SE to the Pacific, so the sea must
+  // not wrap around the south: everything below the bay is the Mt Horowa /
+  // Cape Kamiwarisaki peninsula (land) out to the box border. Without this the
+  // east flood leaks west along the open water south of the bay and paints the
+  // peninsula as ocean.
+  let bayMinGz = GRID_D;
+  for (let gz = 0; gz < GRID_D; gz++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      if (BAY_MASK[gz]?.[gx]) { if (gz < bayMinGz) bayMinGz = gz; break; }
+    }
+  }
+
   const sea = new Uint8Array(w * d);
   {
     // `mask` now also holds the enclosed-hole fill, so recompute raw sub-basin
@@ -313,6 +325,7 @@ export function getLandMask(): LandMask {
     const isOpenWater = (lx: number, lz: number): boolean => {
       const gx = lx - ring;
       const gz = lz - ring;
+      if (gz < bayMinGz) return false;           // south of the bay = peninsula land
       if (mask[lz * w + lx] === 1) return false; // sub-basin / enclosed land
       if (isBay(gx, gz)) return false;           // bay water (its own volume)
       if (isIsland(gx, gz)) return false;        // island footprint = land
