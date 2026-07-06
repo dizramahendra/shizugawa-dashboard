@@ -342,16 +342,75 @@ function bathyDepthToSceneY(depthM: number): number {
   return Y_SURFACE - DEPTH_TOTAL_H;
 }
 
-// Open-sea seabed (continuous Pacific floor). Sampled from the same coast-
-// relative bathymetry as the bay, clamped to grid bounds so cells in the
-// LAND_RING beyond the grid carry the deep offshore floor outward instead of
-// extrapolating out of range. Open-water cells are far from any shore source in
-// the BFS, so they read the deep end (~MAX_DEPTH_M) — continuous with the bay's
-// deepest cells at the mouth (no step at the bay↔open-sea boundary).
+// ── Open Pacific floor — DEEP, sloping up to the open coastline ────────────────
+// The open sea east/south of the bay is DEEP ocean, not a shallow shelf. Its
+// floor drops from ~shore depth right at the open (Pacific) coastline to the
+// deepest level within OPEN_SEA_SLOPE_CELLS cells offshore, then stays deep. This
+// makes the open sea (a) read as a tall blue water COLUMN when sliced — not a
+// shallow brown box — and (b) still meet the land with a slope rather than a
+// wall. Depth is driven by distance FROM LAND: a BFS over the extended grid that
+// propagates through ALL water (bay + open sea) from every land/island cell, so
+// cells far from any shore hit the deep floor. (The bay keeps its own shallower
+// coast-relative bathymetry; only the open-sea floor uses this.)
+const OPEN_SEA_SLOPE_CELLS = 5;                     // cells from coast → full depth
+const OPEN_SEA_DEEP_Y = Y_SURFACE - DEPTH_TOTAL_H;  // deepest voxel bottom = open-sea floor
+
+function smoothstep01(t: number): number {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+// Distance (in cells) from the nearest LAND, propagated through water over the
+// extended (LAND_RING) grid. Built lazily (needs the land mask).
+let _openSeaLandDist: { arr: Float32Array; ring: number; w: number; h: number } | null = null;
+function getOpenSeaLandDist() {
+  if (_openSeaLandDist) return _openSeaLandDist;
+  const ring = getLandMask().ring;
+  const w = GRID_W + ring * 2;
+  const h = GRID_D + ring * 2;
+  const arr = new Float32Array(w * h).fill(Infinity);
+  const at = (gx: number, gz: number) => (gz + ring) * w + (gx + ring);
+  const isWater = (gx: number, gz: number) => isBayWater(gx, gz) || isOpenSea(gx, gz);
+  const q: number[] = [];
+  // Seed: every non-water cell (land / island) is a shore source at distance 0.
+  for (let gz = -ring; gz < GRID_D + ring; gz++) {
+    for (let gx = -ring; gx < GRID_W + ring; gx++) {
+      if (!isWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
+    }
+  }
+  let head = 0;
+  while (head < q.length) {
+    const i = q[head++];
+    const lx = i % w, lz = (i - lx) / w;
+    const gx = lx - ring, gz = lz - ring;
+    const base = arr[i];
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dz === 0) continue;
+        const nx = gx + dx, nz = gz + dz;
+        if (nx < -ring || nx >= GRID_W + ring || nz < -ring || nz >= GRID_D + ring) continue;
+        if (!isWater(nx, nz)) continue; // only propagate INTO water
+        const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
+        const ni = at(nx, nz);
+        if (base + step < arr[ni]) { arr[ni] = base + step; q.push(ni); }
+      }
+    }
+  }
+  _openSeaLandDist = { arr, ring, w, h };
+  return _openSeaLandDist;
+}
+
+// Scene-Y of the open Pacific floor at a cell: shallow at the open coast, easing
+// to OPEN_SEA_DEEP_Y a few cells offshore (smoothstep, no cliff at the coast).
 function openSeaSeabedY(gx: number, gz: number): number {
-  const cx = Math.max(0, Math.min(GRID_W - 1, gx));
-  const cz = Math.max(0, Math.min(GRID_D - 1, gz));
-  return bathyDepthToSceneY(getBathymetryDepthM(cx, cz));
+  const { arr, ring, w, h } = getOpenSeaLandDist();
+  const lx = gx + ring, lz = gz + ring;
+  const dist = (lx >= 0 && lx < w && lz >= 0 && lz < h && Number.isFinite(arr[lz * w + lx]))
+    ? arr[lz * w + lx]
+    : OPEN_SEA_SLOPE_CELLS; // far outside → treat as fully offshore (deep)
+  const shallowY = bathyDepthToSceneY(MIN_COAST_DEPTH_M);
+  const t = smoothstep01(dist / OPEN_SEA_SLOPE_CELLS);
+  return shallowY + (OPEN_SEA_DEEP_Y - shallowY) * t;
 }
 
 // Per-cell island peakT lookup (0 shore → 1 peak), or null if not an island cell.
@@ -971,41 +1030,36 @@ function SolidTerrain({
   );
 }
 
-// LAND_TOP retained: the study-box lid height (see STUDY_BOX_TOP below). The
-// land now RISES to Y_SURFACE + LAND_MAX_H, so the box top tracks that instead
-// of a flat land plateau.
-const LAND_TOP = Y_SURFACE + 0.7;
-
-// ── Study-box extent (the LAND_RING outer rectangle) ──────────────────────────
-// The land mask is computed over a grid extended by LAND_RING cells on every
-// side. These are the scene-space edges of that extended rectangle — the outer
-// bounds of everything the model can draw. The bounded "study box" (solid side
-// walls + floor) is built at exactly these bounds so the whole region sits
-// inside a clean container, ArcGIS Voxel-Explorer style.
-const EXT_WEST_X  = offsetX + (-LAND_RING)          * STEP;
-const EXT_EAST_X  = offsetX + (GRID_W + LAND_RING)  * STEP;
-const EXT_SOUTH_Z = offsetZ + (-LAND_RING)          * STEP;
-const EXT_NORTH_Z = offsetZ + (GRID_D + LAND_RING)  * STEP;
-// Box lid height: the highest ground (risen land) so the walls fully enclose the
-// terrain. Walls cap the model from the land peak down to BOX_BOT (the absolute
-// bottom every solid column reaches). +0.05 clears the tallest smoothed corner.
-const STUDY_BOX_TOP = Math.max(LAND_TOP, Y_SURFACE + LAND_MAX_H + 0.05);
-const STUDY_BOX_BOT = BOX_BOT;
-
 // (CoastalLandMesh + IslandMesh removed — folded into SolidTerrain above.)
+// (StudyBoxShell removed — the SolidTerrain's outer-ring land columns already
+//  form the model's own solid walls down to BOX_BOT, so the model stands on its
+//  own as a box; a separate container shell would not slice with the model.)
 
-// ── Open Pacific (Sanriku) — a static CONTEXT ocean ───────────────────────────
-// East (and the open south) of the bay is open sea. It is modelled as a single
-// flat, muted, uniform sea surface at Y_SURFACE filling every OPEN cell of the
-// extended (LAND_RING) grid — i.e. cells that are neither bay water, nor island,
-// nor coastal land, nor a river channel. This is CONTEXT only, deliberately
-// distinct from the interactive Shizugawa Bay data volume:
+// ── Open Pacific (Sanriku) — a static CONTEXT ocean VOLUME ─────────────────────
+// East (and the open south) of the bay is open sea, modelled as a WATER VOLUME:
+// each open-sea cell is a column from the deep open-sea floor (openSeaSeabedY) up
+// to the surface, filling every OPEN cell of the extended (LAND_RING) grid. So a
+// slice reveals a tall blue water section (not a shallow brown shelf), and the
+// deep floor makes the seaward edge read as real open ocean. This is CONTEXT
+// only, deliberately distinct from the interactive Shizugawa Bay data volume:
 //   • NOT nutrient-coloured, NOT recoloured by week, NOT animated.
 //   • NOT clickable/hoverable (raycast disabled) and NOT in the legend.
-//   • Sits exactly at the water surface, a hair BELOW it via polygonOffset, so
-//     it never z-fights the bay's surface voxels or the land/island walls; it
-//     covers only open-water cells, so it can't overlap the bay volume.
-const OPEN_SEA_COLOR = "#38617f"; // muted deep steel-blue, clearly not a nutrient hue
+//   • A single steel-blue that darkens gently with depth (openSeaColor) so the
+//     column reads as water, never the nutrient ramp.
+// Walls are emitted only on EXPOSED edges — the grid/coast boundary or a
+// neighbour removed by the active slice — so the outer sea faces and any cut face
+// are solid water while interior cell borders stay open (few faces, no z-fight).
+const OPEN_SEA_SURF_RGB: [number, number, number] = [0.30, 0.47, 0.60]; // surface steel-blue
+const OPEN_SEA_DEEP_RGB: [number, number, number] = [0.10, 0.20, 0.30]; // darker at depth
+function openSeaColor(y: number): [number, number, number] {
+  const span = Y_SURFACE - OPEN_SEA_DEEP_Y || 1;
+  const t = Math.max(0, Math.min(1, (Y_SURFACE - y) / span));
+  return [
+    OPEN_SEA_SURF_RGB[0] + (OPEN_SEA_DEEP_RGB[0] - OPEN_SEA_SURF_RGB[0]) * t,
+    OPEN_SEA_SURF_RGB[1] + (OPEN_SEA_DEEP_RGB[1] - OPEN_SEA_SURF_RGB[1]) * t,
+    OPEN_SEA_SURF_RGB[2] + (OPEN_SEA_DEEP_RGB[2] - OPEN_SEA_SURF_RGB[2]) * t,
+  ];
+}
 
 function OpenSeaMesh({
   sliceMode,
@@ -1019,51 +1073,68 @@ function OpenSeaMesh({
   sliceCutType: SliceCutType;
 }) {
   const geometry = useMemo(() => {
-    // The open sea is a surface sheet; a horizontal slice cuts below the surface,
-    // so hide it (the bay's own cut face carries the section). Keeps it from
-    // floating over a depth slice.
-    if (sliceMode === "slice-h" && sliceLevel > 0) return null;
-
     const ring = getLandMask().ring;
 
-    function passesSlice(gx: number, gz: number): boolean {
-      if (sliceMode === "slice-v") {
-        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
-      }
-      return true;
-    }
-    // Open sea = exactly the cells the east flood reaches (isOpenSea from
-    // landMask). Land and sea now come from one consistent source, so the west/
-    // north/south inland cells that used to fall through to "ocean" are land.
-    const openSeaCell = (gx: number, gz: number): boolean =>
+    // Horizontal slice clips the water top at the layer plane; the column below
+    // stays so the sea shows its deep cross-section (matching the bay voxels).
+    const sliceClipY = sliceMode === "slice-h"
+      ? Y_SURFACE - DEPTH_TOPS[sliceLevel]
+      : Y_SURFACE;
+
+    const passesSlice = (gx: number, gz: number): boolean =>
+      sliceMode !== "slice-v" || isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
+    // Open sea = the cells the east flood reaches (isOpenSea from landMask).
+    const rendered = (gx: number, gz: number): boolean =>
       isOpenSea(gx, gz) && passesSlice(gx, gz);
 
     const positions: number[] = [];
+    const colors:    number[] = [];
     const indices:   number[] = [];
-    const addQuad = (x0: number, z0: number, x1: number, z1: number) => {
-      const base = positions.length / 3;
-      positions.push(
-        x0, Y_SURFACE, z0,
-        x1, Y_SURFACE, z0,
-        x1, Y_SURFACE, z1,
-        x0, Y_SURFACE, z1,
-      );
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    const addVert = (px: number, py: number, pz: number): number => {
+      const [r, g, b] = openSeaColor(py);
+      positions.push(px, py, pz);
+      colors.push(r, g, b);
+      return positions.length / 3 - 1;
     };
 
     for (let gz = -ring; gz < GRID_D + ring; gz++) {
       for (let gx = -ring; gx < GRID_W + ring; gx++) {
-        if (!openSeaCell(gx, gz)) continue;
-        addQuad(
-          offsetX + gx * STEP,       offsetZ + gz * STEP,
-          offsetX + (gx + 1) * STEP, offsetZ + (gz + 1) * STEP,
-        );
+        if (!rendered(gx, gz)) continue;
+        const topY   = Math.min(Y_SURFACE, sliceClipY);
+        const floorY = openSeaSeabedY(gx, gz);
+        if (topY <= floorY) continue; // slice plane at/below the floor → no water
+
+        const x0 = offsetX + gx * STEP, x1 = offsetX + (gx + 1) * STEP;
+        const z0 = offsetZ + gz * STEP, z1 = offsetZ + (gz + 1) * STEP;
+
+        // Top (surface / slice plane).
+        const t00 = addVert(x0, topY, z0);
+        const t10 = addVert(x1, topY, z0);
+        const t01 = addVert(x0, topY, z1);
+        const t11 = addVert(x1, topY, z1);
+        indices.push(t00, t11, t10, t00, t01, t11);
+
+        // Exposed side walls: drop to this cell's floor where the neighbour is
+        // not rendered open sea (boundary / coast / sliced-away).
+        const wall = (ax: number, az: number, bx: number, bz: number, flip: boolean) => {
+          const a = addVert(ax, topY,   az);
+          const b = addVert(ax, floorY, az);
+          const c = addVert(bx, floorY, bz);
+          const d = addVert(bx, topY,   bz);
+          if (flip) indices.push(a, c, b, a, d, c);
+          else      indices.push(a, b, c, a, c, d);
+        };
+        if (!rendered(gx - 1, gz)) wall(x0, z0, x0, z1, false); // west
+        if (!rendered(gx + 1, gz)) wall(x1, z0, x1, z1, true);  // east
+        if (!rendered(gx, gz - 1)) wall(x0, z0, x1, z0, true);  // north
+        if (!rendered(gx, gz + 1)) wall(x0, z1, x1, z1, false); // south
       }
     }
 
     if (indices.length === 0) return null;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
@@ -1071,88 +1142,15 @@ function OpenSeaMesh({
 
   if (!geometry) return null;
   return (
-    // raycast disabled → never clickable/hoverable. Lit like a calm sea surface
-    // (a single flat colour), never the nutrient ramp.
+    // raycast disabled → never clickable/hoverable. Opaque, depth-darkened water.
     <mesh geometry={geometry} raycast={() => null}>
       <meshStandardMaterial
-        color={OPEN_SEA_COLOR}
-        roughness={0.55}
-        metalness={0.1}
+        vertexColors
+        roughness={0.5}
+        metalness={0.08}
         side={THREE.DoubleSide}
-        transparent
-        opacity={0.9}
-        polygonOffset
-        polygonOffsetFactor={1}
-        polygonOffsetUnits={1}
       />
     </mesh>
-  );
-}
-
-// ── Bounded study box (side walls only) ───────────────────────────────────────
-// A clean rectangular container at the extended-grid (LAND_RING) extent, so the
-// whole region reads as a bounded voxel "study box" instead of shapes floating
-// on white — matching an ArcGIS-Pro Voxel-Explorer look.
-//
-//   • Walls  — four vertical quads at the extent edges, from STUDY_BOX_TOP down
-//              to STUDY_BOX_BOT. Rendered BackSide only, so the near walls facing
-//              the camera are culled and the far/interior walls remain — the box
-//              frames the data without ever occluding it, from any orbit angle
-//              (the container is open toward the viewer).
-//   • Floor  — REMOVED: SolidTerrain now caps the bottom of every extended-grid
-//              cell (each solid column reaches BOX_BOT), so the ground itself is
-//              the box floor — one continuous solid, no separate floor plane.
-//
-// The bay water column + rivers are carved into the model INSIDE this box; the
-// walls sit LAND_RING cells beyond the coastline, so nothing walls over the
-// open water surface. Colour reuses the land/soil tint, a shade darker for depth.
-function StudyBoxShell() {
-  const wallGeometry = useMemo(() => {
-    const positions: number[] = [];
-    const indices:   number[] = [];
-
-    // Add a vertical wall quad along one horizontal edge (two endpoints at the
-    // box top, dropping to the box bottom). Winding is irrelevant — the material
-    // is BackSide/DoubleSide and lit flat — so we emit both triangles simply.
-    const addWall = (
-      ax: number, az: number, bx: number, bz: number,
-    ) => {
-      const base = positions.length / 3;
-      positions.push(
-        ax, STUDY_BOX_TOP, az,   // 0 top-a
-        bx, STUDY_BOX_TOP, bz,   // 1 top-b
-        bx, STUDY_BOX_BOT, bz,   // 2 bot-b
-        ax, STUDY_BOX_BOT, az,   // 3 bot-a
-      );
-      indices.push(base, base + 1, base + 2,  base, base + 2, base + 3);
-    };
-
-    // Four side walls at the extended-grid rectangle.
-    addWall(EXT_WEST_X,  EXT_SOUTH_Z, EXT_EAST_X,  EXT_SOUTH_Z); // south (-Z edge)
-    addWall(EXT_WEST_X,  EXT_NORTH_Z, EXT_EAST_X,  EXT_NORTH_Z); // north (+Z edge)
-    addWall(EXT_WEST_X,  EXT_SOUTH_Z, EXT_WEST_X,  EXT_NORTH_Z); // west  (-X edge)
-    addWall(EXT_EAST_X,  EXT_SOUTH_Z, EXT_EAST_X,  EXT_NORTH_Z); // east  (+X edge)
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    return geo;
-  }, []);
-
-  return (
-    <group>
-      {/* Side walls: BackSide so the camera-facing near walls are culled and the
-          data stays visible; the far interior walls give the box its form. */}
-      <mesh geometry={wallGeometry}>
-        <meshStandardMaterial
-          color="#8a8a86"
-          roughness={0.97}
-          metalness={0}
-          side={THREE.BackSide}
-        />
-      </mesh>
-    </group>
   );
 }
 
@@ -2207,11 +2205,6 @@ export default function OceanBasin3D({
           sliceDir={sliceDir}
           sliceCutType={sliceCutType}
         />
-
-        {/* Bounded "study box": solid side walls at the LAND_RING extent, framing
-            the whole region like an ArcGIS voxel study box. The floor is gone —
-            SolidTerrain caps the bottom of every cell. */}
-        <StudyBoxShell />
 
         <RiverGrid
           week={week}
