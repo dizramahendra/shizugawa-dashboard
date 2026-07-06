@@ -21,6 +21,7 @@ import {
 } from "@/lib/simulatedData";
 import { depthLabel } from "@/lib/depthLabels";
 import { getLandMask, LAND_RING } from "@/lib/landMask";
+import { ISLAND_CELLS, isIsland, islandApronFactor } from "@/lib/islands";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
 const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
@@ -178,6 +179,22 @@ function getBathymetryDepthM(gx: number, gz: number): number {
   return Math.min(55, Math.max(3, (8 + 47 * frac) * nsBias));
 }
 
+// ── Islands: water gate + shallowing apron ────────────────────────────────────
+// A cell inside an island footprint is LAND, not bay water — it is excluded from
+// every water path (voxels, seabed solid, cut-face plane, coastal-land freeboard)
+// so the ocean hole becomes a mound (see IslandMesh).
+function isBayWater(gx: number, gz: number): boolean {
+  return !!BAY_MASK[gz]?.[gx] && !isIsland(gx, gz);
+}
+
+// Effective seabed depth for a WATER cell: the open-bay bathymetry scaled DOWN
+// toward each island by islandApronFactor, so the seafloor slopes up to the
+// island's waterline over a few cells (an underwater apron) instead of a cliff.
+// Away from every island the factor is 1, so open-bay bathymetry is unchanged.
+function effectiveSeabedM(gx: number, gz: number): number {
+  return getBathymetryDepthM(gx, gz) * islandApronFactor(gx, gz);
+}
+
 // Returns the index of the deepest depth layer whose TOP is above the seabed.
 // Returns -1 if even layer 0 is below the seabed (shouldn't happen for valid cells).
 function deepestVisibleLayer(seabedM: number): number {
@@ -197,14 +214,15 @@ const SHORE_DIST: Map<string, number> = (() => {
   const map = new Map<string, number>();
   for (let gz = 0; gz < GRID_D; gz++) {
     for (let gx = 0; gx < GRID_W; gx++) {
-      if (!BAY_MASK[gz]?.[gx]) continue;
+      if (!isBayWater(gx, gz)) continue;
       let found = false;
       for (let r = 1; r <= DEPTH_LAYERS && !found; r++) {
         for (let dz = -r; dz <= r && !found; dz++) {
           for (let dx = -r; dx <= r && !found; dx++) {
             if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; // ring only
             const nz = gz + dz, nx = gx + dx;
-            if (nz < 0 || nz >= GRID_D || nx < 0 || nx >= GRID_W || !BAY_MASK[nz]?.[nx]) {
+            // Island cells are shore too, so water beside an island reads shallow.
+            if (nz < 0 || nz >= GRID_D || nx < 0 || nx >= GRID_W || !isBayWater(nx, nz)) {
               map.set(`${gz}-${gx}`, r);
               found = true;
             }
@@ -276,8 +294,8 @@ function buildBatches(
 
   for (let gz = 0; gz < GRID_D; gz++) {
     for (let gx = 0; gx < GRID_W; gx++) {
-      if (!BAY_MASK[gz]?.[gx]) continue;
-      const seabedM  = getBathymetryDepthM(gx, gz);
+      if (!isBayWater(gx, gz)) continue;         // islands are land, not water
+      const seabedM  = effectiveSeabedM(gx, gz); // shallowed by island apron
       const maxLayer = deepestVisibleLayer(seabedM);
       if (maxLayer < 0) continue;
 
@@ -577,7 +595,7 @@ function SeabedMesh({
 
     // Is cell (gx, gz) part of the rendered solid?
     function shouldRender(gx: number, gz: number): boolean {
-      if (!BAY_MASK[gz]?.[gx]) return false;
+      if (!isBayWater(gx, gz)) return false; // islands carry their own mound solid
       if (sliceMode === "slice-v") {
         return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
       }
@@ -592,7 +610,7 @@ function SeabedMesh({
     // no gaps beneath shallow columns, no over-height intrusion into deep ones.
     function cellTop(gx: number, gz: number): number | null {
       if (!shouldRender(gx, gz)) return null;
-      const seabedM  = getBathymetryDepthM(gx, gz);
+      const seabedM  = effectiveSeabedM(gx, gz);
       const maxLayer = deepestVisibleLayer(seabedM);
       if (maxLayer < 0) return null;
       const y = Y_SURFACE - DEPTH_TOPS[maxLayer] - DEPTH_HEIGHTS[maxLayer];
@@ -782,9 +800,12 @@ function CoastalLandMesh({
       return mask.isLand(gx, gz) && passesSlice(gx, gz);
     }
     // Water (bay voxel column or river tile) rendered at (gx, gz)?
+    // Island cells are land (they carry their own mound), so they are NOT water
+    // here — a coastal-land edge against an island gets a full wall, not a
+    // water-surface freeboard strip.
     function bayVisible(gx: number, gz: number): boolean {
       return gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D &&
-        !!BAY_MASK[gz]?.[gx] && passesSlice(gx, gz);
+        isBayWater(gx, gz) && passesSlice(gx, gz);
     }
     function riverVisible(gx: number, gz: number): boolean {
       return riverSet.has(`${gz},${gx}`) && passesSlice(gx, gz);
@@ -894,6 +915,263 @@ function CoastalLandMesh({
         polygonOffset
         polygonOffsetFactor={2}
         polygonOffsetUnits={2}
+      />
+    </mesh>
+  );
+}
+
+// ── Islands (Arajima + Tsubakishima) as tapering mounds ───────────────────────
+// The two ocean-outline holes are rendered as small mountainous islands: each
+// island cell is a solid column from BOX_BOT up to a smoothed peak. Peak height
+// tapers from ISLAND_PEAK_H at the island's centroid down to the waterline
+// (Y_SURFACE) at its edge cells, so the island reads as a cone/mound rather than
+// a flat-top block or a vertical pillar. Vertex tint reuses CoastalLandMesh's
+// grey ramp (a touch greener/earthier up top) so it sits with the surrounding
+// land. The underwater apron (effectiveSeabedM) already slopes the seabed UP to
+// meet each island, giving a continuous slope: seabed → shore → mound peak.
+const ISLAND_PEAK_H = 1.3; // scene units the centroid rises ABOVE Y_SURFACE
+
+function IslandMesh({
+  sliceMode,
+  sliceLevel,
+  sliceDir,
+  sliceCutType,
+}: {
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
+}) {
+  const geometry = useMemo(() => {
+    // Islands sit above the water surface, so any horizontal slice (all at/below
+    // the surface) removes them — matches CoastalLandMesh's behaviour.
+    if (sliceMode === "slice-h") return null;
+
+    // Per-cell peakT lookup (0 edge → 1 peak). Corner heights average the peakT
+    // of the (up to) four cells sharing that corner, so adjacent columns share a
+    // vertex height and the surface reads as a smooth mound, not a stack of steps.
+    const peakByCell = new Map<string, number>();
+    for (const c of ISLAND_CELLS) peakByCell.set(`${c.gz},${c.gx}`, c.peakT);
+    const cellPeak = (gx: number, gz: number): number | null => {
+      const v = peakByCell.get(`${gz},${gx}`);
+      return v === undefined ? null : v;
+    };
+
+    function passesSlice(gx: number, gz: number): boolean {
+      if (sliceMode === "slice-v") {
+        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
+      }
+      return true;
+    }
+    const islandVisible = (gx: number, gz: number): boolean =>
+      cellPeak(gx, gz) !== null && passesSlice(gx, gz);
+
+    // Smoothed surface height at a grid CORNER (gx,gz = the corner shared by
+    // cells [gx-1,gy-1]..[gx,gz]). Averages peakT over the neighbouring island
+    // cells present; edge corners (fewer neighbours) sit lower → taper to shore.
+    const cornerY = (cornerGx: number, cornerGz: number): number => {
+      let sum = 0, n = 0;
+      for (const [dx, dz] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) {
+        const p = cellPeak(cornerGx + dx, cornerGz + dz);
+        if (p !== null) { sum += p; n++; }
+      }
+      const t = n > 0 ? sum / 4 : 0; // divide by 4 (missing neighbours = waterline)
+      return Y_SURFACE + t * ISLAND_PEAK_H;
+    };
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indices:   number[] = [];
+
+    // Vertex tint: earthy green-grey at the peak → the CoastalLandMesh grey lower
+    // down, so the mound belongs with the surrounding land but reads as a hill.
+    function addVert(px: number, py: number, pz: number): number {
+      const above = Math.max(0, py - Y_SURFACE);
+      const hi = Math.max(0, Math.min(1, above / ISLAND_PEAK_H)); // 0 shore → 1 peak
+      const t  = Math.max(0, Math.min(1, (LAND_TOP - py) / (LAND_TOP - BOX_BOT)));
+      // base = CoastalLandMesh ramp; lift green a touch as we climb toward the peak.
+      positions.push(px, py, pz);
+      colors.push(
+        0.80 - t * 0.26 - hi * 0.08,
+        0.80 - t * 0.25 + hi * 0.02,
+        0.79 - t * 0.22 - hi * 0.06,
+      );
+      return (positions.length / 3) - 1;
+    }
+
+    // Full side wall down to BOX_BOT wherever the neighbour is not island (so the
+    // mound is a closed solid meeting the seabed apron). Between two island cells
+    // the shared face is skipped.
+    const wall = (
+      x0: number, z0: number, x1: number, z1: number, topA: number, topB: number,
+    ) => {
+      const a = addVert(x0, topA, z0);
+      const b = addVert(x0, BOX_BOT, z0);
+      const c = addVert(x1, BOX_BOT, z1);
+      const d = addVert(x1, topB, z1);
+      indices.push(a, b, c, a, c, d);
+    };
+
+    for (const { gx, gz } of ISLAND_CELLS) {
+      if (!islandVisible(gx, gz)) continue;
+
+      const x0 = offsetX + gx       * STEP;
+      const x1 = offsetX + (gx + 1) * STEP;
+      const z0 = offsetZ + gz       * STEP;
+      const z1 = offsetZ + (gz + 1) * STEP;
+
+      // Smoothed corner heights (shared with neighbours → continuous surface).
+      const y00 = cornerY(gx,     gz);
+      const y10 = cornerY(gx + 1, gz);
+      const y01 = cornerY(gx,     gz + 1);
+      const y11 = cornerY(gx + 1, gz + 1);
+
+      // Top surface (mound face, upward).
+      const t00 = addVert(x0, y00, z0);
+      const t10 = addVert(x1, y10, z0);
+      const t01 = addVert(x0, y01, z1);
+      const t11 = addVert(x1, y11, z1);
+      indices.push(t00, t11, t10,  t00, t01, t11);
+
+      // Bottom (at BOX_BOT, downward).
+      const b00 = addVert(x0, BOX_BOT, z0);
+      const b10 = addVert(x1, BOX_BOT, z0);
+      const b01 = addVert(x0, BOX_BOT, z1);
+      const b11 = addVert(x1, BOX_BOT, z1);
+      indices.push(b00, b10, b11,  b00, b11, b01);
+
+      // Side walls on edges where the neighbour is not a visible island cell.
+      if (!islandVisible(gx - 1, gz)) wall(x0, z0, x0, z1, y00, y01); // west
+      if (!islandVisible(gx + 1, gz)) wall(x1, z1, x1, z0, y11, y10); // east
+      if (!islandVisible(gx, gz - 1)) wall(x1, z0, x0, z0, y10, y00); // north (-Z)
+      if (!islandVisible(gx, gz + 1)) wall(x0, z1, x1, z1, y01, y11); // south (+Z)
+    }
+
+    if (indices.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("color",    new THREE.BufferAttribute(new Float32Array(colors),    3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
+
+  if (!geometry) return null;
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial
+        vertexColors
+        roughness={0.95}
+        metalness={0}
+        side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={2}
+        polygonOffsetUnits={2}
+      />
+    </mesh>
+  );
+}
+
+// ── Open Pacific (Sanriku) — a static CONTEXT ocean ───────────────────────────
+// East (and the open south) of the bay is open sea. It is modelled as a single
+// flat, muted, uniform sea surface at Y_SURFACE filling every OPEN cell of the
+// extended (LAND_RING) grid — i.e. cells that are neither bay water, nor island,
+// nor coastal land, nor a river channel. This is CONTEXT only, deliberately
+// distinct from the interactive Shizugawa Bay data volume:
+//   • NOT nutrient-coloured, NOT recoloured by week, NOT animated.
+//   • NOT clickable/hoverable (raycast disabled) and NOT in the legend.
+//   • Sits exactly at the water surface, a hair BELOW it via polygonOffset, so
+//     it never z-fights the bay's surface voxels or the land/island walls; it
+//     covers only open-water cells, so it can't overlap the bay volume.
+const OPEN_SEA_COLOR = "#38617f"; // muted deep steel-blue, clearly not a nutrient hue
+
+function OpenSeaMesh({
+  sliceMode,
+  sliceLevel,
+  sliceDir,
+  sliceCutType,
+}: {
+  sliceMode: DashboardState;
+  sliceLevel: number;
+  sliceDir: SliceDir;
+  sliceCutType: SliceCutType;
+}) {
+  const geometry = useMemo(() => {
+    // The open sea is a surface sheet; a horizontal slice cuts below the surface,
+    // so hide it (the bay's own cut face carries the section). Keeps it from
+    // floating over a depth slice.
+    if (sliceMode === "slice-h" && sliceLevel > 0) return null;
+
+    const mask = getLandMask();
+    const ring = mask.ring;
+    const riverSet = new Set(RIVER_CELLS.map((c) => `${c.gz},${c.gx}`));
+
+    function passesSlice(gx: number, gz: number): boolean {
+      if (sliceMode === "slice-v") {
+        return isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType);
+      }
+      return true;
+    }
+    // An OPEN-sea cell: inside the extended grid, not land, not bay water, not an
+    // island, not a river channel. That leaves exactly the seaward frontier the
+    // border flood reaches in landMask (east + open south), out to the box edge.
+    const isOpenSea = (gx: number, gz: number): boolean => {
+      if (mask.isLand(gx, gz)) return false;
+      if (gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D) {
+        if (BAY_MASK[gz]?.[gx]) return false; // bay water (islands already !bay)
+      }
+      if (isIsland(gx, gz)) return false;
+      if (riverSet.has(`${gz},${gx}`)) return false;
+      return passesSlice(gx, gz);
+    };
+
+    const positions: number[] = [];
+    const indices:   number[] = [];
+    const addQuad = (x0: number, z0: number, x1: number, z1: number) => {
+      const base = positions.length / 3;
+      positions.push(
+        x0, Y_SURFACE, z0,
+        x1, Y_SURFACE, z0,
+        x1, Y_SURFACE, z1,
+        x0, Y_SURFACE, z1,
+      );
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    };
+
+    for (let gz = -ring; gz < GRID_D + ring; gz++) {
+      for (let gx = -ring; gx < GRID_W + ring; gx++) {
+        if (!isOpenSea(gx, gz)) continue;
+        addQuad(
+          offsetX + gx * STEP,       offsetZ + gz * STEP,
+          offsetX + (gx + 1) * STEP, offsetZ + (gz + 1) * STEP,
+        );
+      }
+    }
+
+    if (indices.length === 0) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [sliceMode, sliceLevel, sliceDir, sliceCutType]);
+
+  if (!geometry) return null;
+  return (
+    // raycast disabled → never clickable/hoverable. Lit like a calm sea surface
+    // (a single flat colour), never the nutrient ramp.
+    <mesh geometry={geometry} raycast={() => null}>
+      <meshStandardMaterial
+        color={OPEN_SEA_COLOR}
+        roughness={0.55}
+        metalness={0.1}
+        side={THREE.DoubleSide}
+        transparent
+        opacity={0.9}
+        polygonOffset
+        polygonOffsetFactor={1}
+        polygonOffsetUnits={1}
       />
     </mesh>
   );
@@ -1381,6 +1659,33 @@ function CompassLabels() {
   );
 }
 
+// Static context label floating over the open Pacific, east of the bay mouth.
+// Purely a caption — no interactivity, no data binding.
+function OpenSeaLabel() {
+  // East side, north-of-centre, just above the sea surface, inside the open water.
+  const px = offsetX + (GRID_W + LAND_RING * 0.5) * STEP;
+  const pz = offsetZ + GRID_D * 0.62 * STEP;
+  return (
+    <ScaledLabel position={[px, Y_SURFACE + 0.25, pz]} center zIndexRange={[0, 0]}>
+      <div
+        style={{
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "10px",
+          fontStyle: "italic",
+          letterSpacing: "0.04em",
+          color: "#3f5c72",
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+          userSelect: "none",
+          textShadow: "0 1px 2px rgba(255,255,255,0.6)",
+        }}
+      >
+        Pacific — open sea
+      </div>
+    </ScaledLabel>
+  );
+}
+
 // Toggleable coordinate tick labels (lon / lat / depth)
 function CoordTickLabels() {
   const lonTicks: React.ReactElement[] = [];
@@ -1458,8 +1763,8 @@ const FACE_SUBDIV = 2;
 // the voxel visibility test in buildBatches (BAY_MASK + bathymetry).
 function waterMaxLayer(gx: number, gz: number): number {
   if (gz < 0 || gz >= GRID_D || gx < 0 || gx >= GRID_W) return -1;
-  if (!BAY_MASK[gz]?.[gx]) return -1;
-  return deepestVisibleLayer(getBathymetryDepthM(gx, gz));
+  if (!isBayWater(gx, gz)) return -1;
+  return deepestVisibleLayer(effectiveSeabedM(gx, gz));
 }
 
 interface SliceFacePlaneProps {
@@ -2000,6 +2305,26 @@ export default function OceanBasin3D({
           sliceCutType={sliceCutType}
         />
 
+        {/* Arajima + Tsubakishima: the two ocean-outline holes, rendered as
+            tapering mountainous islands (peak → waterline), with the seabed
+            sloping up to meet them (see effectiveSeabedM apron). */}
+        <IslandMesh
+          sliceMode={dashboardState}
+          sliceLevel={sliceLevel}
+          sliceDir={sliceDir}
+          sliceCutType={sliceCutType}
+        />
+
+        {/* Open Pacific (Sanriku): a static, non-interactive context sea filling
+            the seaward open-water cells out to the box edge — distinct from the
+            interactive bay volume. Not clickable, not week-coloured, not legended. */}
+        <OpenSeaMesh
+          sliceMode={dashboardState}
+          sliceLevel={sliceLevel}
+          sliceDir={sliceDir}
+          sliceCutType={sliceCutType}
+        />
+
         {/* Bounded "study box": solid side walls + floor at the LAND_RING
             extent, framing the whole region like an ArcGIS voxel study box. */}
         <StudyBoxShell />
@@ -2026,6 +2351,10 @@ export default function OceanBasin3D({
 
         {/* Compass: always visible */}
         <CompassLabels />
+
+        {/* Static context label over the open Pacific (toggles with annotations,
+            never interactive). Sits east of the bay at the sea surface. */}
+        {showAnnotations && <OpenSeaLabel />}
 
         {/* Coordinate ticks (X/Y/Z values): toggleable */}
         {showAnnotations && <CoordTickLabels />}
