@@ -12,10 +12,20 @@
  *        nz = (1 − svgY/586 − 0.2846) × 2.1565 + 0.0919
  *      to place the cell centre in SVG px space, then point-in-polygon test
  *      it against every sub-basin outline.
- *   3. A cell is LAND when it falls inside a sub-basin AND is not bay water
- *      (BAY_MASK) AND is not a river channel cell (RIVER_CELLS). Because the
- *      sub-basins and BAY_POLYGON share the same SVG source + transform, the
- *      land rings the bay along the real coastline.
+ *   3. Open sea is redefined as ONLY the water connected to the EAST edge of the
+ *      study box (the Pacific): flood-fill (4-connectivity) over the extended
+ *      grid, seeded from the east-edge column, passing through "open water"
+ *      cells (NOT raw sub-basin land, NOT bay, NOT island, NOT river). Sub-basin
+ *      land, bay and islands are barriers that stop the flood, so the ocean
+ *      cannot leak west past the coast/bay. Every cell the flood reaches is the
+ *      SEA SET (exported via isOpenSea).
+ *   4. A cell is LAND when it is within the extended box, not bay, not island,
+ *      not a river channel, and NOT in the sea set. This extends land across all
+ *      inland (west/north/south) cells to the box border — including the
+ *      southern peninsula toward Mt Horowa — while keeping the sub-basin land
+ *      (and the enclosed-fill interior holes) as a subset. Because the sub-basins
+ *      and BAY_POLYGON share the same SVG source + transform, the land rings the
+ *      bay along the real coastline.
  *
  * The mask is computed lazily on first use (needs the DOM) and cached for the
  * lifetime of the module. Purely additive — nothing here mutates the grid,
@@ -23,6 +33,7 @@
  */
 import { GRID_W, GRID_D, BAY_MASK, RIVER_CELLS } from "@/lib/simulatedData";
 import { SUB_BASIN_PATHS } from "@/lib/svgPaths";
+import { isIsland } from "@/lib/islands";
 
 const SVG_W = 465;
 const SVG_H = 586;
@@ -121,9 +132,21 @@ export interface LandMask {
   ring: number;
   /** True when grid cell (gx, gz) — possibly outside [0, GRID) — is land. */
   isLand(gx: number, gz: number): boolean;
+  /** True when grid cell (gx, gz) is open sea (reached by the east flood). */
+  isOpenSea(gx: number, gz: number): boolean;
 }
 
 let cached: LandMask | null = null;
+
+/**
+ * True when grid cell (gx, gz) is OPEN SEA — the Pacific frontier connected to
+ * the EAST edge of the study box (see the east flood in getLandMask). Every
+ * cell that is inside the extended box and is NOT open sea, bay, island or river
+ * is land. Browser-only (delegates to getLandMask, which needs the DOM).
+ */
+export function isOpenSea(gx: number, gz: number): boolean {
+  return getLandMask().isOpenSea(gx, gz);
+}
 
 /** Lazily builds (and caches) the land mask. Browser-only: needs the DOM. */
 export function getLandMask(): LandMask {
@@ -257,13 +280,104 @@ export function getLandMask(): LandMask {
     }
   }
 
+  // ── East flood: the Pacific is ONLY the water connected to the EAST edge ─────
+  // The bay opens east/south-east; west, north and the southern peninsula are
+  // land. The old classification painted EVERY non-land/bay/island/river cell in
+  // the box as open sea, so inland cells that reach the west/north/south borders
+  // (and aren't enclosed) were wrongly read as ocean. Fix: define open sea as the
+  // set of "open water" cells the flood reaches when seeded from the east-edge
+  // column and blocked by the coastline.
+  //
+  //   • Passable ("open water"): NOT raw sub-basin land (the base `mask` before
+  //     the enclosed fill — captured in `rawLand` below), NOT bay, NOT island,
+  //     NOT a river channel.
+  //   • Barriers (stop the flood): raw sub-basin land, bay, islands. This keeps
+  //     the ocean from leaking west past the coast/bay. River cells are simply
+  //     not "open water", so the flood does not pass through them either.
+  //   • Seed: the entire east-edge column (lx = w − 1, all lz), so only water
+  //     that connects out to the Pacific edge is sea.
+  //
+  // `sea[i] = 1` ⇔ local cell i is open sea. Everything in the box that is not
+  // sea/bay/island/river is then land (extends inland land to the box border).
+  const sea = new Uint8Array(w * d);
+  {
+    // `mask` now also holds the enclosed-hole fill, so recompute raw sub-basin
+    // membership as a barrier: any cell inside a sub-basin polygon is raw land.
+    // Cheaper than re-tracing: the enclosed fill only ADDED land, so raw land is
+    // the base membership. We rebuild it by testing "was this an enclosed hole?"
+    // is unnecessary — instead treat ALL current `mask` land as a barrier. Using
+    // the (superset) filled mask as a barrier is safe here: filled cells are
+    // interior holes fully surrounded by land/bay/river, so they were never
+    // reachable open water anyway; blocking them cannot change what the flood
+    // reaches. So the barrier is: mask land OR bay OR island.
+    const isOpenWater = (lx: number, lz: number): boolean => {
+      const gx = lx - ring;
+      const gz = lz - ring;
+      if (mask[lz * w + lx] === 1) return false; // sub-basin / enclosed land
+      if (isBay(gx, gz)) return false;           // bay water (its own volume)
+      if (isIsland(gx, gz)) return false;        // island footprint = land
+      if (isRiver(gx, gz)) return false;         // river channel = not open sea
+      return true;
+    };
+
+    const stack: number[] = [];
+    const pushIfSea = (lx: number, lz: number) => {
+      if (lx < 0 || lx >= w || lz < 0 || lz >= d) return;
+      const i = lz * w + lx;
+      if (sea[i]) return;
+      if (!isOpenWater(lx, lz)) return; // land/bay/island/river block the flood
+      sea[i] = 1;
+      stack.push(i);
+    };
+
+    // Seed the entire EAST-edge column (lx = w − 1). Only water connected out to
+    // the Pacific edge becomes sea.
+    for (let lz = 0; lz < d; lz++) pushIfSea(w - 1, lz);
+
+    // 4-connectivity flood.
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      const lx = i % w;
+      const lz = (i - lx) / w;
+      pushIfSea(lx - 1, lz);
+      pushIfSea(lx + 1, lz);
+      pushIfSea(lx, lz - 1);
+      pushIfSea(lx, lz + 1);
+    }
+  }
+
+  // ── Derive final LAND from the sea set ───────────────────────────────────────
+  // A cell is land when it is within the extended box and is NOT sea, NOT bay,
+  // NOT island, NOT a river channel. This extends land across every inland
+  // (west/north/south) cell to the box border (including the southern peninsula
+  // toward Mt Horowa), while the sub-basin land + enclosed holes remain a subset.
+  const landMaskArr = new Uint8Array(w * d);
+  for (let lz = 0; lz < d; lz++) {
+    for (let lx = 0; lx < w; lx++) {
+      const i = lz * w + lx;
+      if (sea[i]) continue;               // open sea
+      const gx = lx - ring;
+      const gz = lz - ring;
+      if (isBay(gx, gz)) continue;        // bay water
+      if (isIsland(gx, gz)) continue;     // island (carries its own mound)
+      if (isRiver(gx, gz)) continue;      // river channel
+      landMaskArr[i] = 1;                 // everything else in the box → land
+    }
+  }
+
   cached = {
     ring,
     isLand(gx: number, gz: number): boolean {
       const x = gx + ring;
       const z = gz + ring;
       if (x < 0 || x >= w || z < 0 || z >= d) return false;
-      return mask[z * w + x] === 1;
+      return landMaskArr[z * w + x] === 1;
+    },
+    isOpenSea(gx: number, gz: number): boolean {
+      const x = gx + ring;
+      const z = gz + ring;
+      if (x < 0 || x >= w || z < 0 || z >= d) return false;
+      return sea[z * w + x] === 1;
     },
   };
   return cached;

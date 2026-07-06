@@ -20,7 +20,7 @@ import {
   DashboardState,
 } from "@/lib/simulatedData";
 import { depthLabel } from "@/lib/depthLabels";
-import { getLandMask, LAND_RING } from "@/lib/landMask";
+import { getLandMask, isOpenSea, LAND_RING } from "@/lib/landMask";
 import { ISLAND_CELLS, isIsland, islandApronFactor } from "@/lib/islands";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
@@ -1103,9 +1103,7 @@ function OpenSeaMesh({
     // floating over a depth slice.
     if (sliceMode === "slice-h" && sliceLevel > 0) return null;
 
-    const mask = getLandMask();
-    const ring = mask.ring;
-    const riverSet = new Set(RIVER_CELLS.map((c) => `${c.gz},${c.gx}`));
+    const ring = getLandMask().ring;
 
     function passesSlice(gx: number, gz: number): boolean {
       if (sliceMode === "slice-v") {
@@ -1113,18 +1111,11 @@ function OpenSeaMesh({
       }
       return true;
     }
-    // An OPEN-sea cell: inside the extended grid, not land, not bay water, not an
-    // island, not a river channel. That leaves exactly the seaward frontier the
-    // border flood reaches in landMask (east + open south), out to the box edge.
-    const isOpenSea = (gx: number, gz: number): boolean => {
-      if (mask.isLand(gx, gz)) return false;
-      if (gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_D) {
-        if (BAY_MASK[gz]?.[gx]) return false; // bay water (islands already !bay)
-      }
-      if (isIsland(gx, gz)) return false;
-      if (riverSet.has(`${gz},${gx}`)) return false;
-      return passesSlice(gx, gz);
-    };
+    // Open sea = exactly the cells the east flood reaches (isOpenSea from
+    // landMask). Land and sea now come from one consistent source, so the west/
+    // north/south inland cells that used to fall through to "ocean" are land.
+    const openSeaCell = (gx: number, gz: number): boolean =>
+      isOpenSea(gx, gz) && passesSlice(gx, gz);
 
     const positions: number[] = [];
     const indices:   number[] = [];
@@ -1141,7 +1132,7 @@ function OpenSeaMesh({
 
     for (let gz = -ring; gz < GRID_D + ring; gz++) {
       for (let gx = -ring; gx < GRID_W + ring; gx++) {
-        if (!isOpenSea(gx, gz)) continue;
+        if (!openSeaCell(gx, gz)) continue;
         addQuad(
           offsetX + gx * STEP,       offsetZ + gz * STEP,
           offsetX + (gx + 1) * STEP, offsetZ + (gz + 1) * STEP,
