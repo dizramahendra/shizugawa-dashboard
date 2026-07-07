@@ -626,16 +626,19 @@ function InstancedDepthLayer({
   if (count === 0) return null;
 
   // Pointer picking (hover tooltip + click-to-select) raycasts EVERY instance in
-  // this layer on every pointer-move. That is wasted work during a plain orbit
-  // and, at 2× (~4× the instances), it can hitch the drag — so raycasting is
-  // disabled unless an Inspect tool (Voxel / Column) is active. `raycast={null}`
-  // removes the mesh from r3f's hit-test set entirely.
+  // this layer on every pointer-move — wasted work during a plain orbit, and at
+  // 2× (~4× the instances) it can hitch the drag. So the pointer HANDLERS are
+  // attached only when an Inspect tool (Voxel/Column) is active: r3f raycasts
+  // only meshes that have handlers, so with them off a plain orbit skips these
+  // meshes entirely. (We must NOT toggle the `raycast` prop for this — setting it
+  // back to `undefined` does not restore InstancedMesh's default raycast, which
+  // broke picking after toggling inspect off→on. Gating the handlers alone gives
+  // the same perf win without touching raycast.)
   return (
     <instancedMesh
       ref={meshRef}
       args={[undefined, undefined, count]}
       frustumCulled={false}
-      raycast={inspectActive ? undefined : (() => null)}
       onClick={inspectActive ? ((e) => {
         e.stopPropagation();
         const iid = e.instanceId;
