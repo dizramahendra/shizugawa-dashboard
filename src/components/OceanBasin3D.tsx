@@ -8,6 +8,7 @@ import {
   RIVER_META,
   GRID_W,
   GRID_D,
+  GRID_SUBDIV,
   DEPTH_LAYERS,
   DEPTH_HEIGHTS,
   DEPTH_TOPS,
@@ -26,7 +27,7 @@ import { ISLAND_CELLS, isIsland, islandApronFactor } from "@/lib/islands";
 import { buildTerrainField, type TerrainField, LAND_MAX_H } from "@/lib/terrainField";
 
 // ── Scene layout constants ────────────────────────────────────────────────────
-const STEP   = 0.5;    // scene units per grid cell (112×96 grid, same physical bay size)
+const STEP   = 0.5 / GRID_SUBDIV; // scene units per grid cell — divides by the resolution factor so the 112×96 (×GRID_SUBDIV) grid keeps the SAME physical bay size (finer voxels at 2×)
 const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
 const offsetX = -(GRID_W * STEP) / 2;  // centre the grid

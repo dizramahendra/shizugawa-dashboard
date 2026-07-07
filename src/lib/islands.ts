@@ -24,7 +24,7 @@
  */
 import { OCEAN_BASIN_PATH } from "@/lib/svgPaths";
 import { sampleSvgPath } from "@/lib/svgSample";
-import { GRID_W, GRID_D } from "@/lib/simulatedData";
+import { GRID_W, GRID_D, GRID_SUBDIV } from "@/lib/simulatedData";
 
 // SVG canvas + affine — identical to simulatedData.ts's svgToGrid / BAY_POLYGON.
 const SVG_W = 465;
@@ -103,7 +103,7 @@ function buildIsland(subpath: string): Island {
   // Showcase exaggeration: real Arajima/Tsubakishima are tiny (13 & 8 cells), so
   // dilate each footprint by a 1-cell ring so they read as landmark islands
   // rather than specks (paired with a taller peak + wider apron below).
-  const ISLAND_DILATE = 1;
+  const ISLAND_DILATE = GRID_SUBDIV; // 1 base cell, scaled so islands keep a constant physical footprint at 2×
   if (raw.length) {
     const have = new Set(raw.map((c) => `${c.gz},${c.gx}`));
     const ringCells: Array<{ gx: number; gz: number }> = [];
@@ -175,7 +175,7 @@ export function isIsland(gx: number, gz: number): boolean {
 // ── Underwater apron ──────────────────────────────────────────────────────────
 // Distance (in grid cells) over which the seabed shallows toward an island, so
 // the seafloor slopes UP to meet the shore instead of dropping off a cliff.
-export const ISLAND_APRON_CELLS = 6;
+export const ISLAND_APRON_CELLS = 6 * GRID_SUBDIV; // scales with resolution → constant physical apron width
 
 /**
  * Depth-scaling factor in [0,1] for a WATER cell, based on nearness to the

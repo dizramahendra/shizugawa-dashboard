@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "shizugawa-dashboard",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/dizramahendra/shizugawa-dashboard && PORT=5173 BASE_PATH=/ corepack pnpm dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "shizugawa-prod",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/dizramahendra/shizugawa-dashboard && PORT=4173 BASE_PATH=/ corepack pnpm serve"
+      ],
+      "port": 4173
+    }
+  ]
+}

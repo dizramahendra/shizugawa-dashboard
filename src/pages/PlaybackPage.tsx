@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Crosshair, Layers, GitBranchPlus, BarChart2, ArrowUpDown, Activity, Waves, MapPin, Droplets, Maximize2, Trees } from "lucide-react";
 import { PropRow, OCEAN_DETAILS } from "@/components/IdentificationCard";
-import { DashboardState, TOTAL_WEEKS, OCEAN_VARIABLE_OPTIONS as VARIABLE_OPTIONS, valueToVoxelMassKg as valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, DEPTH_LAYERS, DEPTH_REAL_M } from "@/lib/simulatedData";
+import { DashboardState, TOTAL_WEEKS, OCEAN_VARIABLE_OPTIONS as VARIABLE_OPTIONS, valueToVoxelMassKg as valueToConcentration, generateWeekData, getColumnMean, BAY_MASK, GRID_W, GRID_D, GRID_SUBDIV, DEPTH_LAYERS, DEPTH_REAL_M } from "@/lib/simulatedData";
 import { usePlayback } from "@/context/PlaybackContext";
 import { YEARS } from "@/lib/weekUtils";
 import WeekRangePicker from "@/components/WeekRangePicker";
@@ -40,9 +40,11 @@ const INSPECT_SEGMENTS: { id: InspectTool; label: string; Icon: typeof Crosshair
 ];
 
 // ── Mini-map constants (top-down bay view for vertical slice) ─────────────────
-const MINI_CELL = 3;            // px per grid cell
-const MINI_W = GRID_W * MINI_CELL; // 168
-const MINI_H = GRID_D * MINI_CELL; // 144
+// px per grid cell — divided by the resolution factor so the mini-map keeps the
+// SAME pixel size at 2× (4× the cells, each half as wide).
+const MINI_CELL = 3 / GRID_SUBDIV;
+const MINI_W = GRID_W * MINI_CELL; // constant across 1×/2×
+const MINI_H = GRID_D * MINI_CELL;
 
 function toDashboardState(tool: ToolState, isPlaying: boolean): DashboardState {
   if (tool !== "none") return tool as DashboardState;
@@ -446,6 +448,33 @@ export default function PlaybackPage() {
           </svg>
           Shading
         </button>
+
+        {/* Detail (grid resolution) — 2× renders 4× finer voxels. Switching
+            reloads the page to re-resolve every grid-derived field at the new
+            resolution (they are computed once at module load). */}
+        <div
+          className="flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-muted text-[11px]"
+          title="Grid detail — 2× renders 4× finer voxels for a smoother surface (reloads)"
+        >
+          <span className="px-1 text-muted-foreground select-none">Detail</span>
+          {([1, 2] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                if (s === GRID_SUBDIV) return;
+                try { localStorage.setItem("gridSubdiv", String(s)); } catch { /* ignore */ }
+                window.location.reload();
+              }}
+              className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                GRID_SUBDIV === s
+                  ? "bg-white border border-border text-foreground shadow-sm"
+                  : "border border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s}×
+            </button>
+          ))}
+        </div>
 
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {isPlaying ? (

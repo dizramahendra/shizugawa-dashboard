@@ -27,10 +27,30 @@ export interface SelectedPoint {
 }
 
 // Grid at 112×96 — STEP=0.5 in OceanBasin3D.
-// gx 0 = west (inner bay head), gx 111 = east (bay mouth)
-// gz 0 = south shore, gz 95 = north shore
-export const GRID_W = 112;
-export const GRID_D = 96;
+// gx 0 = west (inner bay head), gx GRID_W-1 = east (bay mouth)
+// gz 0 = south shore, gz GRID_D-1 = north shore
+//
+// Horizontal grid resolution. GRID_SUBDIV (1 or 2) multiplies the base 112×96
+// cell density for finer / smoother voxels; STEP (scene units per cell, in
+// OceanBasin3D) divides by the same factor so the rendered bay keeps the SAME
+// physical size — just 4× as many, smaller voxels at 2×. The factor is read
+// ONCE at module load from localStorage so the /playback "Detail 1×/2×" toggle
+// can switch it: every derived field below (BAY_MASK, rivers, nutrient field,
+// realCoast, land/terrain) is computed from GRID_W/GRID_D at import time, so the
+// toggle writes the value and reloads — the clean way to re-resolve them all.
+// SSR/no-DOM safe (falls back to 1×).
+function readGridSubdiv(): 1 | 2 {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("gridSubdiv") === "2" ? 2 : 1;
+  } catch {
+    return 1;
+  }
+}
+export const GRID_SUBDIV: 1 | 2 = readGridSubdiv();
+const GRID_W_BASE = 112;
+const GRID_D_BASE = 96;
+export const GRID_W = GRID_W_BASE * GRID_SUBDIV;
+export const GRID_D = GRID_D_BASE * GRID_SUBDIV;
 
 // Depth discretization. The bay's 0–90 m water column is modelled as 8 physical
 // bands with a thin-at-surface / thick-at-depth profile. DEPTH_SUBDIV evenly
@@ -220,10 +240,14 @@ function rasterizeRiverPath(d: string): Array<{ gx: number; gz: number }> {
     const ddz = nxt.gz - c.gz;
     // perpendicular of (ddx,ddz) is (-ddz,ddx); pick the dominant axis so the
     // widen is a single clean cell offset.
-    if (Math.abs(ddx) >= Math.abs(ddz)) {
-      add(c.gx, c.gz + 1); // travel ~horizontal → widen in z
-    } else {
-      add(c.gx + 1, c.gz); // travel ~vertical → widen in x
+    // Widen by GRID_SUBDIV cells so the channel keeps a similar PHYSICAL width
+    // at 2× (at 1× this adds a single cell, exactly as before).
+    for (let k = 1; k <= GRID_SUBDIV; k++) {
+      if (Math.abs(ddx) >= Math.abs(ddz)) {
+        add(c.gx, c.gz + k); // travel ~horizontal → widen in z
+      } else {
+        add(c.gx + k, c.gz); // travel ~vertical → widen in x
+      }
     }
   }
   return out;
@@ -850,7 +874,7 @@ const RIVER_MOUTHS: Array<{ gx: number; gz: number; weight: number }> = (() => {
  *  reference where the Shizugawa/Togura/Oura cluster lights up brightest.
  *  Computed once at module load. */
 const NUTRIENT_SOURCE_FIELD: number[][] = (() => {
-  const decayLen     = 9;   // grid units — larger = wider plumes
+  const decayLen     = 9 * GRID_SUBDIV; // grid units — scales with resolution so the plume's PHYSICAL width is constant across 1×/2×
   const weightDamp   = 0.5; // softens the linear weight effect
   const fieldNormDiv = 1.6; // normalizes peak field so values stay in [0, ~1]
   const out: number[][] = [];
@@ -896,9 +920,11 @@ export function generateWeekData(week: number, year: number = 2023): number[][][
       const sourceField = NUTRIENT_SOURCE_FIELD[z]?.[x] ?? 0;
       // Small wobble so plumes have discrete-cell variability like the
       // real Delft3D output (not perfectly smooth contours).
+      // Frequencies divided by GRID_SUBDIV so the speckle keeps the same PHYSICAL
+      // scale at 2× (finer cells, not finer noise).
       const wobble =
-        Math.sin(x * 0.7 + t) * 0.5 +
-        Math.cos(z * 0.5 + t * 1.1) * 0.5;
+        Math.sin((x * 0.7) / GRID_SUBDIV + t) * 0.5 +
+        Math.cos((z * 0.5) / GRID_SUBDIV + t * 1.1) * 0.5;
 
       for (let d = 0; d < DEPTH_LAYERS; d++) {
         // Surface layer (d=0) carries the strongest nutrient signal — deeper

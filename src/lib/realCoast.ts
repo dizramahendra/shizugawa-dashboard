@@ -23,14 +23,20 @@
  *
  * Pure data module (no DOM, no deps) — safe to import anywhere.
  */
-import { GRID_W, GRID_D } from "@/lib/simulatedData";
+import { GRID_SUBDIV } from "@/lib/simulatedData";
 
-/** Extended-grid origin this bitmap covers (matches LAND_RING in landMask). */
+/** Extended-grid origin this bitmap covers, in 1× (base) grid units. Matches the
+ *  1× extended grid (base 112×96 + LAND_RING 16). FIXED regardless of
+ *  GRID_SUBDIV — the bitmap was traced once at 1×; at 2× we upsample by mapping
+ *  each 2× cell back to its 1× cell (see isRealWater). LAND_RING scales with
+ *  GRID_SUBDIV, so a 2× extended-grid coord divided by GRID_SUBDIV lands exactly
+ *  in this range. */
 export const RC_GX_MIN = -16;
 export const RC_GZ_MIN = -16;
-/** Bitmap dimensions (GRID_W + 2*16 = 144, GRID_D + 2*16 = 128). */
-export const RC_W = GRID_W + 32; // 144
-export const RC_H = GRID_D + 32; // 128
+/** Baked bitmap dimensions — fixed at the traced 1× extended grid (112+32=144,
+ *  96+32=128), independent of the current resolution. */
+export const RC_W = 144;
+export const RC_H = 128;
 
 // Row 0 = gz = RC_GZ_MIN (south); last row = gz = GRID_D+15 (north).
 // Col 0 = gx = RC_GX_MIN (west);  last col = gx = GRID_W+15 (east).
@@ -197,10 +203,19 @@ const BITS: Uint8Array = (() => {
  * True when extended-grid cell (gx, gz) is WATER on the real basemap (bay OR
  * open Pacific — this mask does not distinguish them; BAY_MASK carries the
  * interactive bay). Cells outside the baked range are treated as land.
+ *
+ * (gx, gz) are extended-grid coords at the CURRENT resolution. At GRID_SUBDIV=2
+ * each traced 1× cell becomes a 2×2 block, so we floor-divide back to the 1×
+ * cell before indexing the baked bitmap (nearest-neighbour upsample). floor (not
+ * truncation) keeps the negative LAND_RING coords mapping to the correct base
+ * cell (e.g. gx=-1,S=2 → -1). LAND_RING scales with GRID_SUBDIV, so the current
+ * extended grid maps exactly onto the baked 1× range.
  */
 export function isRealWater(gx: number, gz: number): boolean {
-  const c = gx - RC_GX_MIN;
-  const r = gz - RC_GZ_MIN;
+  const gx1 = Math.floor(gx / GRID_SUBDIV);
+  const gz1 = Math.floor(gz / GRID_SUBDIV);
+  const c = gx1 - RC_GX_MIN;
+  const r = gz1 - RC_GZ_MIN;
   if (c < 0 || c >= RC_W || r < 0 || r >= RC_H) return false;
   return BITS[r * RC_W + c] === 1;
 }

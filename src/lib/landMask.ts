@@ -27,12 +27,15 @@
  * untouched — only the surrounding land ↔ open-sea split is re-grounded on the
  * traced coast.
  */
-import { GRID_W, GRID_D, BAY_MASK, RIVER_CELLS } from "@/lib/simulatedData";
+import { GRID_W, GRID_D, GRID_SUBDIV, BAY_MASK, RIVER_CELLS } from "@/lib/simulatedData";
 import { isIsland } from "@/lib/islands";
 import { isRealWater } from "@/lib/realCoast";
 
-/** Land ring rendered beyond each side of the voxel grid (in grid cells). */
-export const LAND_RING = 16;
+/** Land ring rendered beyond each side of the voxel grid (in grid cells). Scales
+ *  with GRID_SUBDIV so the surrounding-land border keeps a constant PHYSICAL
+ *  width at 2× and a current-resolution ring coord ÷ GRID_SUBDIV lands exactly
+ *  in realCoast's baked 1× extended-grid range (−16 … 127). */
+export const LAND_RING = 16 * GRID_SUBDIV;
 
 export interface LandMask {
   /** Border ring size in cells beyond [0, GRID) on every side. */
