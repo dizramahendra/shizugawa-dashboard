@@ -423,6 +423,9 @@ interface VoxelGridProps {
   sliceLevel: number;
   sliceDir: SliceDir;
   sliceCutType: SliceCutType;
+  /** True when an Inspect tool (Voxel/Column) is active — gates voxel pointer
+   *  picking so a plain orbit does no per-move raycasting. */
+  inspectActive: boolean;
   onCellClick: (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
 }
@@ -431,71 +434,85 @@ interface VoxelGridProps {
 // Groups all voxels in the same depth layer into one THREE.InstancedMesh.
 // Result: 8 GPU draw calls total instead of one per voxel — far smoother orbit.
 
-interface LayerBatch {
-  count:     number;
-  positions: number[];   // [x,y,z, x,y,z, …]  count×3
-  rgbs:      number[];   // [r,g,b, r,g,b, …]   count×3
-  meta:      InstanceMeta[];
-}
-
-interface InstanceMeta {
+interface CellMeta {
   gx: number; gz: number;
-  val: number;
   px: number; py: number; pz: number;
 }
 
-function buildBatches(
-  data: ReturnType<typeof generateWeekData>,
-  stops: string[],
+// Static instance LAYOUT per depth layer — positions + per-instance cell/world
+// coords. Depends ONLY on the slice state, NOT the week, so it is memoised
+// across weeks: the instance matrices upload once per slice, never per week.
+interface LayerLayout {
+  count: number;
+  positions: number[];   // [x,y,z, …]  count×3
+  meta: CellMeta[];
+}
+
+// Per-week COLOURS for a fixed layout — rgb + raw value per instance, in the
+// SAME order as the layout's meta.
+interface LayerColors {
+  rgbs: number[];        // [r,g,b, …]  count×3
+  vals: number[];        // per-instance nutrient value (for the hover tooltip)
+}
+
+function buildLayout(
   sliceMode: DashboardState,
   sliceLevel: number,
   sliceDir: SliceDir,
   sliceCutType: SliceCutType,
-  markerPixels?: Map<string, [number, number, number]>,
-): LayerBatch[] {
+): LayerLayout[] {
   const visibleDepths = sliceMode === "slice-h"
     ? Array.from({ length: DEPTH_LAYERS - sliceLevel }, (_, i) => sliceLevel + i)
     : Array.from({ length: DEPTH_LAYERS }, (_, i) => i);
 
-  const batches: LayerBatch[] = Array.from({ length: DEPTH_LAYERS }, () => ({
-    count: 0,
-    positions: [],
-    rgbs: [],
-    meta: [],
+  const layouts: LayerLayout[] = Array.from({ length: DEPTH_LAYERS }, () => ({
+    count: 0, positions: [], meta: [],
   }));
 
   for (let gz = 0; gz < GRID_D; gz++) {
     for (let gx = 0; gx < GRID_W; gx++) {
       if (!isBayWater(gx, gz)) continue;         // islands are land, not water
-      const seabedM  = effectiveSeabedM(gx, gz); // shallowed by island apron
-      const maxLayer = deepestVisibleLayer(seabedM);
+      const maxLayer = deepestVisibleLayer(effectiveSeabedM(gx, gz));
       if (maxLayer < 0) continue;
 
       for (const d of visibleDepths) {
         if (d > maxLayer) continue;
         if (sliceMode === "slice-v" && !isVoxelVisible(gx, gz, sliceDir, sliceLevel, sliceCutType)) continue;
 
-        const val = data[gz]?.[gx]?.[d] ?? 0;
-        // Selection highlight is applied imperatively per-frame in
-        // InstancedDepthLayer, so clicking a voxel never rebuilds this
-        // geometry — batches depend only on data / slice / markers.
-        const markerColor = markerPixels?.get(`${gx}:${gz}`);
-        const [r, g, b] = markerColor && d === 0
-          ? markerColor
-          : lerpColor(stops, val);
-
         const px = offsetX + gx * STEP + CELL_W / 2;
         const py = Y_SURFACE - DEPTH_TOPS[d] - DEPTH_HEIGHTS[d] / 2;
         const pz = offsetZ + gz * STEP + CELL_W / 2;
 
-        batches[d].positions.push(px, py, pz);
-        batches[d].rgbs.push(r, g, b);
-        batches[d].meta.push({ gx, gz, val, px, py, pz });
-        batches[d].count++;
+        const L = layouts[d];
+        L.positions.push(px, py, pz);
+        L.meta.push({ gx, gz, px, py, pz });
+        L.count++;
       }
     }
   }
-  return batches;
+  return layouts;
+}
+
+function buildColors(
+  data: ReturnType<typeof generateWeekData>,
+  stops: string[],
+  layouts: LayerLayout[],
+  markerPixels?: Map<string, [number, number, number]>,
+): LayerColors[] {
+  return layouts.map((L, d) => {
+    const rgbs = new Array<number>(L.count * 3);
+    const vals = new Array<number>(L.count);
+    for (let i = 0; i < L.count; i++) {
+      const m = L.meta[i];
+      const val = data[m.gz]?.[m.gx]?.[d] ?? 0;
+      vals[i] = val;
+      // Map markers recolour only the surface layer.
+      const marker = d === 0 ? markerPixels?.get(`${m.gx}:${m.gz}`) : undefined;
+      const [r, g, b] = marker ?? lerpColor(stops, val);
+      rgbs[i * 3] = r; rgbs[i * 3 + 1] = g; rgbs[i * 3 + 2] = b;
+    }
+    return { rgbs, vals };
+  });
 }
 
 function easeInOutQuad(t: number): number {
@@ -508,23 +525,24 @@ function easeInOutQuad(t: number): number {
 // so this stays cheap (a per-frame loop over this layer's instance count,
 // skipped entirely once a transition settles).
 function InstancedDepthLayer({
-  depthIdx, toBatch, fromBatchesRef, toBatchesRef, progressRef, selectedPoint, onCellClick, onCellHover, onHover,
+  depthIdx, layout, layoutKey, inspectActive, fromColorsRef, toColorsRef, progressRef, selectedPoint, onCellClick, onCellHover, onHover,
 }: {
   depthIdx: number;
-  toBatch:  LayerBatch;
-  fromBatchesRef: React.MutableRefObject<LayerBatch[]>;
-  toBatchesRef:   React.MutableRefObject<LayerBatch[]>;
-  progressRef:    React.MutableRefObject<number>;
-  selectedPoint:  { x: number; z: number; y?: number } | null;
+  layout: LayerLayout;
+  layoutKey: string;
+  inspectActive: boolean;
+  fromColorsRef: React.MutableRefObject<LayerColors[]>;
+  toColorsRef:   React.MutableRefObject<LayerColors[]>;
+  progressRef:   React.MutableRefObject<number>;
+  selectedPoint: { x: number; z: number; y?: number } | null;
   onCellClick:  (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
   onHover: (h: HoveredVoxel | null) => void;
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const { positions, count } = toBatch;
-  const lastToRef = useRef<LayerBatch | null>(null);
+  const count = layout.count;
+  const lastToRef = useRef<LayerColors | null>(null);
   const lastAppliedRef = useRef(1);
-  const seededRef = useRef(false);
   const lastSelKeyRef = useRef<string | null>(null);
 
   // Stable key for the current selection so the per-frame loop can tell when it
@@ -533,45 +551,42 @@ function InstancedDepthLayer({
     ? `${selectedPoint.x}:${selectedPoint.z}:${selectedPoint.y ?? "col"}`
     : "";
 
-  // useLayoutEffect fires synchronously before the first Three.js frame.
-  // This guarantees instance matrices are in their correct positions before
-  // Three.js computes & caches the bounding sphere for raycasting — fixing a
-  // bug where clicks on voxels were silently missed on initial mount because
-  // the bounding sphere was cached from identity matrices (all at origin).
-  // Colour is intentionally NOT set here — useFrame owns colour so the
-  // cross-fade below has full control from the first animated frame.
+  // Upload instance matrices ONCE per LAYOUT (i.e. per slice), NOT per week —
+  // keyed on layoutKey + count, not the positions array ref. Positions are
+  // identical across weeks, so advancing the week no longer re-uploads ~4×-heavier
+  // matrices + recomputes the bounding sphere (that synchronous work was the
+  // ~330 ms per-week freeze that stuttered orbit at 2×). Colour is owned by
+  // useFrame; we seed it here so the first frame after a (re)layout isn't blank.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
+    const pos = layout.positions;
     const m4 = new THREE.Matrix4();
     for (let i = 0; i < count; i++) {
-      m4.setPosition(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+      m4.setPosition(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
       mesh.setMatrixAt(i, m4);
     }
     mesh.instanceMatrix.needsUpdate = true;
-    // Recompute bounding sphere from actual instance positions so raycasting works.
-    mesh.computeBoundingSphere();
+    mesh.computeBoundingSphere(); // raycast picking needs a real sphere
 
-    // Seed instance colours on first mount ONLY, so the first painted frame in
-    // demand mode isn't blank white before useFrame runs. This must not repeat:
-    // `positions` gets a fresh array ref every week, so re-seeding here each time
-    // would snap colours to the new week and clobber the cross-fade useFrame owns.
-    if (!seededRef.current) {
+    const to = toColorsRef.current[depthIdx];
+    if (to && to.rgbs.length === count * 3) {
       const col = new THREE.Color();
       for (let i = 0; i < count; i++) {
-        col.setRGB(toBatch.rgbs[i * 3], toBatch.rgbs[i * 3 + 1], toBatch.rgbs[i * 3 + 2]);
+        col.setRGB(to.rgbs[i * 3], to.rgbs[i * 3 + 1], to.rgbs[i * 3 + 2]);
         mesh.setColorAt(i, col);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      seededRef.current = true;
     }
-  }, [positions, count]);
+    lastToRef.current = null; // force useFrame to re-blend against the new layout
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutKey, count]);
 
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
-    const to = toBatchesRef.current[depthIdx];
-    if (!to || to.count === 0) return;
+    const to = toColorsRef.current[depthIdx];
+    if (!to || to.rgbs.length !== count * 3) return; // colours not yet in sync with layout
 
     const progress = progressRef.current;
     const settled  = progress >= 1;
@@ -579,11 +594,11 @@ function InstancedDepthLayer({
     const selChanged = lastSelKeyRef.current !== selKey;
     if (settled && !toChanged && !selChanged && lastAppliedRef.current >= 1) return; // nothing changed — skip work
 
-    const from = fromBatchesRef.current[depthIdx];
-    const useFrom = !settled && !!from && from.count === to.count;
+    const from = fromColorsRef.current[depthIdx];
+    const useFrom = !settled && !!from && from.rgbs.length === count * 3;
     const t = settled ? 1 : easeInOutQuad(progress);
     const col = new THREE.Color();
-    for (let i = 0; i < to.count; i++) {
+    for (let i = 0; i < count; i++) {
       let r = to.rgbs[i * 3], g = to.rgbs[i * 3 + 1], b = to.rgbs[i * 3 + 2];
       if (useFrom) {
         r = from!.rgbs[i * 3]     + (r - from!.rgbs[i * 3])     * t;
@@ -591,10 +606,9 @@ function InstancedDepthLayer({
         b = from!.rgbs[i * 3 + 2] + (b - from!.rgbs[i * 3 + 2]) * t;
       }
       // Imperative selection highlight, overlaid on the data colour: a single
-      // voxel (y given) or the whole column (y undefined) glows yellow. Applied
-      // here instead of baked into the batch, so selecting rebuilds no geometry.
+      // voxel (y given) or the whole column (y undefined) glows yellow.
       if (selectedPoint) {
-        const m = to.meta[i];
+        const m = layout.meta[i];
         if (m.gx === selectedPoint.x && m.gz === selectedPoint.z &&
             (selectedPoint.y === undefined || selectedPoint.y === depthIdx)) {
           r = 1; g = 0.9; b = 0.2;
@@ -611,27 +625,34 @@ function InstancedDepthLayer({
 
   if (count === 0) return null;
 
+  // Pointer picking (hover tooltip + click-to-select) raycasts EVERY instance in
+  // this layer on every pointer-move. That is wasted work during a plain orbit
+  // and, at 2× (~4× the instances), it can hitch the drag — so raycasting is
+  // disabled unless an Inspect tool (Voxel / Column) is active. `raycast={null}`
+  // removes the mesh from r3f's hit-test set entirely.
   return (
     <instancedMesh
       ref={meshRef}
       args={[undefined, undefined, count]}
       frustumCulled={false}
-      onClick={(e) => {
+      raycast={inspectActive ? undefined : (() => null)}
+      onClick={inspectActive ? ((e) => {
         e.stopPropagation();
         const iid = e.instanceId;
         if (iid == null) return;
-        const { gx, gz } = toBatch.meta[iid];
+        const { gx, gz } = layout.meta[iid];
         onCellClick(gx, gz, depthIdx);
-      }}
-      onPointerOver={(e) => {
+      }) : undefined}
+      onPointerOver={inspectActive ? ((e) => {
         e.stopPropagation();
         const iid = e.instanceId;
         if (iid == null) return;
-        const { gx, gz, val, px, py, pz } = toBatch.meta[iid];
+        const { gx, gz, px, py, pz } = layout.meta[iid];
+        const val = toColorsRef.current[depthIdx]?.vals[iid] ?? 0;
         onCellHover?.(gx, gz);
         onHover({ px, py, pz, val, depth: depthIdx });
-      }}
-      onPointerOut={() => onHover(null)}
+      }) : undefined}
+      onPointerOut={inspectActive ? (() => onHover(null)) : undefined}
     >
       <boxGeometry args={[CELL_W, DEPTH_HEIGHTS[depthIdx], CELL_W]} />
       {/* Opaque: renders through the depth buffer, so instances within a layer
@@ -643,41 +664,49 @@ function InstancedDepthLayer({
 }
 
 function VoxelGridInstanced({
-  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, onCellClick, onCellHover, markerPixels, transitionMs = 650,
+  week, colorScale, selectedPoint, sliceMode, sliceLevel, sliceDir, sliceCutType, inspectActive, onCellClick, onCellHover, markerPixels, transitionMs = 650,
 }: VoxelGridProps & { markerPixels?: Map<string, [number, number, number]>; transitionMs?: number }) {
   const data  = useMemo(() => generateWeekData(week), [week]);
   const stops = COLOR_SCALES[colorScale] ?? COLOR_SCALES.nitrogen;
 
-  const batches = useMemo(
-    () => buildBatches(data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels),
-    [data, stops, sliceMode, sliceLevel, sliceDir, sliceCutType, markerPixels],
+  // Instance LAYOUT (positions/matrices) depends ONLY on the slice — memoised
+  // across weeks so advancing the week never rebuilds/re-uploads it.
+  const layouts = useMemo(
+    () => buildLayout(sliceMode, sliceLevel, sliceDir, sliceCutType),
+    [sliceMode, sliceLevel, sliceDir, sliceCutType],
+  );
+  const layoutKey = `${sliceMode}:${sliceLevel}:${sliceDir}:${sliceCutType}`;
+  // COLOURS depend on the week's field (cheap: no matrix upload, no geometry).
+  const colors = useMemo(
+    () => buildColors(data, stops, layouts, markerPixels),
+    [data, stops, layouts, markerPixels],
   );
 
   // Colour cross-fade state, shared with every depth layer via refs so the
   // per-frame blend runs imperatively (no React re-renders during playback).
-  const fromBatchesRef = useRef<LayerBatch[]>(batches);
-  const toBatchesRef   = useRef<LayerBatch[]>(batches);
-  const progressRef    = useRef(1);
-  const prevWeekRef     = useRef(week);
+  const fromColorsRef = useRef<LayerColors[]>(colors);
+  const toColorsRef   = useRef<LayerColors[]>(colors);
+  const progressRef   = useRef(1);
+  const prevWeekRef   = useRef(week);
   const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
     if (prevWeekRef.current !== week) {
       // The week advanced (or rewound) — cross-fade colours from whatever was
       // last shown into the new week's data.
-      fromBatchesRef.current = toBatchesRef.current;
-      toBatchesRef.current = batches;
+      fromColorsRef.current = toColorsRef.current;
+      toColorsRef.current = colors;
       progressRef.current = 0;
       prevWeekRef.current = week;
     } else {
       // Structural change (slice, colour scale, markers) — snap.
-      toBatchesRef.current = batches;
+      toColorsRef.current = colors;
       progressRef.current = 1;
     }
     invalidate(); // render this change under the demand frameloop
-  }, [batches, week, invalidate]);
+  }, [colors, week, invalidate]);
 
-  // Selection changed: batches no longer depend on it, so request a repaint here
+  // Selection changed: colours no longer depend on it, so request a repaint here
   // and the per-frame loop re-applies the imperative highlight (matters when paused).
   useEffect(() => {
     invalidate();
@@ -694,13 +723,15 @@ function VoxelGridInstanced({
 
   return (
     <>
-      {batches.map((batch, d) => (
+      {layouts.map((layout, d) => (
         <InstancedDepthLayer
-          key={`${d}-${batch.count}`}
+          key={`${d}-${layout.count}`}
           depthIdx={d}
-          toBatch={batch}
-          fromBatchesRef={fromBatchesRef}
-          toBatchesRef={toBatchesRef}
+          layout={layout}
+          layoutKey={layoutKey}
+          inspectActive={inspectActive}
+          fromColorsRef={fromColorsRef}
+          toColorsRef={toColorsRef}
           progressRef={progressRef}
           selectedPoint={selectedPoint}
           onCellClick={onCellClick}
@@ -2039,6 +2070,9 @@ interface OceanBasin3DProps {
   sliceFaceMode?: "voxels" | "heatmap";
   onCellClick: (x: number, z: number, y: number) => void;
   onCellHover?: (x: number, z: number) => void;
+  /** True when an Inspect tool (Voxel/Column) is active. Gates voxel pointer
+   *  picking so a plain orbit does no per-move raycasting (smoother at 2×). */
+  inspectActive?: boolean;
   showAnnotations?: boolean;
   cameraPreset?: string;
   cameraPresetTick?: number;
@@ -2068,6 +2102,7 @@ export default function OceanBasin3D({
   sliceFaceMode = "heatmap",
   onCellClick,
   onCellHover,
+  inspectActive = false,
   showAnnotations = true,
   cameraPreset = "top",
   cameraPresetTick = 0,
@@ -2104,6 +2139,7 @@ export default function OceanBasin3D({
     sliceLevel,
     sliceDir,
     sliceCutType,
+    inspectActive,
     onCellClick,
     onCellHover,
   };

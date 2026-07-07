@@ -505,6 +505,7 @@ export default function PlaybackPage() {
               sliceFaceMode={sliceFaceMode}
               onCellClick={handleCellClick}
               onCellHover={(x, z) => setHoveredPoint({ x, z })}
+              inspectActive={inspectTool !== "none"}
               showAnnotations={showUI}
               cameraPreset={cameraPreset}
               cameraPresetTick={cameraPresetTick}
