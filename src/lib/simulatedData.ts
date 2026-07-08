@@ -282,20 +282,19 @@ function computeMouth(
   return clamp(best.gx, best.gz);
 }
 
-// Rivers are only shown within the study-box footprint (the LAND_RING-extended
-// grid that the SolidTerrain renders). Cells beyond it — chiefly the
-// Kesennuma-area rivers (paths 3 & 25), whose true SVG course lies north of the
-// Shizugawa bay grid — would otherwise render as channels floating past the
-// terrain edge. Margin mirrors landMask.ts's LAND_RING (= 16 * GRID_SUBDIV);
-// kept as a local literal to avoid a circular import (landMask imports
-// RIVER_CELLS from this module). It MUST scale with GRID_SUBDIV: otherwise at 2×
-// the terrain extends to 32 cells but rivers are clipped at 16, so the west
-// channels get cut short and covered by the extra land strip.
-const RIVER_BOX_MARGIN = 16 * GRID_SUBDIV; // = LAND_RING in landMask.ts
+// Rivers are only shown within the study-box footprint that the SolidTerrain
+// renders. The box is ASYMMETRIC: a wide WEST margin so the inland river network
+// (Shizugawa / Okawa / Mitobe reach the bay through the sub-basin rivers, ~40–60
+// cells west) is included, but a tight N/E/S margin so the Kesennuma-area rivers
+// (paths 3, 11, 25) — a DIFFERENT bay to the north — stay clipped out. These
+// literals MUST mirror landMask.ts's LAND_RING_W / LAND_RING (kept local to avoid
+// a circular import, since landMask imports RIVER_CELLS from this module).
+const RIVER_MARGIN   = 16 * GRID_SUBDIV; // = LAND_RING   (north / east / south)
+const RIVER_MARGIN_W = 56 * GRID_SUBDIV; // = LAND_RING_W (west, inland watershed)
 function inStudyBox(gx: number, gz: number): boolean {
   return (
-    gx >= -RIVER_BOX_MARGIN && gx < GRID_W + RIVER_BOX_MARGIN &&
-    gz >= -RIVER_BOX_MARGIN && gz < GRID_D + RIVER_BOX_MARGIN
+    gx >= -RIVER_MARGIN_W && gx < GRID_W + RIVER_MARGIN &&
+    gz >= -RIVER_MARGIN   && gz < GRID_D + RIVER_MARGIN
   );
 }
 

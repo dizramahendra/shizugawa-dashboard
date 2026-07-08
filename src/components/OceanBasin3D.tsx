@@ -22,7 +22,7 @@ import {
   DashboardState,
 } from "@/lib/simulatedData";
 import { depthLabel } from "@/lib/depthLabels";
-import { getLandMask, isOpenSea, LAND_RING } from "@/lib/landMask";
+import { getLandMask, isOpenSea, LAND_RING, EXT_GX_MIN, EXT_GX_MAX } from "@/lib/landMask";
 import { ISLAND_CELLS, isIsland, islandApronFactor } from "@/lib/islands";
 import { buildTerrainField, type TerrainField, LAND_MAX_H } from "@/lib/terrainField";
 
@@ -30,7 +30,9 @@ import { buildTerrainField, type TerrainField, LAND_MAX_H } from "@/lib/terrainF
 const STEP   = 0.5 / GRID_SUBDIV; // scene units per grid cell — divides by the resolution factor so the 112×96 (×GRID_SUBDIV) grid keeps the SAME physical bay size (finer voxels at 2×)
 const CELL_W = STEP;   // fill every cell completely — zero gap between voxels
 
-const offsetX = -(GRID_W * STEP) / 2;  // centre the grid
+// Centre the EXTENDED box (west is wider, so this is not the grid centre) so the
+// inland river network + the bay both frame in view.
+const offsetX = -((EXT_GX_MIN + EXT_GX_MAX) / 2) * STEP;
 const offsetZ = -(GRID_D * STEP) / 2;
 
 // Aspect correction. The SVG trace normalises X by 465 and Z by 586, but the
@@ -208,20 +210,21 @@ const BAY_DEPTH_POW = 1.5;                 // gentle, wide shallows across the b
 const SEA_DEPTH_POW = 1.0;                 // steady deepening offshore
 
 let _landDist: {
-  arr: Float32Array; ring: number; w: number; h: number; bayMax: number; globMax: number;
+  arr: Float32Array; gxMin: number; gzMin: number; w: number; h: number; bayMax: number; globMax: number;
 } | null = null;
 function getLandDistField() {
   if (_landDist) return _landDist;
-  const ring = getLandMask().ring;
-  const w = GRID_W + ring * 2;
-  const h = GRID_D + ring * 2;
+  const mask = getLandMask();
+  const gxMin = mask.gxMin, gxMax = mask.gxMax, gzMin = mask.gzMin, gzMax = mask.gzMax;
+  const w = gxMax - gxMin;
+  const h = gzMax - gzMin;
   const arr = new Float32Array(w * h).fill(Infinity);
-  const at = (gx: number, gz: number) => (gz + ring) * w + (gx + ring);
+  const at = (gx: number, gz: number) => (gz - gzMin) * w + (gx - gxMin);
   const isWater = (gx: number, gz: number) => isBayWater(gx, gz) || isOpenSea(gx, gz);
   const q: number[] = [];
   // Seed every NON-water cell (land / island) of the extended grid as shore = 0.
-  for (let gz = -ring; gz < GRID_D + ring; gz++) {
-    for (let gx = -ring; gx < GRID_W + ring; gx++) {
+  for (let gz = gzMin; gz < gzMax; gz++) {
+    for (let gx = gxMin; gx < gxMax; gx++) {
       if (!isWater(gx, gz)) { arr[at(gx, gz)] = 0; q.push(at(gx, gz)); }
     }
   }
@@ -229,13 +232,13 @@ function getLandDistField() {
   while (head < q.length) {
     const i = q[head++];
     const lx = i % w, lz = (i - lx) / w;
-    const gx = lx - ring, gz = lz - ring;
+    const gx = lx + gxMin, gz = lz + gzMin;
     const base = arr[i];
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dz === 0) continue;
         const nx = gx + dx, nz = gz + dz;
-        if (nx < -ring || nx >= GRID_W + ring || nz < -ring || nz >= GRID_D + ring) continue;
+        if (nx < gxMin || nx >= gxMax || nz < gzMin || nz >= gzMax) continue;
         if (!isWater(nx, nz)) continue; // only propagate INTO water
         const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
         const ni = at(nx, nz);
@@ -246,8 +249,8 @@ function getLandDistField() {
   // Distance ranges: the bay's max (end of the 0→54 m segment) and the global max
   // (deepest offshore → 80 m).
   let bayMax = 0, globMax = 0;
-  for (let gz = -ring; gz < GRID_D + ring; gz++) {
-    for (let gx = -ring; gx < GRID_W + ring; gx++) {
+  for (let gz = gzMin; gz < gzMax; gz++) {
+    for (let gx = gxMin; gx < gxMax; gx++) {
       const v = arr[at(gx, gz)];
       if (!Number.isFinite(v)) continue;
       if (v > globMax) globMax = v;
@@ -255,14 +258,14 @@ function getLandDistField() {
     }
   }
   bayMax = bayMax || 1;
-  _landDist = { arr, ring, w, h, bayMax, globMax: Math.max(globMax, bayMax + 1) };
+  _landDist = { arr, gxMin, gzMin, w, h, bayMax, globMax: Math.max(globMax, bayMax + 1) };
   return _landDist;
 }
 
 // Distance (cells) to the nearest land at a water cell; deep-end fallback elsewhere.
 function landDistCells(gx: number, gz: number): number {
   const f = getLandDistField();
-  const lx = gx + f.ring, lz = gz + f.ring;
+  const lx = gx - f.gxMin, lz = gz - f.gzMin;
   if (lx < 0 || lx >= f.w || lz < 0 || lz >= f.h) return f.globMax;
   const v = f.arr[lz * f.w + lx];
   return Number.isFinite(v) ? v : f.globMax;
@@ -1076,7 +1079,7 @@ function OpenSeaMesh({
   sliceCutType: SliceCutType;
 }) {
   const geometry = useMemo(() => {
-    const ring = getLandMask().ring;
+    const mask = getLandMask();
 
     // Horizontal slice clips the water top at the layer plane; the column below
     // stays so the sea shows its deep cross-section (matching the bay voxels).
@@ -1100,8 +1103,8 @@ function OpenSeaMesh({
       return positions.length / 3 - 1;
     };
 
-    for (let gz = -ring; gz < GRID_D + ring; gz++) {
-      for (let gx = -ring; gx < GRID_W + ring; gx++) {
+    for (let gz = mask.gzMin; gz < mask.gzMax; gz++) {
+      for (let gx = mask.gxMin; gx < mask.gxMax; gx++) {
         if (!rendered(gx, gz)) continue;
         const topY   = Math.min(Y_SURFACE, sliceClipY);
         const floorY = openSeaSeabedY(gx, gz);

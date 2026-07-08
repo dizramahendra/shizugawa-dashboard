@@ -93,8 +93,9 @@ export function buildTerrainField(deps: TerrainFieldDeps): TerrainField {
   const mask = getLandMask();
   const ring = mask.ring;
 
-  const gxMin = -ring, gxMax = GRID_W + ring;
-  const gzMin = -ring, gzMax = GRID_D + ring;
+  // Asymmetric extended-grid bounds (west is wider — the inland river network).
+  const gxMin = mask.gxMin, gxMax = mask.gxMax;
+  const gzMin = mask.gzMin, gzMax = mask.gzMax;
   const w = gxMax - gxMin;
   const d = gzMax - gzMin;
   const idx = (gx: number, gz: number) => (gz - gzMin) * w + (gx - gxMin);
