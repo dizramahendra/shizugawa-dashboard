@@ -162,6 +162,23 @@ const PATH_RIVER_ID: Record<number, string> = {
   25: "kamaishi",
 };
 
+/** River slug → its real SVG path (the SAME geometry the Map Viewport and 3D use,
+ *  in the 465×586 SVG space). Lets the 2D River Playback render each river along
+ *  its ACTUAL course instead of a stylised straight strip. Reverse of
+ *  PATH_RIVER_ID over RIVER_PATHS. */
+export const RIVER_SVG_BY_SLUG: Record<string, string> = (() => {
+  const out: Record<string, string> = {};
+  for (const [idStr, slug] of Object.entries(PATH_RIVER_ID)) {
+    const p = RIVER_PATHS[Number(idStr)];
+    if (p) out[slug] = p;
+  }
+  return out;
+})();
+
+/** SVG canvas the river paths are authored in (see BAY_POLYGON georeference). */
+export const RIVER_SVG_W = SVG_W_RIVERS;
+export const RIVER_SVG_H = SVG_H_RIVERS;
+
 // SVG→grid affine — the SAME transform the bay polygon uses (see BAY_POLYGON
 // comment above). Maps an SVG (x,y) to fractional grid coords (gx,gz).
 function svgToGrid(sx: number, sy: number): { gx: number; gz: number } {

@@ -1,181 +1,100 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import LegendOverlay from "@/components/LegendOverlay";
+import { sampleSvgPath, type Pt } from "@/lib/svgSample";
 import {
   generateRiverData,
   generateCompositeRiverData,
   getCompositeRiver,
-  valueToConcentration,
   VARIABLE_OPTIONS,
   RIVER_ROWS,
   RIVER_COLS,
+  RIVER_SVG_BY_SLUG,
+  RIVER_SVG_W,
+  RIVER_SVG_H,
 } from "@/lib/simulatedData";
 
-// ── Color interpolation ───────────────────────────────────────
+// ── Colour ramp (SMOOTH — continuously interpolated, matches the 3D/map) ──────
 const COLOR_STOPS: Record<string, string[]> = {
   nitrogen:   ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   phosphorus: ["#2c5f8a","#3d6fa0","#6a9fc0","#90c4de","#c5dfe8","#f5f0d8","#f0d090","#e8a030","#d45820","#c8401c"],
   flow:       ["#0f0527","#1f0a4e","#3a0f7a","#5a1eb0","#7c3ad8","#9d61e8","#bb8ef2","#d4b6f7","#e9d7fb","#f7f0fe"],
-  all:         ["#45007e", "#2060a0", "#168c8c", "#35b870", "#aadb30", "#fce820"],
+  all:        ["#45007e","#2060a0","#168c8c","#35b870","#aadb30","#fce820"],
 };
 
-function interpolateColor(stops: string[], t: number): string {
-  const n = stops.length;
-  const idx = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, t)) * n));
-  return stops[idx];
-}
-
-// ── Organic mask generation ───────────────────────────────────
-type CP = [number, number];
-
-function cosineInterp(pts: CP[], t: number): number {
-  if (t <= pts[0][0]) return pts[0][1];
-  if (t >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [t0, v0] = pts[i], [t1, v1] = pts[i + 1];
-    if (t >= t0 && t <= t1) {
-      const cf = (1 - Math.cos(((t - t0) / (t1 - t0)) * Math.PI)) / 2;
-      return v0 + (v1 - v0) * cf;
-    }
+const _rgbCache = new Map<string, [number, number, number]>();
+function hexToRgb(hex: string): [number, number, number] {
+  let c = _rgbCache.get(hex);
+  if (!c) {
+    c = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    _rgbCache.set(hex, c);
   }
-  return pts[pts.length - 1][1];
+  return c;
+}
+/** Continuous blend across the ramp → smooth gradient (no hard bands). */
+function lerpColor(stops: string[], t: number): string {
+  const x = Math.min(1, Math.max(0, t)) * (stops.length - 1);
+  const i = Math.floor(x);
+  const a = hexToRgb(stops[i]);
+  if (i >= stops.length - 1) return `rgb(${a[0]},${a[1]},${a[2]})`;
+  const b = hexToRgb(stops[i + 1]);
+  const f = x - i;
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
 }
 
-const RIVER_PROFILES: Record<string, { center: CP[]; halfW: CP[] }> = {
-  shizugawa: {
-    center: [
-      [0.00,19.0],[0.05,18.5],[0.10,17.0],[0.17,14.5],[0.25,11.0],[0.32, 7.5],
-      [0.40, 4.5],[0.46, 3.0],[0.52, 3.8],[0.58, 6.0],[0.64, 9.0],[0.70,13.0],
-      [0.75,16.5],[0.80,18.0],[0.85,17.5],[0.90,14.5],[0.94,11.0],[0.97, 8.5],[1.00, 7.0],
-    ],
-    halfW: [
-      [0.00,0.8],[0.05,1.5],[0.12,3.5],[0.20,5.5],[0.28,4.0],[0.36,2.5],
-      [0.44,1.5],[0.50,1.2],[0.56,2.5],[0.63,6.0],[0.69,8.0],[0.74,7.5],
-      [0.79,4.5],[0.84,2.5],[0.88,2.0],[0.92,4.0],[0.96,5.5],[1.00,4.0],
-    ],
-  },
-  kitakami: {
-    center: [
-      [0.00, 3.5],[0.06, 3.0],[0.13, 4.5],[0.20, 7.5],[0.28,11.0],[0.35,14.5],
-      [0.42,17.5],[0.49,19.5],[0.55,19.0],[0.61,17.0],[0.67,13.5],[0.73, 9.5],
-      [0.80, 5.5],[0.86, 3.0],[0.92, 2.5],[0.96, 3.5],[1.00, 5.0],
-    ],
-    halfW: [
-      [0.00,1.5],[0.07,3.5],[0.15,2.0],[0.24,4.5],[0.32,3.0],[0.40,2.0],
-      [0.47,5.5],[0.53,7.0],[0.58,5.5],[0.65,3.0],[0.72,2.0],[0.79,4.5],
-      [0.85,3.0],[0.90,1.5],[0.95,3.0],[1.00,4.5],
-    ],
-  },
-  hachiman: {
-    center: [
-      [0.00, 6.0],[0.07, 5.0],[0.14, 6.0],[0.22, 8.5],[0.30,12.0],[0.37,16.0],
-      [0.43,19.0],[0.50,20.5],[0.56,20.0],[0.62,18.5],[0.68,15.5],[0.75,11.5],
-      [0.82, 7.5],[0.88, 4.5],[0.93, 3.0],[0.97, 3.5],[1.00, 5.0],
-    ],
-    halfW: [
-      [0.00,2.0],[0.08,4.5],[0.17,3.5],[0.26,6.0],[0.33,4.5],[0.40,2.5],
-      [0.47,1.0],[0.52,1.5],[0.58,2.5],[0.65,4.5],[0.72,3.0],[0.79,6.5],
-      [0.85,4.0],[0.90,2.5],[0.95,3.5],[1.00,4.5],
-    ],
-  },
-  // ── Kamaishi–Karakuwa corridor (sub-basins 25 → 3) ────────────────────────
-  // Kamaishi: inland mountain river — narrow, S-curved, flows from upper-left toward coast
-  kamaishi: {
-    center: [
-      [0.00,10.0],[0.10, 8.5],[0.20, 7.5],[0.30, 8.5],
-      [0.42,10.5],[0.52,12.5],[0.62,13.8],[0.72,14.2],
-      [0.82,13.5],[0.92,13.0],[1.00,13.0],
-    ],
-    halfW: [
-      [0.00,1.5],[0.20,2.0],[0.40,2.8],[0.55,3.2],
-      [0.70,3.0],[0.85,2.8],[1.00,3.0],
-    ],
-  },
-  // Karakuwa: coastal / estuarine river — wider, distinct S from Kamaishi, widens at mouth
-  karakuwa: {
-    center: [
-      [0.00,13.0],[0.12,14.5],[0.25,16.0],[0.38,17.0],
-      [0.50,16.5],[0.62,14.5],[0.72,12.5],
-      [0.82,11.0],[0.92,11.5],[1.00,12.5],
-    ],
-    halfW: [
-      [0.00,3.0],[0.15,3.5],[0.35,4.0],[0.55,5.0],
-      [0.70,5.5],[0.85,6.0],[1.00,6.5],
-    ],
-  },
-};
+// ── SVG-space → lon/lat georeference (same transform the bay/rivers use) ──────
+// Used only to (a) size the scale bar in real km and (b) find the mouth end
+// (the endpoint nearest the bay). svgY=0 is NORTH (lat max), so north is "up".
+function svgLonLat(x: number, y: number): [number, number] {
+  return [141.36568 + (x / RIVER_SVG_W) * 0.16158, 38.59295 + (1 - y / RIVER_SVG_H) * 0.15515];
+}
+const KM_PER_SVGX = (0.16158 / RIVER_SVG_W) * 111320 * Math.cos((38.63 * Math.PI) / 180);
+const BAY_CENTER: [number, number] = [141.45, 38.63]; // approx, for mouth detection
 
-function edgeJitter(col: number, side: "top" | "bot"): number {
-  const seed = col * 7 + (side === "top" ? 3 : 11);
-  return Math.sin(seed * 2.399) * 0.8 + Math.sin(seed * 5.17) * 0.4;
+// ── Along-stream sampling of the river's real path ────────────────────────────
+const SAMPLES = 96; // resampled points per segment → smooth colored ribbon
+
+interface Segment {
+  pts: Pt[];              // resampled path points (SVG space), oriented upstream→mouth
+  colStart: number; colEnd: number;
+  rowStart: number; rowEnd: number;
 }
 
-function buildMask(riverId: string): boolean[][] {
-  const p = RIVER_PROFILES[riverId] ?? RIVER_PROFILES.shizugawa;
-  return Array.from({ length: RIVER_ROWS }, (_, row) =>
-    Array.from({ length: RIVER_COLS }, (_, col) => {
-      const t = col / (RIVER_COLS - 1);
-      const center = cosineInterp(p.center, t);
-      const halfW  = cosineInterp(p.halfW, t);
-      return row >= center - halfW + edgeJitter(col, "top")
-          && row <= center + halfW + edgeJitter(col, "bot");
-    })
-  );
+/** Resample a dense point list to n evenly-indexed points. */
+function resample(dense: Pt[], n: number): Pt[] {
+  if (dense.length <= n) return dense;
+  const out: Pt[] = [];
+  for (let i = 0; i < n; i++) out.push(dense[Math.round((i / (n - 1)) * (dense.length - 1))]);
+  return out;
 }
 
-/** Build mask for one segment, applying its profile only within colStart..colEnd */
-function buildSegmentMask(
-  riverId: string,
-  colStart: number, colEnd: number,
-  rowStart: number = 0, rowEnd: number = RIVER_ROWS - 1,
-): boolean[][] {
-  const p = RIVER_PROFILES[riverId] ?? RIVER_PROFILES.shizugawa;
-  const span = Math.max(1, colEnd - colStart);
-  return Array.from({ length: RIVER_ROWS }, (_, row) =>
-    Array.from({ length: RIVER_COLS }, (_, col) => {
-      if (col < colStart || col > colEnd || row < rowStart || row > rowEnd) return false;
-      const t = (col - colStart) / span;
-      const center = cosineInterp(p.center, t);
-      const halfW  = cosineInterp(p.halfW, t);
-      return row >= center - halfW + edgeJitter(col, "top")
-          && row <= center + halfW + edgeJitter(col, "bot");
-    })
-  );
-}
+/** Build the render segments for a river (one for a plain river, one per
+ *  sub-basin reach for a composite corridor), each oriented so pts[0] is the
+ *  upstream (headwater) end and pts[last] is the downstream (mouth) end. */
+function buildSegments(riverId: string): Segment[] {
+  const composite = getCompositeRiver(riverId);
+  const raw: { slug: string; colStart: number; colEnd: number; rowStart: number; rowEnd: number }[] =
+    composite
+      ? composite.segments.map(s => ({
+          slug: s.riverId, colStart: s.colStart, colEnd: s.colEnd,
+          rowStart: s.rowStart ?? 0, rowEnd: s.rowEnd ?? RIVER_ROWS - 1,
+        }))
+      : [{ slug: riverId, colStart: 0, colEnd: RIVER_COLS - 1, rowStart: 0, rowEnd: RIVER_ROWS - 1 }];
 
-/** Merge multiple segment masks (logical OR) */
-function mergeMasks(masks: boolean[][][]): boolean[][] {
-  return Array.from({ length: RIVER_ROWS }, (_, r) =>
-    Array.from({ length: RIVER_COLS }, (_, c) => masks.some(m => m[r][c]))
-  );
-}
-
-const MASKS: Record<string, boolean[][]> = {
-  shizugawa: buildMask("shizugawa"),
-  kitakami:  buildMask("kitakami"),
-  hachiman:  buildMask("hachiman"),
-  // Kamaishi → Karakuwa: each half uses its own profile, joined at col 60
-  "comp-kamaishi-karakuwa": mergeMasks([
-    buildSegmentMask("kamaishi",  0,  59),
-    buildSegmentMask("karakuwa", 60, 119),
-  ]),
-};
-
-
-// ── Coordinate axis config ────────────────────────────────────
-const EAST_KM  = 18;
-const NORTH_KM = 10;
-const CELL     = 7;
-const Y_AXIS_W = 62;
-const X_AXIS_H = 42;
-
-// Adaptive tick interval: find smallest interval that gives >= minSpacePx spacing
-const TICK_CANDIDATES = [0.5, 1, 2, 3, 5, 10, 15];
-function adaptiveTicks(totalKm: number, gridPx: number, scale: number, minSpacePx = 50): number[] {
-  const pxPerKm = (gridPx / totalKm) * scale;
-  const interval = TICK_CANDIDATES.find(c => c * pxPerKm >= minSpacePx) ?? 15;
-  const ticks: number[] = [];
-  for (let km = 0; km <= totalKm + 1e-9; km = +(km + interval).toFixed(6)) ticks.push(km);
-  return ticks;
+  const out: Segment[] = [];
+  for (const r of raw) {
+    const d = RIVER_SVG_BY_SLUG[r.slug];
+    if (!d) continue;
+    let pts = resample(sampleSvgPath(d, 1), SAMPLES);
+    if (pts.length < 2) continue;
+    // Orient upstream→mouth: the endpoint nearer the bay is the mouth (last).
+    const distToBay = (p: Pt) => {
+      const [lon, lat] = svgLonLat(p.x, p.y);
+      return Math.hypot((lon - BAY_CENTER[0]) * Math.cos((lat * Math.PI) / 180), lat - BAY_CENTER[1]);
+    };
+    if (distToBay(pts[0]) < distToBay(pts[pts.length - 1])) pts = pts.slice().reverse();
+    out.push({ pts, colStart: r.colStart, colEnd: r.colEnd, rowStart: r.rowStart, rowEnd: r.rowEnd });
+  }
+  return out;
 }
 
 interface Transform { tx: number; ty: number; scale: number }
@@ -194,405 +113,245 @@ export default function RiverGrid2D({
 }: RiverGrid2DProps) {
   const composite = useMemo(() => getCompositeRiver(riverId), [riverId]);
   const data = useMemo(
-    () => composite
-      ? generateCompositeRiverData(week, riverId)
-      : generateRiverData(week, riverId),
-    [week, riverId, composite]
+    () => composite ? generateCompositeRiverData(week, riverId) : generateRiverData(week, riverId),
+    [week, riverId, composite],
   );
-  // Corridor-specific masks take priority; unknown ids fall back to shizugawa
-  const mask = MASKS[riverId] ?? MASKS.shizugawa;
+  const segments = useMemo(() => buildSegments(riverId), [riverId]);
   const stops    = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const variable = VARIABLE_OPTIONS.find(v => v.id === variableId) ?? VARIABLE_OPTIONS[0];
+  const centerRow = Math.floor(RIVER_ROWS / 2);
 
-  const gridW = RIVER_COLS * CELL;
-  const gridH = RIVER_ROWS * CELL;
+  // Column-range mean concentration at along-fraction f of a segment.
+  const valueAt = useCallback((seg: Segment, f: number): number => {
+    const col = Math.round(seg.colStart + f * (seg.colEnd - seg.colStart));
+    let sum = 0, n = 0;
+    for (let r = seg.rowStart; r <= seg.rowEnd; r++) { sum += data[r]?.[col] ?? 0; n++; }
+    return n ? sum / n : 0;
+  }, [data]);
 
-  // Measure content area for centering
+  // ── Content sizing + fit the river's SVG bbox into it ──────────────────────
   const contentRef = useRef<HTMLDivElement>(null);
-  const [contentSize, setContentSize] = useState({ w: 840, h: 300 });
+  const [size, setSize] = useState({ w: 840, h: 420 });
   useEffect(() => {
     if (!contentRef.current) return;
-    const obs = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect;
-      setContentSize({ w: width, h: height });
-    });
+    const obs = new ResizeObserver(e => setSize({ w: e[0].contentRect.width, h: e[0].contentRect.height }));
     obs.observe(contentRef.current);
     return () => obs.disconnect();
   }, []);
 
-  // Grid natural center in content space
-  const gridOffsetX = (contentSize.w - gridW) / 2;
-  const gridOffsetY = (contentSize.h - gridH) / 2;
+  const fit = useMemo(() => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const s of segments) for (const p of s.pts) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX)) return { scale: 1, ox: 0, oy: 0, minX: 0, minY: 0 };
+    const bboxW = Math.max(1, maxX - minX), bboxH = Math.max(1, maxY - minY);
+    const pad = 60;
+    const scale = Math.min((size.w - pad * 2) / bboxW, (size.h - pad * 2) / bboxH);
+    // Centre the fitted river in the content area.
+    const ox = (size.w - bboxW * scale) / 2 - minX * scale;
+    const oy = (size.h - bboxH * scale) / 2 - minY * scale;
+    return { scale, ox, oy, minX, minY };
+  }, [segments, size]);
 
-  // Zoom / pan state
+  const toContent = useCallback((p: Pt): [number, number] => [p.x * fit.scale + fit.ox, p.y * fit.scale + fit.oy], [fit]);
+
+  // Fitted, colored polyline segments (recompute on week/variable/fit).
+  const drawn = useMemo(() => segments.map(seg => {
+    const cpts = seg.pts.map(toContent);
+    const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+    for (let i = 0; i < cpts.length - 1; i++) {
+      const f = (i + 0.5) / (cpts.length - 1);
+      lines.push({ x1: cpts[i][0], y1: cpts[i][1], x2: cpts[i + 1][0], y2: cpts[i + 1][1], color: lerpColor(stops, valueAt(seg, f)) });
+    }
+    return { cpts, lines, seg };
+  }), [segments, toContent, stops, valueAt]);
+
+  // Mouth = downstream end of the reach nearest the bay (largest segment's last pt).
+  const mouth = useMemo(() => {
+    let best: [number, number] | null = null;
+    for (const d of drawn) { const last = d.cpts[d.cpts.length - 1]; if (last) best = last; }
+    // pick the reach whose last point is nearest the bay
+    let bestDist = Infinity;
+    for (const d of drawn) {
+      const p = d.seg.pts[d.seg.pts.length - 1];
+      const [lon, lat] = svgLonLat(p.x, p.y);
+      const dist = Math.hypot((lon - BAY_CENTER[0]) * Math.cos((lat * Math.PI) / 180), lat - BAY_CENTER[1]);
+      if (dist < bestDist) { bestDist = dist; best = d.cpts[d.cpts.length - 1]; }
+    }
+    return best;
+  }, [drawn]);
+
+  // River stroke width in CONTENT px (a touch wider toward the mouth).
+  const strokeW = Math.max(5, Math.min(14, 9 * (fit.scale / 2.2)));
+
+  // ── Zoom / pan ─────────────────────────────────────────────────────────────
   const [xform, setXform] = useState<Transform>(DEFAULT_TRANSFORM);
-  const xformRef = useRef(xform);
-  xformRef.current = xform;
-
-  // Convert km → screen pixel within content area (accounting for current transform)
-  // point (cx, cy) in content space → screen: cx * scale + tx, cy * scale + ty
-  const xKmToScreen = (km: number) =>
-    (gridOffsetX + (km / EAST_KM) * gridW) * xform.scale + xform.tx;
-  const yKmToScreen = (km: number) =>
-    (gridOffsetY + (1 - km / NORTH_KM) * gridH) * xform.scale + xform.ty;
-
-  // Drag handling
+  const xformRef = useRef(xform); xformRef.current = xform;
   const draggingRef = useRef(false);
   const dragOriginRef = useRef({ x: 0, y: 0 });
+  const downRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const onDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     draggingRef.current = true;
     dragOriginRef.current = { x: e.clientX - xformRef.current.tx, y: e.clientY - xformRef.current.ty };
+    downRef.current = { x: e.clientX, y: e.clientY, moved: false };
     e.preventDefault();
   }, []);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const onMove = useCallback((e: React.MouseEvent) => {
     if (!draggingRef.current) return;
-    setXform(prev => ({
-      ...prev,
-      tx: e.clientX - dragOriginRef.current.x,
-      ty: e.clientY - dragOriginRef.current.y,
-    }));
+    if (downRef.current && Math.hypot(e.clientX - downRef.current.x, e.clientY - downRef.current.y) > 4) downRef.current.moved = true;
+    setXform(prev => ({ ...prev, tx: e.clientX - dragOriginRef.current.x, ty: e.clientY - dragOriginRef.current.y }));
   }, []);
+  const onUp = useCallback((e: React.MouseEvent) => {
+    draggingRef.current = false;
+    // A click (no meaningful drag) selects the nearest reach point.
+    if (downRef.current && !downRef.current.moved && contentRef.current) {
+      const rect = contentRef.current.getBoundingClientRect();
+      const { tx, ty, scale } = xformRef.current;
+      const cx = (e.clientX - rect.left - tx) / scale; // content-space click
+      const cy = (e.clientY - rect.top - ty) / scale;
+      let best: { row: number; col: number } | null = null, bestD = Infinity;
+      for (const d of drawn) {
+        for (let i = 0; i < d.cpts.length; i++) {
+          const dist = Math.hypot(d.cpts[i][0] - cx, d.cpts[i][1] - cy);
+          if (dist < bestD) {
+            bestD = dist;
+            const f = i / (d.cpts.length - 1);
+            best = { row: centerRow, col: Math.round(d.seg.colStart + f * (d.seg.colEnd - d.seg.colStart)) };
+          }
+        }
+      }
+      if (best && bestD < 26) onCellClick(best.row, best.col);
+    }
+    downRef.current = null;
+  }, [drawn, onCellClick, centerRow]);
 
-  const handleMouseUp = useCallback(() => { draggingRef.current = false; }, []);
-
-  // Wheel zoom — must be non-passive to call preventDefault
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = el.getBoundingClientRect();
-      const mx   = e.clientX - rect.left;
-      const my   = e.clientY - rect.top;
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       const { tx, ty, scale } = xformRef.current;
-      const factor   = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      const newScale = Math.max(0.4, Math.min(16, scale * factor));
-      const ratio    = newScale / scale;
-      setXform({ scale: newScale, tx: mx - (mx - tx) * ratio, ty: my - (my - ty) * ratio });
+      const ns = Math.max(0.4, Math.min(16, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      const ratio = ns / scale;
+      setXform({ scale: ns, tx: mx - (mx - tx) * ratio, ty: my - (my - ty) * ratio });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []); // intentionally empty — uses xformRef
+  }, []);
 
-  // Double-click to reset view
-  const handleDblClick = () => setXform(DEFAULT_TRANSFORM);
+  // Selected-reach highlight point.
+  const selectedPt = useMemo(() => {
+    if (!selectedCell) return null;
+    for (const d of drawn) {
+      if (selectedCell.col < d.seg.colStart || selectedCell.col > d.seg.colEnd) continue;
+      const f = (selectedCell.col - d.seg.colStart) / Math.max(1, d.seg.colEnd - d.seg.colStart);
+      const i = Math.round(f * (d.cpts.length - 1));
+      return d.cpts[i] ?? null;
+    }
+    return null;
+  }, [selectedCell, drawn]);
 
-  // Adaptive ticks
-  const xTicks = adaptiveTicks(EAST_KM,  gridW, xform.scale);
-  const yTicks = adaptiveTicks(NORTH_KM, gridH, xform.scale);
+  // Scale bar (real km) for the current zoom.
+  const kmPerScreenPx = KM_PER_SVGX / (fit.scale * xform.scale);
+  const targetPx = 90;
+  const niceKm = [0.5, 1, 2, 3, 5, 10].find(k => k / kmPerScreenPx >= targetPx) ?? 10;
+  const scaleBarPx = niceKm / kmPerScreenPx;
 
   return (
     <div
       className="w-full h-full relative select-none overflow-hidden"
       style={{
-        background: "#eaf2f5",
-        backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.30) 1.5px, transparent 1.5px)",
-        backgroundSize: "23px 23px",
+        background: "#eef4f6",
+        backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.22) 1.5px, transparent 1.5px)",
+        backgroundSize: "24px 24px",
       }}
     >
-      {/* ── Y axis strip ─── left edge, white background ─────── */}
-      <div
-        className="absolute left-0 top-0 bg-white border-r border-slate-200 shadow-sm z-20 pointer-events-none flex flex-col"
-        style={{ width: Y_AXIS_W, bottom: X_AXIS_H }}
-      >
-        {/* Rotated label */}
-        <div
-          className="absolute text-[9px] font-mono text-slate-400 tracking-wide whitespace-nowrap"
-          style={{ transform: "rotate(-90deg) translateX(-50%)", transformOrigin: "0 0", top: "50%", left: 10 }}
-        >
-          Distance Northward (km)
-        </div>
+      <style>{`@keyframes riverFlow { to { stroke-dashoffset: -24; } }`}</style>
 
-        {/* Tick marks */}
-        {yTicks.map(km => {
-          const py = yKmToScreen(km);
-          if (py < 0 || py > contentSize.h) return null;
-          return (
-            <div
-              key={km}
-              className="absolute right-0 flex items-center"
-              style={{ top: py, transform: "translateY(-50%)" }}
-            >
-              <span className="text-[9px] font-mono text-slate-600 leading-none pr-1.5">{km}</span>
-              <div className="w-2.5 h-px bg-slate-400" />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── Main content area — zoom/pan target ───────────────── */}
       <div
         ref={contentRef}
-        className="absolute overflow-hidden"
-        style={{
-          left: Y_AXIS_W, top: 0, right: 0, bottom: X_AXIS_H,
-          cursor: draggingRef.current ? "grabbing" : "grab",
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onDoubleClick={handleDblClick}
+        className="absolute inset-0 overflow-hidden"
+        style={{ cursor: draggingRef.current ? "grabbing" : "grab" }}
+        onMouseDown={onDown}
+        onMouseMove={onMove}
+        onMouseUp={onUp}
+        onMouseLeave={() => { draggingRef.current = false; downRef.current = null; }}
+        onDoubleClick={() => setXform(DEFAULT_TRANSFORM)}
       >
-        {/* Transform wrapper */}
-        <div
-          style={{
-            position: "absolute",
-            left: 0, top: 0, right: 0, bottom: 0,
-            transform: `translate(${xform.tx}px, ${xform.ty}px) scale(${xform.scale})`,
-            transformOrigin: "0 0",
-          }}
-        >
-          {/* Grid at natural center */}
-          <div
-            style={{
-              position: "absolute",
-              left: gridOffsetX, top: gridOffsetY,
-              width: gridW, height: gridH,
-            }}
-          >
-            {Array.from({ length: RIVER_ROWS }, (_, row) =>
-              Array.from({ length: RIVER_COLS }, (_, col) => {
-                const inCh = mask[row][col];
-                const isSelected = selectedCell?.row === row && selectedCell?.col === col;
-                const val   = data[row]?.[col] ?? 0;
-                const color = inCh ? interpolateColor(stops, Math.max(0, Math.min(1, val))) : "transparent";
-                const conc  = inCh ? valueToConcentration(val, variableId) : null;
-                return (
-                  <div
-                    key={`${row}-${col}`}
-                    onClick={e => { if (inCh) { e.stopPropagation(); onCellClick(row, col); } }}
-                    className={`absolute group ${inCh ? "cursor-crosshair" : "pointer-events-none"}`}
-                    style={{
-                      left: col * CELL, top: row * CELL,
-                      width: CELL, height: CELL,
-                      borderRadius: 0,
-                      backgroundColor: color,
-                      outline: isSelected ? "2px solid hsl(var(--primary))" : "none",
-                      outlineOffset: "-1px",
-                      zIndex: isSelected ? 10 : 1,
-                    }}
-                  >
-                    {inCh && (
-                      <div
-                        className="absolute px-1.5 py-0.5
-                                   bg-foreground/85 text-white text-[9px] font-mono rounded whitespace-nowrap
-                                   opacity-0 group-hover:opacity-100 pointer-events-none z-30 transition-opacity"
-                        style={{
-                          bottom: "100%",
-                          left: "100%",
-                          transform: `scale(${1 / xform.scale})`,
-                          transformOrigin: "bottom left",
-                        }}
-                      >
-                        {conc} {variable.unit}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+        <div style={{ position: "absolute", inset: 0, transform: `translate(${xform.tx}px, ${xform.ty}px) scale(${xform.scale})`, transformOrigin: "0 0" }}>
+          <svg width={size.w} height={size.h} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
+            {/* soft casing under the river so it reads as a channel */}
+            {drawn.map((d, si) => (
+              <polyline
+                key={`case-${si}`}
+                points={d.cpts.map(p => `${p[0]},${p[1]}`).join(" ")}
+                fill="none" stroke="#ffffff" strokeOpacity={0.9}
+                strokeWidth={strokeW + 4} strokeLinecap="round" strokeLinejoin="round"
+              />
+            ))}
+            {/* colored concentration ribbon (smooth, per-segment) */}
+            {drawn.map((d, si) => (
+              <g key={`riv-${si}`}>
+                {d.lines.map((ln, li) => (
+                  <line key={li} x1={ln.x1} y1={ln.y1} x2={ln.x2} y2={ln.y2}
+                        stroke={ln.color} strokeWidth={strokeW} strokeLinecap="round" />
+                ))}
+              </g>
+            ))}
+            {/* animated downstream flow shimmer */}
+            {drawn.map((d, si) => (
+              <polyline
+                key={`flow-${si}`}
+                points={d.cpts.map(p => `${p[0]},${p[1]}`).join(" ")}
+                fill="none" stroke="#ffffff" strokeOpacity={0.55}
+                strokeWidth={Math.max(1.5, strokeW * 0.16)} strokeLinecap="round"
+                strokeDasharray="2 22"
+                style={{ animation: "riverFlow 1.1s linear infinite" }}
+              />
+            ))}
+            {/* mouth marker */}
+            {mouth && (
+              <g>
+                <circle cx={mouth[0]} cy={mouth[1]} r={strokeW * 0.7} fill="#0f766e" stroke="#fff" strokeWidth={2} />
+              </g>
             )}
-
-            {/* ── Composite corridor overlay ─── */}
-            {composite && (() => {
-              const uppers = composite.segments.filter(s => s.role === "upper");
-              const lower  = composite.segments.find(s => s.role === "lower");
-              const splitX = (composite.segments.find(s => s.role === "lower")?.colStart ?? 60) * CELL;
-              const isConvergent = composite.topology === "convergent";
-
-              // Convergent: horizontal band divider between the two upper segments
-              const upperRowSplit = isConvergent && uppers.length >= 2
-                ? ((uppers[0].rowEnd ?? 10) + 1) * CELL
-                : null;
-
-              const UPPER_COLORS = ["#3b82f6", "#8b5cf6"];
-              const LOWER_COLOR  = "#14b8a6";
-
-              return (
-                <>
-                  {/* Sub-basin area fills — subtle tint behind each segment */}
-                  {(() => {
-                    let ui = 0;
-                    return composite.segments.map(seg => {
-                      const isLower = seg.role === "lower";
-                      const fillColor = isLower ? LOWER_COLOR : UPPER_COLORS[ui++ % 2];
-                      const rowS = (seg.rowStart ?? 0) * CELL;
-                      const rowE = ((seg.rowEnd ?? RIVER_ROWS - 1) + 1) * CELL;
-                      return (
-                        <div
-                          key={`area-${seg.riverId}`}
-                          className="absolute pointer-events-none"
-                          style={{
-                            left: seg.colStart * CELL,
-                            top: rowS,
-                            width: (seg.colEnd - seg.colStart + 1) * CELL,
-                            height: rowE - rowS,
-                            background: fillColor,
-                            opacity: 0.07,
-                            zIndex: 0,
-                          }}
-                        />
-                      );
-                    });
-                  })()}
-
-                  {/* Upper segment labels — above the left half */}
-                  {uppers.map((seg, ui) => {
-                    const color = UPPER_COLORS[ui % 2];
-                    const topY = ui === 0 ? -20 : (upperRowSplit ?? 0) - 20;
-                    return (
-                      <div
-                        key={seg.riverId}
-                        className="absolute pointer-events-none flex items-center gap-1"
-                        style={{
-                          left: 8,
-                          top: topY,
-                          transform: `scale(${1 / xform.scale})`,
-                          transformOrigin: "left top",
-                          zIndex: 40,
-                        }}
-                      >
-                        <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                        <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color }}>
-                          {seg.name}
-                        </span>
-                        <span className="text-[9px] text-slate-400 whitespace-nowrap">
-                          ({seg.sub})
-                        </span>
-                      </div>
-                    );
-                  })}
-
-                  {/* Lower segment label — above the right half */}
-                  {lower && (
-                    <div
-                      className="absolute pointer-events-none flex items-center gap-1"
-                      style={{
-                        left: splitX + 8,
-                        top: -20,
-                        transform: `scale(${1 / xform.scale})`,
-                        transformOrigin: "left top",
-                        zIndex: 40,
-                      }}
-                    >
-                      <div className="w-2 h-2 rounded-full" style={{ background: LOWER_COLOR }} />
-                      <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: LOWER_COLOR }}>
-                        {lower.name}
-                      </span>
-                      <span className="text-[9px] text-slate-400 whitespace-nowrap">
-                        ({lower.sub})
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Horizontal divider between upper bands (convergent only) */}
-                  {upperRowSplit !== null && (
-                    <div
-                      className="absolute pointer-events-none"
-                      style={{
-                        left: 0,
-                        top: upperRowSplit - 1,
-                        width: splitX,
-                        height: 2,
-                        background: "repeating-linear-gradient(to right, #94a3b8 4px, transparent 4px, transparent 8px)",
-                        zIndex: 35,
-                      }}
-                    />
-                  )}
-
-                  {/* Vertical boundary line (upper ↔ lower) — colored gradient */}
-                  <div
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: splitX - 1,
-                      top: -24,
-                      width: 3,
-                      height: gridH + 24,
-                      background: `linear-gradient(to bottom, ${UPPER_COLORS[0]}cc, ${LOWER_COLOR}cc)`,
-                      opacity: 0.75,
-                      zIndex: 35,
-                    }}
-                  />
-
-                  {/* Confluence / boundary badge */}
-                  <div
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: splitX,
-                      top: gridH / 2,
-                      transform: `translate(-50%, -50%) scale(${1 / xform.scale})`,
-                      transformOrigin: "center center",
-                      zIndex: 40,
-                    }}
-                  >
-                    <div className="text-white text-[9px] font-mono px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm"
-                         style={{ background: isConvergent ? "#0f766e" : "#475569", opacity: 0.9 }}>
-                      {isConvergent ? "confluence" : "sub-basin boundary"}
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+            {/* selected reach */}
+            {selectedPt && (
+              <circle cx={selectedPt[0]} cy={selectedPt[1]} r={strokeW * 0.75}
+                      fill="none" stroke="hsl(var(--primary))" strokeWidth={2.5} />
+            )}
+          </svg>
         </div>
       </div>
 
-      {/* ── X axis strip ─── bottom edge, white background ────── */}
-      <div
-        className="absolute bottom-0 right-0 bg-white border-t border-slate-200 shadow-sm z-20 pointer-events-none flex items-start"
-        style={{ left: Y_AXIS_W, height: X_AXIS_H }}
-      >
-        {/* Tick marks */}
-        {xTicks.map(km => {
-          const px = xKmToScreen(km);
-          if (px < 0 || px > contentSize.w) return null;
-          return (
-            <div
-              key={km}
-              className="absolute top-0 flex flex-col items-center"
-              style={{ left: px, transform: "translateX(-50%)" }}
-            >
-              <div className="w-px h-2.5 bg-slate-400" />
-              <span className="text-[9px] font-mono text-slate-600 leading-none mt-0.5">{km}</span>
-            </div>
-          );
-        })}
-
-        {/* Axis label */}
-        <div
-          className="absolute bottom-1.5 text-[9px] font-mono text-slate-400 tracking-wide whitespace-nowrap"
-          style={{ left: "50%", transform: "translateX(-50%)" }}
-        >
-          Distance Eastward (km)
+      {/* mouth label (screen-space, follows the marker) */}
+      {mouth && (
+        <div className="absolute z-10 pointer-events-none text-[10px] font-mono font-semibold text-teal-700 bg-white/85 px-1.5 py-0.5 rounded shadow-sm"
+             style={{ left: mouth[0] * xform.scale + xform.tx + 10, top: mouth[1] * xform.scale + xform.ty - 8 }}>
+          → to bay
         </div>
+      )}
+
+      {/* scale bar — bottom-centre, clear of the legend (left) and compass (right) */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center pointer-events-none">
+        <span className="text-[9px] font-mono text-slate-500 mb-0.5">{niceKm} km</span>
+        <div className="h-1.5 bg-slate-600 rounded-sm" style={{ width: scaleBarPx }} />
       </div>
 
-      {/* ── Corner square where axes meet ─────────────────────── */}
-      <div
-        className="absolute bg-white border-r border-t border-slate-200 z-30"
-        style={{ left: 0, bottom: 0, width: Y_AXIS_W, height: X_AXIS_H }}
-      />
-
-      {/* ── Legend ────────────────────────────────────────────── */}
-      <div
-        className="absolute z-10 pointer-events-none"
-        style={{ bottom: X_AXIS_H + 12, left: Y_AXIS_W + 12 }}
-      >
-        <LegendOverlay
-          stops={stops}
-          min={variable.min}
-          max={variable.max}
-          unit={variable.unit}
-          decimals={variable.decimals ?? 1}
-        />
+      {/* legend */}
+      <div className="absolute z-10 pointer-events-none" style={{ bottom: 12, left: 12 }}>
+        <LegendOverlay stops={stops} min={variable.min} max={variable.max} unit={variable.unit} decimals={variable.decimals ?? 1} />
       </div>
 
-      {/* ── Hint ──────────────────────────────────────────────── */}
+      {/* hint */}
       <div className="absolute top-3 right-3 z-10 text-[9px] font-mono text-slate-400 pointer-events-none bg-white/80 px-2 py-1 rounded">
-        scroll to zoom · drag to pan · dbl-click to reset
+        real river course · scroll to zoom · drag to pan · dbl-click to reset · click a reach
       </div>
     </div>
   );
