@@ -5,6 +5,7 @@ import {
   generateRiverData,
   generateCompositeRiverData,
   getCompositeRiver,
+  valueToConcentration,
   VARIABLE_OPTIONS,
   RIVER_ROWS,
   RIVER_COLS,
@@ -51,7 +52,7 @@ const KM_PER_SVGX = (0.16158 / RIVER_SVG_W) * 111320 * Math.cos((38.63 * Math.PI
 const BAY_CENTER: [number, number] = [141.45, 38.63]; // approx, for mouth detection
 
 // ── Along-stream sampling of the river's real path ────────────────────────────
-const SAMPLES = 96; // resampled points per segment → smooth colored ribbon
+const SAMPLES = 110; // resampled centreline points per reach
 
 interface Segment {
   pts: Pt[];              // resampled path points (SVG space), oriented upstream→mouth
@@ -97,6 +98,24 @@ function buildSegments(riverId: string): Segment[] {
   return out;
 }
 
+// ── Pixel rasterisation of the channel ────────────────────────────────────────
+// The channel is rendered as PIXELS (like the model's voxel grid), not a line:
+// a grid of CELL_PX cells over the fitted view, where a cell belongs to the
+// channel when it lies within the river's half-width of the real centreline.
+// Along-stream position maps to the data COLUMN (upstream col 0 → mouth col 119)
+// and the SIGNED cross-stream offset maps to the data ROW — so the 2D shows the
+// full cross-stream structure of the reach data, cell by cell, along the true
+// course. Width is schematic (real widths are sub-pixel at map scale): it swells
+// from the headwater toward the mouth, with organic bank jitter.
+const CELL_PX = 6;            // pixel size in content space (chunky, readable)
+const HALF_W_HEAD  = 9;       // channel half-width at the headwater (px)
+const HALF_W_MOUTH = 24;      // channel half-width at the mouth (px)
+
+interface ChannelCell {
+  x: number; y: number;       // content-space top-left of the cell
+  row: number; col: number;   // data indices (cross-stream, along-stream)
+}
+
 interface Transform { tx: number; ty: number; scale: number }
 const DEFAULT_TRANSFORM: Transform = { tx: 0, ty: 0, scale: 1 };
 
@@ -119,15 +138,6 @@ export default function RiverGrid2D({
   const segments = useMemo(() => buildSegments(riverId), [riverId]);
   const stops    = COLOR_STOPS[variableId] ?? COLOR_STOPS.nitrogen;
   const variable = VARIABLE_OPTIONS.find(v => v.id === variableId) ?? VARIABLE_OPTIONS[0];
-  const centerRow = Math.floor(RIVER_ROWS / 2);
-
-  // Column-range mean concentration at along-fraction f of a segment.
-  const valueAt = useCallback((seg: Segment, f: number): number => {
-    const col = Math.round(seg.colStart + f * (seg.colEnd - seg.colStart));
-    let sum = 0, n = 0;
-    for (let r = seg.rowStart; r <= seg.rowEnd; r++) { sum += data[r]?.[col] ?? 0; n++; }
-    return n ? sum / n : 0;
-  }, [data]);
 
   // ── Content sizing + fit the river's SVG bbox into it ──────────────────────
   const contentRef = useRef<HTMLDivElement>(null);
@@ -145,89 +155,117 @@ export default function RiverGrid2D({
       if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
       if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
     }
-    if (!Number.isFinite(minX)) return { scale: 1, ox: 0, oy: 0, minX: 0, minY: 0 };
+    if (!Number.isFinite(minX)) return { scale: 1, ox: 0, oy: 0 };
     const bboxW = Math.max(1, maxX - minX), bboxH = Math.max(1, maxY - minY);
-    const pad = 60;
+    const pad = 48 + HALF_W_MOUTH; // keep the widened mouth inside the view
     const scale = Math.min((size.w - pad * 2) / bboxW, (size.h - pad * 2) / bboxH);
-    // Centre the fitted river in the content area.
     const ox = (size.w - bboxW * scale) / 2 - minX * scale;
     const oy = (size.h - bboxH * scale) / 2 - minY * scale;
-    return { scale, ox, oy, minX, minY };
+    return { scale, ox, oy };
   }, [segments, size]);
 
-  const toContent = useCallback((p: Pt): [number, number] => [p.x * fit.scale + fit.ox, p.y * fit.scale + fit.oy], [fit]);
+  // ── Channel geometry (content space) — independent of week/colours ─────────
+  const geom = useMemo(() => {
+    // Content-space centrelines with along-fraction per vertex.
+    const chains = segments.map(seg => ({
+      seg,
+      cpts: seg.pts.map(p => [p.x * fit.scale + fit.ox, p.y * fit.scale + fit.oy] as [number, number]),
+    }));
 
-  // Fitted, colored polyline segments (recompute on week/variable/fit).
-  const drawn = useMemo(() => segments.map(seg => {
-    const cpts = seg.pts.map(toContent);
-    const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
-    for (let i = 0; i < cpts.length - 1; i++) {
-      const f = (i + 0.5) / (cpts.length - 1);
-      lines.push({ x1: cpts[i][0], y1: cpts[i][1], x2: cpts[i + 1][0], y2: cpts[i + 1][1], color: lerpColor(stops, valueAt(seg, f)) });
+    // Flatten into line segments for nearest-point queries.
+    interface SegLine { ax: number; ay: number; bx: number; by: number; t0: number; t1: number; ci: number }
+    const segLines: SegLine[] = [];
+    chains.forEach((ch, ci) => {
+      const n = ch.cpts.length;
+      for (let i = 0; i < n - 1; i++) {
+        segLines.push({
+          ax: ch.cpts[i][0], ay: ch.cpts[i][1], bx: ch.cpts[i + 1][0], by: ch.cpts[i + 1][1],
+          t0: i / (n - 1), t1: (i + 1) / (n - 1), ci,
+        });
+      }
+    });
+
+    // Rasterise: every CELL_PX cell whose centre is within halfW(t) of a
+    // centreline belongs to the channel.
+    const halfW = (t: number) => HALF_W_HEAD + (HALF_W_MOUTH - HALF_W_HEAD) * Math.pow(t, 0.85);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const ch of chains) for (const p of ch.cpts) {
+      if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
     }
-    return { cpts, lines, seg };
-  }), [segments, toContent, stops, valueAt]);
+    const cells: ChannelCell[] = [];
+    if (!Number.isFinite(minX)) return { cells, chains };
+    const x0 = Math.floor((minX - HALF_W_MOUTH - CELL_PX) / CELL_PX) * CELL_PX;
+    const x1 = Math.ceil((maxX + HALF_W_MOUTH + CELL_PX) / CELL_PX) * CELL_PX;
+    const y0 = Math.floor((minY - HALF_W_MOUTH - CELL_PX) / CELL_PX) * CELL_PX;
+    const y1 = Math.ceil((maxY + HALF_W_MOUTH + CELL_PX) / CELL_PX) * CELL_PX;
 
-  // Mouth = downstream end of the reach nearest the bay (largest segment's last pt).
+    for (let gy = y0; gy <= y1; gy += CELL_PX) {
+      for (let gx = x0; gx <= x1; gx += CELL_PX) {
+        const px = gx + CELL_PX / 2, py = gy + CELL_PX / 2;
+        // Nearest centreline point across all reaches.
+        let bestD2 = Infinity, bestT = 0, bestCi = 0, bestSign = 1;
+        for (const L of segLines) {
+          const dx = L.bx - L.ax, dy = L.by - L.ay;
+          const len2 = dx * dx + dy * dy || 1;
+          let u = ((px - L.ax) * dx + (py - L.ay) * dy) / len2;
+          u = Math.max(0, Math.min(1, u));
+          const qx = L.ax + dx * u, qy = L.ay + dy * u;
+          const d2 = (px - qx) * (px - qx) + (py - qy) * (py - qy);
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            bestT = L.t0 + (L.t1 - L.t0) * u;
+            bestCi = L.ci;
+            bestSign = (dx * (py - L.ay) - dy * (px - L.ax)) >= 0 ? 1 : -1;
+          }
+        }
+        const dist = Math.sqrt(bestD2);
+        // Organic bank jitter — deterministic per cell, ~±12% of the width.
+        const jitter = (Math.sin(gx * 0.113 + gy * 0.071) + Math.sin(gx * 0.041 - gy * 0.097)) * 0.06;
+        const hw = halfW(bestT) * (1 + jitter);
+        if (dist > hw) continue;
+
+        const seg = chains[bestCi].seg;
+        const col = Math.round(seg.colStart + bestT * (seg.colEnd - seg.colStart));
+        // Signed cross-stream offset → data row within this reach's row band.
+        const frac = (bestSign * dist / hw) * 0.5 + 0.5; // 0..1 across the channel
+        const row = Math.max(seg.rowStart, Math.min(seg.rowEnd,
+          seg.rowStart + Math.round(frac * (seg.rowEnd - seg.rowStart))));
+        cells.push({ x: gx, y: gy, row, col });
+      }
+    }
+    return { cells, chains };
+  }, [segments, fit]);
+
+  // Mouth marker: downstream end of the reach nearest the bay.
   const mouth = useMemo(() => {
-    let best: [number, number] | null = null;
-    for (const d of drawn) { const last = d.cpts[d.cpts.length - 1]; if (last) best = last; }
-    // pick the reach whose last point is nearest the bay
-    let bestDist = Infinity;
-    for (const d of drawn) {
-      const p = d.seg.pts[d.seg.pts.length - 1];
+    let best: [number, number] | null = null, bestDist = Infinity;
+    for (const ch of geom.chains) {
+      const p = ch.seg.pts[ch.seg.pts.length - 1];
       const [lon, lat] = svgLonLat(p.x, p.y);
       const dist = Math.hypot((lon - BAY_CENTER[0]) * Math.cos((lat * Math.PI) / 180), lat - BAY_CENTER[1]);
-      if (dist < bestDist) { bestDist = dist; best = d.cpts[d.cpts.length - 1]; }
+      if (dist < bestDist) { bestDist = dist; best = ch.cpts[ch.cpts.length - 1]; }
     }
     return best;
-  }, [drawn]);
-
-  // River stroke width in CONTENT px (a touch wider toward the mouth).
-  const strokeW = Math.max(5, Math.min(14, 9 * (fit.scale / 2.2)));
+  }, [geom]);
 
   // ── Zoom / pan ─────────────────────────────────────────────────────────────
   const [xform, setXform] = useState<Transform>(DEFAULT_TRANSFORM);
   const xformRef = useRef(xform); xformRef.current = xform;
   const draggingRef = useRef(false);
   const dragOriginRef = useRef({ x: 0, y: 0 });
-  const downRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
   const onDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     draggingRef.current = true;
     dragOriginRef.current = { x: e.clientX - xformRef.current.tx, y: e.clientY - xformRef.current.ty };
-    downRef.current = { x: e.clientX, y: e.clientY, moved: false };
     e.preventDefault();
   }, []);
   const onMove = useCallback((e: React.MouseEvent) => {
     if (!draggingRef.current) return;
-    if (downRef.current && Math.hypot(e.clientX - downRef.current.x, e.clientY - downRef.current.y) > 4) downRef.current.moved = true;
     setXform(prev => ({ ...prev, tx: e.clientX - dragOriginRef.current.x, ty: e.clientY - dragOriginRef.current.y }));
   }, []);
-  const onUp = useCallback((e: React.MouseEvent) => {
-    draggingRef.current = false;
-    // A click (no meaningful drag) selects the nearest reach point.
-    if (downRef.current && !downRef.current.moved && contentRef.current) {
-      const rect = contentRef.current.getBoundingClientRect();
-      const { tx, ty, scale } = xformRef.current;
-      const cx = (e.clientX - rect.left - tx) / scale; // content-space click
-      const cy = (e.clientY - rect.top - ty) / scale;
-      let best: { row: number; col: number } | null = null, bestD = Infinity;
-      for (const d of drawn) {
-        for (let i = 0; i < d.cpts.length; i++) {
-          const dist = Math.hypot(d.cpts[i][0] - cx, d.cpts[i][1] - cy);
-          if (dist < bestD) {
-            bestD = dist;
-            const f = i / (d.cpts.length - 1);
-            best = { row: centerRow, col: Math.round(d.seg.colStart + f * (d.seg.colEnd - d.seg.colStart)) };
-          }
-        }
-      }
-      if (best && bestD < 26) onCellClick(best.row, best.col);
-    }
-    downRef.current = null;
-  }, [drawn, onCellClick, centerRow]);
+  const onUp = useCallback(() => { draggingRef.current = false; }, []);
 
   useEffect(() => {
     const el = contentRef.current;
@@ -244,18 +282,6 @@ export default function RiverGrid2D({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
-
-  // Selected-reach highlight point.
-  const selectedPt = useMemo(() => {
-    if (!selectedCell) return null;
-    for (const d of drawn) {
-      if (selectedCell.col < d.seg.colStart || selectedCell.col > d.seg.colEnd) continue;
-      const f = (selectedCell.col - d.seg.colStart) / Math.max(1, d.seg.colEnd - d.seg.colStart);
-      const i = Math.round(f * (d.cpts.length - 1));
-      return d.cpts[i] ?? null;
-    }
-    return null;
-  }, [selectedCell, drawn]);
 
   // Scale bar (real km) for the current zoom.
   const kmPerScreenPx = KM_PER_SVGX / (fit.scale * xform.scale);
@@ -281,51 +307,57 @@ export default function RiverGrid2D({
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseUp={onUp}
-        onMouseLeave={() => { draggingRef.current = false; downRef.current = null; }}
+        onMouseLeave={onUp}
         onDoubleClick={() => setXform(DEFAULT_TRANSFORM)}
       >
         <div style={{ position: "absolute", inset: 0, transform: `translate(${xform.tx}px, ${xform.ty}px) scale(${xform.scale})`, transformOrigin: "0 0" }}>
-          <svg width={size.w} height={size.h} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
-            {/* soft casing under the river so it reads as a channel */}
-            {drawn.map((d, si) => (
-              <polyline
-                key={`case-${si}`}
-                points={d.cpts.map(p => `${p[0]},${p[1]}`).join(" ")}
-                fill="none" stroke="#ffffff" strokeOpacity={0.9}
-                strokeWidth={strokeW + 4} strokeLinecap="round" strokeLinejoin="round"
-              />
-            ))}
-            {/* colored concentration ribbon (smooth, per-segment) */}
-            {drawn.map((d, si) => (
-              <g key={`riv-${si}`}>
-                {d.lines.map((ln, li) => (
-                  <line key={li} x1={ln.x1} y1={ln.y1} x2={ln.x2} y2={ln.y2}
-                        stroke={ln.color} strokeWidth={strokeW} strokeLinecap="round" />
-                ))}
-              </g>
-            ))}
-            {/* animated downstream flow shimmer */}
-            {drawn.map((d, si) => (
+          {/* ── Pixel channel body — one cell per (row, col) sample ─────────── */}
+          {geom.cells.map((c, i) => {
+            const isSelected = selectedCell?.row === c.row && selectedCell?.col === c.col;
+            const val  = data[c.row]?.[c.col] ?? 0;
+            const conc = valueToConcentration(val, variableId);
+            return (
+              <div
+                key={i}
+                onClick={e => { e.stopPropagation(); onCellClick(c.row, c.col); }}
+                className="absolute group cursor-crosshair"
+                style={{
+                  left: c.x, top: c.y,
+                  width: CELL_PX, height: CELL_PX,
+                  backgroundColor: lerpColor(stops, val),
+                  outline: isSelected ? "2px solid hsl(var(--primary))" : "none",
+                  outlineOffset: "-1px",
+                  zIndex: isSelected ? 10 : 1,
+                }}
+              >
+                <div
+                  className="absolute px-1.5 py-0.5 bg-foreground/85 text-white text-[9px] font-mono rounded whitespace-nowrap
+                             opacity-0 group-hover:opacity-100 pointer-events-none z-30 transition-opacity"
+                  style={{
+                    bottom: "100%", left: "100%",
+                    transform: `scale(${1 / xform.scale})`,
+                    transformOrigin: "bottom left",
+                  }}
+                >
+                  {conc} {variable.unit} · reach {c.col}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* ── Flow shimmer + mouth marker (SVG overlay, non-interactive) ──── */}
+          <svg width={size.w} height={size.h} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none", zIndex: 20 }}>
+            {geom.chains.map((ch, si) => (
               <polyline
                 key={`flow-${si}`}
-                points={d.cpts.map(p => `${p[0]},${p[1]}`).join(" ")}
-                fill="none" stroke="#ffffff" strokeOpacity={0.55}
-                strokeWidth={Math.max(1.5, strokeW * 0.16)} strokeLinecap="round"
+                points={ch.cpts.map(p => `${p[0]},${p[1]}`).join(" ")}
+                fill="none" stroke="#ffffff" strokeOpacity={0.5}
+                strokeWidth={1.6} strokeLinecap="round"
                 strokeDasharray="2 22"
                 style={{ animation: "riverFlow 1.1s linear infinite" }}
               />
             ))}
-            {/* mouth marker */}
-            {mouth && (
-              <g>
-                <circle cx={mouth[0]} cy={mouth[1]} r={strokeW * 0.7} fill="#0f766e" stroke="#fff" strokeWidth={2} />
-              </g>
-            )}
-            {/* selected reach */}
-            {selectedPt && (
-              <circle cx={selectedPt[0]} cy={selectedPt[1]} r={strokeW * 0.75}
-                      fill="none" stroke="hsl(var(--primary))" strokeWidth={2.5} />
-            )}
+            {mouth && <circle cx={mouth[0]} cy={mouth[1]} r={7} fill="#0f766e" stroke="#fff" strokeWidth={2} />}
           </svg>
         </div>
       </div>
@@ -333,7 +365,7 @@ export default function RiverGrid2D({
       {/* mouth label (screen-space, follows the marker) */}
       {mouth && (
         <div className="absolute z-10 pointer-events-none text-[10px] font-mono font-semibold text-teal-700 bg-white/85 px-1.5 py-0.5 rounded shadow-sm"
-             style={{ left: mouth[0] * xform.scale + xform.tx + 10, top: mouth[1] * xform.scale + xform.ty - 8 }}>
+             style={{ left: mouth[0] * xform.scale + xform.tx + 12, top: mouth[1] * xform.scale + xform.ty - 8 }}>
           → to bay
         </div>
       )}
@@ -351,7 +383,7 @@ export default function RiverGrid2D({
 
       {/* hint */}
       <div className="absolute top-3 right-3 z-10 text-[9px] font-mono text-slate-400 pointer-events-none bg-white/80 px-2 py-1 rounded">
-        real river course · scroll to zoom · drag to pan · dbl-click to reset · click a reach
+        real river course · scroll to zoom · drag to pan · dbl-click to reset · click a cell
       </div>
     </div>
   );
