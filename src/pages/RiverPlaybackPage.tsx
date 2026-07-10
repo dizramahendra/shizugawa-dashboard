@@ -71,9 +71,10 @@ function ReachMeanChart({
         </linearGradient>
       </defs>
 
-      {/* Y grid lines */}
-      {yTicks.map(({ y, label }) => (
-        <g key={label}>
+      {/* Y grid lines — keyed by index: a near-flat series can round min/mid/max
+          to the SAME label (e.g. all "2.2"), so the label is not a unique key. */}
+      {yTicks.map(({ y, label }, ti) => (
+        <g key={ti}>
           <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e2e8f0" strokeWidth="1" />
           <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="7" fill="#94a3b8" fontFamily="monospace">
             {label}

@@ -108,8 +108,8 @@ function buildSegments(riverId: string): Segment[] {
 // course. Width is schematic (real widths are sub-pixel at map scale): it swells
 // from the headwater toward the mouth, with organic bank jitter.
 const CELL_PX = 6;            // pixel size in content space (chunky, readable)
-const HALF_W_HEAD  = 9;       // channel half-width at the headwater (px)
-const HALF_W_MOUTH = 24;      // channel half-width at the mouth (px)
+const HALF_W_HEAD  = 14;      // channel half-width at the headwater (px)
+const HALF_W_MOUTH = 36;      // channel half-width at the mouth (px)
 
 interface ChannelCell {
   x: number; y: number;       // content-space top-left of the cell
