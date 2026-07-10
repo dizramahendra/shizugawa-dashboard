@@ -113,7 +113,7 @@ function ReachMeanChart({
 }
 import TopNav from "@/components/TopNav";
 import PlaybackControls from "@/components/PlaybackControls";
-import RiverGrid2D from "@/components/RiverGrid2D";
+import RiverDetailMap from "@/components/RiverDetailMap";
 
 
 export default function RiverPlaybackPage() {
@@ -325,7 +325,7 @@ export default function RiverPlaybackPage() {
         {/* Left: 2D grid + playback */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex-1 overflow-hidden relative">
-            <RiverGrid2D
+            <RiverDetailMap
               week={week}
               variableId={selectedVariable}
               riverId={riverId}
