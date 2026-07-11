@@ -33,6 +33,7 @@ import {
 // ── Basemap (identical to MapViewport) ────────────────────────────────────────
 const ESRI_TOPO_STYLE = {
   version: 8,
+  glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
   sources: {
     basemap: {
       type: "raster",
@@ -100,17 +101,25 @@ export default function RiverDetailMap({
       style: ESRI_TOPO_STYLE as any,
       bounds: geom.bounds as any,
       fitBoundsOptions: { padding: 60 },
-      attributionControl: { compact: true } as any,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
+    // Surface style/tile failures — maplibre reports them via its own "error"
+    // event, NOT the console, so silent failures are otherwise invisible.
+    map.on("error", (e) => console.error("[RiverDetailMap] map error:", e?.error ?? e));
 
     // Container is often laid out AFTER map construction (flex tab) — resize on
     // first real size so the map paints without a manual nudge (MapViewport fix).
     const resizeObserver = new ResizeObserver(() => map.resize());
     resizeObserver.observe(container);
 
-    map.on("style.load", () => {
+    // Add our sources/layers once the style is ready. Guarded and attached to
+    // BOTH "style.load" and "load", AND invoked directly when the style is
+    // already loaded — depending on timing the style can finish before the
+    // listener attaches (observed in some webviews), and waiting on the event
+    // alone then leaves the map permanently without our layers.
+    const initLayers = () => {
+      if (map.getSource(SRC_CTX)) return; // already initialised
       // Context: every river of the watershed as a faint line under the raster.
       map.addSource(SRC_CTX, { type: "geojson", data: CONTEXT_RIVERS_FC as any });
       map.addLayer({
@@ -152,7 +161,10 @@ export default function RiverDetailMap({
       });
 
       setStyleReady(true);
-    });
+    };
+    map.on("style.load", initLayers);
+    map.on("load", initLayers);
+    if (map.isStyleLoaded()) initLayers();
 
     return () => {
       resizeObserver.disconnect();

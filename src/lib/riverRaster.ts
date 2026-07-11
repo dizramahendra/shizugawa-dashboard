@@ -21,6 +21,7 @@
  * cheap to refresh via GeoJSONSource.setData at ~1k features per river.
  */
 import { sampleSvgPath, type Pt } from "@/lib/svgSample";
+import { REAL_RIVER_COURSES } from "@/lib/realRiverCourses";
 import {
   getCompositeRiver,
   RIVER_ROWS,
@@ -58,6 +59,21 @@ function resample(dense: Pt[], n: number): Pt[] {
   return out;
 }
 
+/** A river's centreline in lon/lat: the REAL surveyed course (OSM/MLIT-snapped
+ *  bake) when available, else the georeferenced hand-drawn SVG course. */
+function courseLL(slug: string): [number, number][] | null {
+  const real = REAL_RIVER_COURSES[slug];
+  if (real && real.length >= 2) return real;
+  const d = RIVER_SVG_BY_SLUG[slug];
+  if (!d) return null;
+  try {
+    const pts = resample(sampleSvgPath(d, 1), SAMPLES);
+    return pts.length >= 2 ? pts.map(p => svgLonLat(p.x, p.y)) : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildSegments(riverId: string): Segment[] {
   const composite = getCompositeRiver(riverId);
   const raw = composite
@@ -69,31 +85,26 @@ function buildSegments(riverId: string): Segment[] {
 
   const out: Segment[] = [];
   for (const r of raw) {
-    const d = RIVER_SVG_BY_SLUG[r.slug];
-    if (!d) continue;
-    let pts = resample(sampleSvgPath(d, 1), SAMPLES);
-    if (pts.length < 2) continue;
-    const distToBay = (p: Pt) => {
-      const [lon, lat] = svgLonLat(p.x, p.y);
-      return Math.hypot((lon - BAY_CENTER[0]) * Math.cos((lat * Math.PI) / 180), lat - BAY_CENTER[1]);
-    };
-    if (distToBay(pts[0]) < distToBay(pts[pts.length - 1])) pts = pts.slice().reverse();
+    let ll = courseLL(r.slug);
+    if (!ll) continue;
+    const distToBay = (p: [number, number]) =>
+      Math.hypot((p[0] - BAY_CENTER[0]) * Math.cos((p[1] * Math.PI) / 180), p[1] - BAY_CENTER[1]);
+    if (distToBay(ll[0]) < distToBay(ll[ll.length - 1])) ll = ll.slice().reverse();
     out.push({
-      ll: pts.map(p => svgLonLat(p.x, p.y)),
+      ll,
       colStart: r.colStart, colEnd: r.colEnd, rowStart: r.rowStart, rowEnd: r.rowEnd,
     });
   }
   return out;
 }
 
-/** All rivers as faint context lines (static). */
+/** All rivers as faint context lines (static; real courses where baked). */
 export const CONTEXT_RIVERS_FC = {
   type: "FeatureCollection" as const,
-  features: Object.values(RIVER_SVG_BY_SLUG).flatMap(d => {
-    try {
-      const pts = resample(sampleSvgPath(d, 2), 70).map(p => svgLonLat(p.x, p.y));
-      return [{ type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: pts } }];
-    } catch { return []; }
+  features: Object.keys(RIVER_SVG_BY_SLUG).flatMap(slug => {
+    const ll = courseLL(slug);
+    if (!ll) return [];
+    return [{ type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: ll } }];
   }),
 };
 
