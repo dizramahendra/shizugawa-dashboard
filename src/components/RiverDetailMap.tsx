@@ -135,7 +135,9 @@ export default function RiverDetailMap({
         paint: {
           "fill-color": ["get", "color"] as any,
           "fill-opacity": 0.92,
-          "fill-outline-color": "rgba(255,255,255,0.25)",
+          // Soft dark cell outline: low-value cells are pale blue, and on the
+          // near-white high-zoom topo a white outline made them invisible.
+          "fill-outline-color": "rgba(51,65,85,0.35)",
         },
       });
       map.addLayer({
