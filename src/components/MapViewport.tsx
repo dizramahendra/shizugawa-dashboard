@@ -32,6 +32,7 @@ import {
   RIVER_ROWS,
   VARIABLE_OPTIONS,
 } from "@/lib/simulatedData";
+import { buildRiverGeom, cellsToFC } from "@/lib/riverRaster";
 import {
   MODEL_RIVER,
   MAIN_STEMS,
@@ -96,6 +97,7 @@ const SRC = {
   basins: "vp-basins",
   rivers: "vp-rivers",
   labels: "vp-labels",
+  raster: "vp-river-raster",
 };
 const LYR = {
   bayFill: "vp-bay-fill",
@@ -107,6 +109,7 @@ const LYR = {
   river: "vp-rivers",
   riverHit: "vp-rivers-hit",
   labels: "vp-basin-labels",
+  raster: "vp-river-raster-fill",
 };
 
 // ── Minimal local GeoJSON types (avoids un-hoisted @types/geojson) ──────────
@@ -546,6 +549,24 @@ export default function MapViewport({
         paint: { "line-color": "#000000", "line-opacity": 0, "line-width": 18 },
       });
 
+      // Selected-river pixel raster — the geo-anchored "model output" detail
+      // layer (same cell geometry as the River Playback 2D map). Empty until a
+      // river is selected; recoloured per week in the effect below.
+      map.addSource(SRC.raster, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] } as any,
+      });
+      map.addLayer({
+        id: LYR.raster,
+        type: "fill",
+        source: SRC.raster,
+        paint: {
+          "fill-color": ["get", "color"] as any,
+          "fill-opacity": 0.92,
+          "fill-outline-color": "rgba(255,255,255,0.25)",
+        },
+      });
+
       // Sub-basin number + name labels at polygon centroids
       map.addLayer({
         id: LYR.labels,
@@ -675,6 +696,24 @@ export default function MapViewport({
     map.setPaintProperty(LYR.river, "line-color", colorExpr);
     map.setPaintProperty(LYR.riverHalo, "line-color", colorExpr);
   }, [reachColors, mapReady]);
+
+  // ── Selected-river pixel raster — populate / recolour / clear ──────────────
+  // When a river is selected the map already zooms to it (fitBounds below) and
+  // dims the basemap; this drops the same quantized cell raster the River
+  // Playback 2D map draws onto the selected course, recoloured every week.
+  // Deselecting clears it back to the plain line network.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const src = map.getSource(SRC.raster) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (selectedRiver) {
+      const geom = buildRiverGeom(selectedRiver);
+      src.setData(cellsToFC(geom.cells, generateRiverData(week, selectedRiver), stops) as any);
+    } else {
+      src.setData({ type: "FeatureCollection", features: [] } as any);
+    }
+  }, [selectedRiver, week, stops, mapReady]);
 
   // ── Selection / hover / corridor visuals ───────────────────────────────────
   useEffect(() => {
