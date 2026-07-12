@@ -75,6 +75,15 @@ const BASIN_RIVER: Record<number, { id: string; name: string }> = (() => {
 // ── Basemap style — Esri World Topo raster tiles, no API key ─────────────────
 // `glyphs` points at OpenFreeMap's public font server so symbol (label)
 // layers can render text over the raster basemap.
+//
+// TWO basemaps, crossfaded on zoom (the same z12.8→13.8 band the rivers use to
+// switch line→raster): Esri World Topo carries the overview, but its rural-
+// Japan tiles run out of detail past ~z15 (near-blank white up close). The GSI
+// 地理院タイル "pale" base map — Japan's national cartography — stays detailed to
+// z18 everywhere, so zooming into "detail mode" swaps the world under the data
+// too instead of stretching an empty tile.
+const BASEMAP_XFADE_LO = 12.8;
+const BASEMAP_XFADE_HI = 13.8;
 const ESRI_TOPO_STYLE = {
   version: 8,
   glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
@@ -89,8 +98,38 @@ const ESRI_TOPO_STYLE = {
       attribution:
         "Tiles &copy; Esri &mdash; Esri, USGS, NOAA, and the GIS User Community",
     },
+    "basemap-hi": {
+      type: "raster",
+      tiles: ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      minzoom: 2,
+      maxzoom: 18,
+      attribution: "地理院タイル (GSI Japan)",
+    },
   },
-  layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+  layers: [
+    {
+      id: "basemap",
+      type: "raster",
+      source: "basemap",
+      paint: {
+        "raster-opacity": [
+          "interpolate", ["linear"], ["zoom"], BASEMAP_XFADE_LO, 1, BASEMAP_XFADE_HI, 0,
+        ],
+      },
+    },
+    {
+      id: "basemap-hi",
+      type: "raster",
+      source: "basemap-hi",
+      minzoom: BASEMAP_XFADE_LO - 0.5,
+      paint: {
+        "raster-opacity": [
+          "interpolate", ["linear"], ["zoom"], BASEMAP_XFADE_LO, 0, BASEMAP_XFADE_HI, 1,
+        ],
+      },
+    },
+  ],
 };
 
 const SRC = {
@@ -457,6 +496,8 @@ export default function MapViewport({
       style: ESRI_TOPO_STYLE as any,
       bounds: geo.overall as any,
       fitBoundsOptions: { padding: 40 },
+      // GSI detail ends at z18 — stop there rather than stretching blur.
+      maxZoom: 17.9,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
@@ -805,9 +846,22 @@ export default function MapViewport({
       corridorPathIds.length > 0 ? (["case", inIdsExpr(corridorPathIds), 0.28, 0.22] as any) : 0.22,
     );
 
-    // Background dim — the real-map equivalent of the SVG's grayscale+fade
+    // Background dim — the real-map equivalent of the SVG's grayscale+fade.
+    // Applied to BOTH basemaps; opacity keeps the zoom crossfade (top-level
+    // interpolate, dim baked into the stop values).
+    const dimTop = dimmed ? 0.35 : 1;
     map.setPaintProperty("basemap", "raster-saturation", dimmed ? -1 : 0);
-    map.setPaintProperty("basemap", "raster-opacity", dimmed ? 0.35 : 1);
+    map.setPaintProperty("basemap-hi", "raster-saturation", dimmed ? -1 : 0);
+    map.setPaintProperty(
+      "basemap",
+      "raster-opacity",
+      ["interpolate", ["linear"], ["zoom"], BASEMAP_XFADE_LO, dimTop, BASEMAP_XFADE_HI, 0] as any,
+    );
+    map.setPaintProperty(
+      "basemap-hi",
+      "raster-opacity",
+      ["interpolate", ["linear"], ["zoom"], BASEMAP_XFADE_LO, 0, BASEMAP_XFADE_HI, dimTop] as any,
+    );
     map.setPaintProperty(
       LYR.basinFill,
       "fill-opacity",

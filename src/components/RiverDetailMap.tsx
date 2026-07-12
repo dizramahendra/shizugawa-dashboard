@@ -31,6 +31,9 @@ import {
 } from "@/lib/simulatedData";
 
 // ── Basemap (identical to MapViewport) ────────────────────────────────────────
+// Esri World Topo for the overview, crossfading to the GSI 地理院タイル "pale"
+// base map up close — Esri's rural-Japan tiles run out of detail past ~z15,
+// while GSI stays detailed to z18, so deep zoom keeps gaining real map.
 const ESRI_TOPO_STYLE = {
   version: 8,
   glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
@@ -45,8 +48,34 @@ const ESRI_TOPO_STYLE = {
       attribution:
         "Tiles &copy; Esri &mdash; Esri, USGS, NOAA, and the GIS User Community",
     },
+    "basemap-hi": {
+      type: "raster",
+      tiles: ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      minzoom: 2,
+      maxzoom: 18,
+      attribution: "地理院タイル (GSI Japan)",
+    },
   },
-  layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+  layers: [
+    {
+      id: "basemap",
+      type: "raster",
+      source: "basemap",
+      paint: {
+        "raster-opacity": ["interpolate", ["linear"], ["zoom"], 12.8, 1, 13.8, 0],
+      },
+    },
+    {
+      id: "basemap-hi",
+      type: "raster",
+      source: "basemap-hi",
+      minzoom: 12.3,
+      paint: {
+        "raster-opacity": ["interpolate", ["linear"], ["zoom"], 12.8, 0, 13.8, 1],
+      },
+    },
+  ],
 };
 
 // ── Colour ramp — QUANTIZED to legend bands (the crunchy model-raster look) ───
@@ -101,6 +130,8 @@ export default function RiverDetailMap({
       style: ESRI_TOPO_STYLE as any,
       bounds: geom.bounds as any,
       fitBoundsOptions: { padding: 60 },
+      // GSI detail ends at z18 — stop there rather than stretching blur.
+      maxZoom: 17.9,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
