@@ -138,6 +138,7 @@ const SRC = {
   rivers: "vp-rivers",
   labels: "vp-labels",
   raster: "vp-river-raster",
+  rasterHi: "vp-river-raster-hi",
 };
 const LYR = {
   bayFill: "vp-bay-fill",
@@ -150,6 +151,7 @@ const LYR = {
   riverHit: "vp-rivers-hit",
   labels: "vp-basin-labels",
   raster: "vp-river-raster-fill",
+  rasterHi: "vp-river-raster-hi-fill",
 };
 
 // ── Minimal local GeoJSON types (avoids un-hoisted @types/geojson) ──────────
@@ -501,6 +503,9 @@ export default function MapViewport({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
+    // Dev-only handle for debugging/driving the camera from the console.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (import.meta.env.DEV) (window as any).__mapviewport = map;
 
     // The container is often laid out (given its real size) only AFTER the map
     // is constructed, inside this tab's flex layout — so MapLibre's first frame
@@ -617,6 +622,23 @@ export default function MapViewport({
           "fill-opacity": 0.92,
           // Soft dark cell outline: low-value cells are pale blue, and on the
           // dimmed near-white basemap a white outline made them invisible.
+          "fill-outline-color": "rgba(51,65,85,0.35)",
+        },
+      });
+      // Narrow TRUE-WIDTH raster tier for deep zoom — same data, half-size
+      // cells at near-real channel width, crossfaded in as the wide schematic
+      // tier fades out (see the zoom ramps in the selection effect).
+      map.addSource(SRC.rasterHi, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] } as any,
+      });
+      map.addLayer({
+        id: LYR.rasterHi,
+        type: "fill",
+        source: SRC.rasterHi,
+        paint: {
+          "fill-color": ["get", "color"] as any,
+          "fill-opacity": 0,
           "fill-outline-color": "rgba(51,65,85,0.35)",
         },
       });
@@ -760,16 +782,26 @@ export default function MapViewport({
     const map = mapRef.current;
     if (!mapReady || !map) return;
     const src = map.getSource(SRC.raster) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    const features: any[] = [];
-    let idOffset = 0;
+    const srcHi = map.getSource(SRC.rasterHi) as maplibregl.GeoJSONSource | undefined;
+    if (!src || !srcHi) return;
+    const wide: any[] = [];
+    const narrow: any[] = [];
+    let idW = 0, idN = 0;
     for (const r of RIVERS) {
-      const geom = buildRiverGeom(r.id);
-      if (!geom.cells.length) continue;
-      features.push(...cellFeatures(geom.cells, generateRiverData(week, r.id), stops, r.id, idOffset));
-      idOffset += geom.cells.length;
+      const data = generateRiverData(week, r.id);
+      const geomW = buildRiverGeom(r.id, "wide");
+      if (geomW.cells.length) {
+        wide.push(...cellFeatures(geomW.cells, data, stops, r.id, idW));
+        idW += geomW.cells.length;
+      }
+      const geomN = buildRiverGeom(r.id, "narrow");
+      if (geomN.cells.length) {
+        narrow.push(...cellFeatures(geomN.cells, data, stops, r.id, idN));
+        idN += geomN.cells.length;
+      }
     }
-    src.setData({ type: "FeatureCollection", features } as any);
+    src.setData({ type: "FeatureCollection", features: wide } as any);
+    srcHi.setData({ type: "FeatureCollection", features: narrow } as any);
   }, [week, stops, mapReady]);
 
   // ── Selection / hover / corridor visuals ───────────────────────────────────
@@ -806,13 +838,26 @@ export default function MapViewport({
     // data-driven cases live in its stop outputs (composite expressions).
     const zoomRamp = (low: any, high: any): any =>
       ["interpolate", ["linear"], ["zoom"], 12.8, low, 13.8, high];
+    // Raster opacities per tier: the wide schematic tier carries z13.8→15.4,
+    // then hands over to the narrow TRUE-WIDTH tier (half-size cells at
+    // near-real channel width) by z16.4 — so against the detailed GSI basemap
+    // the raster sits IN the channel instead of blanketing the town.
+    const rasterLow: any = selectedRiver
+      ? ["case", ["==", ["get", "slug"], selectedRiver], 0.92, 0]
+      : 0;
+    const rasterHigh: any = selectedRiver
+      ? ["case", ["==", ["get", "slug"], selectedRiver], 0.92, 0.15]
+      : 0.92;
     map.setPaintProperty(
       LYR.raster,
       "fill-opacity",
-      zoomRamp(
-        selectedRiver ? ["case", ["==", ["get", "slug"], selectedRiver], 0.92, 0] : 0,
-        selectedRiver ? ["case", ["==", ["get", "slug"], selectedRiver], 0.92, 0.15] : 0.92,
-      ),
+      ["interpolate", ["linear"], ["zoom"],
+        12.8, rasterLow, 13.8, rasterHigh, 15.4, rasterHigh, 16.4, 0] as any,
+    );
+    map.setPaintProperty(
+      LYR.rasterHi,
+      "fill-opacity",
+      ["interpolate", ["linear"], ["zoom"], 15.4, 0, 16.4, rasterHigh] as any,
     );
 
     // Rivers: widths grow for active reaches; non-focused reaches dim to 0.15.

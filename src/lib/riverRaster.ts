@@ -127,10 +127,21 @@ export interface RiverGeom {
   mouth: [number, number];
 }
 
+/** Raster level-of-detail tier.
+ *  "wide"   — the schematic channel (readable at overview/mid zoom; the width
+ *             is exaggerated so cells are visible when the river is small on
+ *             screen).
+ *  "narrow" — the TRUE-WIDTH tier for deep zoom: half-size cells hugging the
+ *             real course at near-real channel width, so next to the detailed
+ *             GSI basemap the raster sits IN the river instead of blanketing
+ *             the town around it. */
+export type RasterTier = "wide" | "narrow";
+
 const geomCache = new Map<string, RiverGeom>();
 
-export function buildRiverGeom(riverId: string): RiverGeom {
-  const cached = geomCache.get(riverId);
+export function buildRiverGeom(riverId: string, tier: RasterTier = "wide"): RiverGeom {
+  const cacheKey = `${riverId}:${tier}`;
+  const cached = geomCache.get(cacheKey);
   if (cached) return cached;
 
   const segments = buildSegments(riverId);
@@ -163,8 +174,16 @@ export function buildRiverGeom(riverId: string): RiverGeom {
 
   // Cell size follows the course length so every river gets ~SAMPLES columns of
   // pixels; width tapers head → mouth (in cells, matching the canvas look).
-  const cellM = Math.max(22, Math.min(80, courseLen / SAMPLES));
-  const halfW = (t: number) => cellM * (1.35 + 2.0 * Math.pow(t, 0.85));
+  // The narrow tier halves the cell size (finer detail up close) and drops the
+  // width to ~2–3 cells (≈25–90 m) so it tracks the real channel; bank jitter
+  // is also reduced so it hugs the surveyed course.
+  const cellM = tier === "narrow"
+    ? Math.max(12, Math.min(30, courseLen / (SAMPLES * 2)))
+    : Math.max(22, Math.min(80, courseLen / SAMPLES));
+  const halfW = tier === "narrow"
+    ? (t: number) => cellM * (1.0 + 0.6 * Math.pow(t, 0.85))
+    : (t: number) => cellM * (1.35 + 2.0 * Math.pow(t, 0.85));
+  const jitterAmp = tier === "narrow" ? 0.03 : 0.06;
   const maxHW = halfW(1) + cellM;
 
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -176,7 +195,7 @@ export function buildRiverGeom(riverId: string): RiverGeom {
   const cells: CellDef[] = [];
   if (!Number.isFinite(minX)) {
     const fallback: RiverGeom = { cells, bounds: [[141.4, 38.6], [141.5, 38.7]], mouth: BAY_CENTER };
-    geomCache.set(riverId, fallback);
+    geomCache.set(cacheKey, fallback);
     return fallback;
   }
   const x0 = Math.floor((minX - maxHW) / cellM), x1 = Math.ceil((maxX + maxHW) / cellM);
@@ -201,7 +220,7 @@ export function buildRiverGeom(riverId: string): RiverGeom {
         }
       }
       const dist = Math.sqrt(bestD2);
-      const jitter = (Math.sin(ix * 0.68 + iy * 0.43) + Math.sin(ix * 0.25 - iy * 0.58)) * 0.06;
+      const jitter = (Math.sin(ix * 0.68 + iy * 0.43) + Math.sin(ix * 0.25 - iy * 0.58)) * jitterAmp;
       const hw = halfW(bestT) * (1 + jitter);
       if (dist > hw) continue;
 
@@ -233,7 +252,7 @@ export function buildRiverGeom(riverId: string): RiverGeom {
   const swLL = toLL([minX - maxHW, minY - maxHW]);
   const neLL = toLL([maxX + maxHW, maxY + maxHW]);
   const geom: RiverGeom = { cells, bounds: [swLL, neLL], mouth };
-  geomCache.set(riverId, geom);
+  geomCache.set(cacheKey, geom);
   return geom;
 }
 

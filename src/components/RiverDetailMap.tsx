@@ -86,11 +86,14 @@ const COLOR_STOPS: Record<string, string[]> = {
   all:        ["#45007e","#2060a0","#168c8c","#35b870","#aadb30","#fce820"],
 };
 
-const SRC_CELLS  = "rdm-cells";
-const SRC_CTX    = "rdm-ctx-rivers";
-const LYR_CELLS  = "rdm-cells-fill";
-const LYR_SEL    = "rdm-cells-selected";
-const LYR_CTX    = "rdm-ctx-rivers";
+const SRC_CELLS    = "rdm-cells";
+const SRC_CELLS_HI = "rdm-cells-hi";
+const SRC_CTX      = "rdm-ctx-rivers";
+const LYR_CELLS    = "rdm-cells-fill";
+const LYR_CELLS_HI = "rdm-cells-hi-fill";
+const LYR_SEL      = "rdm-cells-selected";
+const LYR_SEL_HI   = "rdm-cells-hi-selected";
+const LYR_CTX      = "rdm-ctx-rivers";
 
 interface RiverDetailMapProps {
   week: number;
@@ -159,39 +162,58 @@ export default function RiverDetailMap({
         layout: { "line-cap": "round", "line-join": "round" },
       });
 
-      // The selected river's pixel raster (colours baked per feature).
+      // The selected river's pixel raster (colours baked per feature). Two LOD
+      // tiers, crossfaded on zoom: the wide schematic channel up to ~z15.4,
+      // then the narrow TRUE-WIDTH tier (half-size cells at near-real channel
+      // width) so deep zoom sits IN the real channel on the GSI basemap.
       map.addSource(SRC_CELLS, { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
       map.addLayer({
         id: LYR_CELLS, type: "fill", source: SRC_CELLS,
         paint: {
           "fill-color": ["get", "color"] as any,
-          "fill-opacity": 0.92,
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 15.4, 0.92, 16.4, 0] as any,
           // Soft dark cell outline: low-value cells are pale blue, and on the
           // near-white high-zoom topo a white outline made them invisible.
+          "fill-outline-color": "rgba(51,65,85,0.35)",
+        },
+      });
+      map.addSource(SRC_CELLS_HI, { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
+      map.addLayer({
+        id: LYR_CELLS_HI, type: "fill", source: SRC_CELLS_HI,
+        paint: {
+          "fill-color": ["get", "color"] as any,
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 15.4, 0, 16.4, 0.92] as any,
           "fill-outline-color": "rgba(51,65,85,0.35)",
         },
       });
       map.addLayer({
         id: LYR_SEL, type: "line", source: SRC_CELLS,
         filter: ["==", ["get", "row"], -1],
-        paint: { "line-color": "#6d5ce8", "line-width": 2 },
+        paint: { "line-color": "#6d5ce8", "line-width": 2, "line-opacity": ["interpolate", ["linear"], ["zoom"], 15.4, 1, 16.4, 0] as any },
+      });
+      map.addLayer({
+        id: LYR_SEL_HI, type: "line", source: SRC_CELLS_HI,
+        filter: ["==", ["get", "row"], -1],
+        paint: { "line-color": "#6d5ce8", "line-width": 2, "line-opacity": ["interpolate", ["linear"], ["zoom"], 15.4, 0, 16.4, 1] as any },
       });
 
-      map.on("mousemove", LYR_CELLS, (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        map.getCanvas().style.cursor = "crosshair";
-        setHover({ x: e.point.x, y: e.point.y, row: f.properties?.row, col: f.properties?.col });
-      });
-      map.on("mouseleave", LYR_CELLS, () => {
-        map.getCanvas().style.cursor = "";
-        setHover(null);
-      });
-      map.on("click", LYR_CELLS, (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        onCellClickRef.current(f.properties?.row, f.properties?.col);
-      });
+      for (const lyr of [LYR_CELLS, LYR_CELLS_HI]) {
+        map.on("mousemove", lyr, (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          map.getCanvas().style.cursor = "crosshair";
+          setHover({ x: e.point.x, y: e.point.y, row: f.properties?.row, col: f.properties?.col });
+        });
+        map.on("mouseleave", lyr, () => {
+          map.getCanvas().style.cursor = "";
+          setHover(null);
+        });
+        map.on("click", lyr, (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          onCellClickRef.current(f.properties?.row, f.properties?.col);
+        });
+      }
 
       setStyleReady(true);
     };
@@ -229,18 +251,20 @@ export default function RiverDetailMap({
     if (!map || !styleReady) return;
     const src = map.getSource(SRC_CELLS) as maplibregl.GeoJSONSource | undefined;
     src?.setData(cellsToFC(geom.cells, data, stops) as any);
-  }, [geom, data, stops, styleReady]);
+    const srcHi = map.getSource(SRC_CELLS_HI) as maplibregl.GeoJSONSource | undefined;
+    const geomHi = buildRiverGeom(riverId, "narrow");
+    srcHi?.setData(cellsToFC(geomHi.cells, data, stops) as any);
+  }, [geom, riverId, data, stops, styleReady]);
 
   // ── Selection outline ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleReady) return;
-    map.setFilter(
-      LYR_SEL,
-      selectedCell
-        ? ["all", ["==", ["get", "row"], selectedCell.row], ["==", ["get", "col"], selectedCell.col]] as any
-        : ["==", ["get", "row"], -1] as any,
-    );
+    const filter = selectedCell
+      ? ["all", ["==", ["get", "row"], selectedCell.row], ["==", ["get", "col"], selectedCell.col]] as any
+      : ["==", ["get", "row"], -1] as any;
+    map.setFilter(LYR_SEL, filter);
+    map.setFilter(LYR_SEL_HI, filter);
   }, [selectedCell, styleReady]);
 
   // ── Mouth marker ("→ to bay") ────────────────────────────────────────────────
