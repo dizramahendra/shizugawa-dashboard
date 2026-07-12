@@ -32,7 +32,7 @@ import {
   RIVER_ROWS,
   VARIABLE_OPTIONS,
 } from "@/lib/simulatedData";
-import { buildRiverGeom, cellsToFC } from "@/lib/riverRaster";
+import { buildRiverGeom, cellFeatures } from "@/lib/riverRaster";
 import { REAL_RIVER_COURSES } from "@/lib/realRiverCourses";
 import {
   MODEL_RIVER,
@@ -710,23 +710,26 @@ export default function MapViewport({
     map.setPaintProperty(LYR.riverHalo, "line-color", colorExpr);
   }, [reachColors, mapReady]);
 
-  // ── Selected-river pixel raster — populate / recolour / clear ──────────────
-  // When a river is selected the map already zooms to it (fitBounds below) and
-  // dims the basemap; this drops the same quantized cell raster the River
-  // Playback 2D map draws onto the selected course, recoloured every week.
-  // Deselecting clears it back to the plain line network.
+  // ── River pixel raster (ALL rivers) — the zoomed-in representation ─────────
+  // NHD-style scale switching: every river carries cells in ONE source, tagged
+  // by slug; the paint effect below crossfades lines → raster on zoom (and the
+  // selected river always shows its raster). Recoloured every week — ~8k small
+  // features, cheap for setData at the weekly cadence.
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map) return;
     const src = map.getSource(SRC.raster) as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
-    if (selectedRiver) {
-      const geom = buildRiverGeom(selectedRiver);
-      src.setData(cellsToFC(geom.cells, generateRiverData(week, selectedRiver), stops) as any);
-    } else {
-      src.setData({ type: "FeatureCollection", features: [] } as any);
+    const features: any[] = [];
+    let idOffset = 0;
+    for (const r of RIVERS) {
+      const geom = buildRiverGeom(r.id);
+      if (!geom.cells.length) continue;
+      features.push(...cellFeatures(geom.cells, generateRiverData(week, r.id), stops, r.id, idOffset));
+      idOffset += geom.cells.length;
     }
-  }, [selectedRiver, week, stops, mapReady]);
+    src.setData({ type: "FeatureCollection", features } as any);
+  }, [week, stops, mapReady]);
 
   // ── Selection / hover / corridor visuals ───────────────────────────────────
   useEffect(() => {
@@ -752,19 +755,38 @@ export default function MapViewport({
     // geometries at once). Everything else keeps its line representation.
     const hiddenExpr: any = selPathId != null ? ["==", ["get", "id"], selPathId] : false;
 
-    // Rivers: widths grow for active reaches; non-focused reaches dim to 0.15
+    // Zoom crossfade lines ⇄ raster (NHD-style scale-dependent representation):
+    // between z12.8 and z13.8 the line network fades OUT while the pixel
+    // rasters fade IN, so a river is always exactly ONE visible representation.
+    // The selected river's raster is always fully visible (its line is hidden
+    // regardless), and non-selected rasters inherit the 0.15 focus dimming.
+    // NOTE: maplibre only allows ["zoom"] as the input of a TOP-LEVEL
+    // interpolate/step, so the zoom ramp is the outer expression and the
+    // data-driven cases live in its stop outputs (composite expressions).
+    const zoomRamp = (low: any, high: any): any =>
+      ["interpolate", ["linear"], ["zoom"], 12.8, low, 13.8, high];
+    map.setPaintProperty(
+      LYR.raster,
+      "fill-opacity",
+      zoomRamp(
+        selectedRiver ? ["case", ["==", ["get", "slug"], selectedRiver], 0.92, 0] : 0,
+        selectedRiver ? ["case", ["==", ["get", "slug"], selectedRiver], 0.92, 0.15] : 0.92,
+      ),
+    );
+
+    // Rivers: widths grow for active reaches; non-focused reaches dim to 0.15.
     map.setPaintProperty(LYR.river, "line-width", riverWidthExpr(activeIds));
     map.setPaintProperty(
       LYR.river,
       "line-opacity",
-      anyFocus ? (["case", hiddenExpr, 0, inIdsExpr(focusIds), 1, 0.15] as any) : 1,
+      zoomRamp(anyFocus ? ["case", hiddenExpr, 0, inIdsExpr(focusIds), 1, 0.15] : 1, 0),
     );
     // Casing tracks the river width and its focus dimming so it stays a tight outline.
     map.setPaintProperty(LYR.riverCasing, "line-width", ["+", riverWidthExpr(activeIds), 2.6] as any);
     map.setPaintProperty(
       LYR.riverCasing,
       "line-opacity",
-      anyFocus ? (["case", hiddenExpr, 0, inIdsExpr(focusIds), 0.8, 0.12] as any) : 0.8,
+      zoomRamp(anyFocus ? ["case", hiddenExpr, 0, inIdsExpr(focusIds), 0.8, 0.12] : 0.8, 0),
     );
 
     // Halo: hovered / corridor reaches only — the selected river's raster

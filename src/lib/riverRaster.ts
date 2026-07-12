@@ -237,19 +237,26 @@ export function buildRiverGeom(riverId: string): RiverGeom {
   return geom;
 }
 
+/** Cells → features with the week's colours baked per feature. `slug` tags each
+ *  feature's river and `idOffset` keeps ids unique when several rivers share
+ *  one source (the all-rivers zoom raster). */
+export function cellFeatures(
+  cells: CellDef[], data: number[][], stops: string[], slug = "", idOffset = 0,
+) {
+  return cells.map((c, i) => ({
+    type: "Feature" as const,
+    id: idOffset + i,
+    properties: {
+      slug,
+      row: c.row, col: c.col,
+      val: data[c.row]?.[c.col] ?? 0,
+      color: bandColor(stops, data[c.row]?.[c.col] ?? 0),
+    },
+    geometry: { type: "Polygon" as const, coordinates: [[...c.quad, c.quad[0]]] },
+  }));
+}
+
 /** Cells → FeatureCollection with the week's colours baked per feature. */
 export function cellsToFC(cells: CellDef[], data: number[][], stops: string[]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: cells.map((c, i) => ({
-      type: "Feature" as const,
-      id: i,
-      properties: {
-        row: c.row, col: c.col,
-        val: data[c.row]?.[c.col] ?? 0,
-        color: bandColor(stops, data[c.row]?.[c.col] ?? 0),
-      },
-      geometry: { type: "Polygon" as const, coordinates: [[...c.quad, c.quad[0]]] },
-    })),
-  };
+  return { type: "FeatureCollection" as const, features: cellFeatures(cells, data, stops) };
 }
