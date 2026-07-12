@@ -21,7 +21,7 @@ import { useMemo, useRef, useEffect, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import LegendOverlay from "@/components/LegendOverlay";
-import { buildRiverGeom, cellsToFC, CONTEXT_RIVERS_FC } from "@/lib/riverRaster";
+import { buildRiverGeom, cellsToFC, CONTEXT_RIVERS_FC, riverSlugs } from "@/lib/riverRaster";
 import {
   generateRiverData,
   generateCompositeRiverData,
@@ -183,6 +183,14 @@ export default function RiverDetailMap({
     if (!map) return;
     map.fitBounds(geom.bounds as any, { padding: 60, duration: 700 });
   }, [geom]);
+
+  // ── One representation per river: hide the focused river's own context line
+  // (its raster IS the river); other rivers keep their faint lines. ───────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReady) return;
+    map.setFilter(LYR_CTX, ["!", ["in", ["get", "slug"], ["literal", riverSlugs(riverId)]]] as any);
+  }, [riverId, styleReady]);
 
   // ── Week / variable / river change: recolour (setData is cheap at ~1k cells) ─
   useEffect(() => {

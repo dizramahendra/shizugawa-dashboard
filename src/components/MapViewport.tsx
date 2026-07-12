@@ -33,6 +33,7 @@ import {
   VARIABLE_OPTIONS,
 } from "@/lib/simulatedData";
 import { buildRiverGeom, cellsToFC } from "@/lib/riverRaster";
+import { REAL_RIVER_COURSES } from "@/lib/realRiverCourses";
 import {
   MODEL_RIVER,
   MAIN_STEMS,
@@ -305,9 +306,19 @@ function buildGeoData(): GeoData {
     for (const [idStr, d] of Object.entries(RIVER_PATHS)) {
       const id = Number(idStr);
       const modelId = MODEL_RIVER[id] ?? "";
-      const subs = samplePathSubpaths(d, host);
-      if (subs.length === 0) continue;
-      const lines = subs.map((sub) => sub.points.map(([x, y]) => toLonLat(x, y)));
+      // ONE geometry per river across representations: prefer the baked REAL
+      // course (OSM/MLIT-snapped — the same centreline the pixel raster is
+      // built on) so the line, the hit target, the selection zoom and the
+      // raster all agree; fall back to the hand-drawn SVG course.
+      const baked = modelId ? REAL_RIVER_COURSES[modelId] : undefined;
+      let lines: LonLat[][];
+      if (baked && baked.length >= 2) {
+        lines = [baked.map((p) => [p[0], p[1]] as LonLat)];
+      } else {
+        const subs = samplePathSubpaths(d, host);
+        if (subs.length === 0) continue;
+        lines = subs.map((sub) => sub.points.map(([x, y]) => toLonLat(x, y)));
+      }
       riverFeatures.push({
         type: "Feature",
         id,
@@ -735,26 +746,34 @@ export default function MapViewport({
     const anyFocus = focusIds.length > 0;
     const dimmed = !!selectedRiver; // SVG dims the background only on river selection
 
+    // Representation switch (scale-based symbology, Esri/NHD style): while a
+    // river is SELECTED its detailed representation — the pixel raster — IS the
+    // river, so its line/casing/halo hide entirely (one entity, never two
+    // geometries at once). Everything else keeps its line representation.
+    const hiddenExpr: any = selPathId != null ? ["==", ["get", "id"], selPathId] : false;
+
     // Rivers: widths grow for active reaches; non-focused reaches dim to 0.15
     map.setPaintProperty(LYR.river, "line-width", riverWidthExpr(activeIds));
     map.setPaintProperty(
       LYR.river,
       "line-opacity",
-      anyFocus ? (["case", inIdsExpr(focusIds), 1, 0.15] as any) : 1,
+      anyFocus ? (["case", hiddenExpr, 0, inIdsExpr(focusIds), 1, 0.15] as any) : 1,
     );
     // Casing tracks the river width and its focus dimming so it stays a tight outline.
     map.setPaintProperty(LYR.riverCasing, "line-width", ["+", riverWidthExpr(activeIds), 2.6] as any);
     map.setPaintProperty(
       LYR.riverCasing,
       "line-opacity",
-      anyFocus ? (["case", inIdsExpr(focusIds), 0.8, 0.12] as any) : 0.8,
+      anyFocus ? (["case", hiddenExpr, 0, inIdsExpr(focusIds), 0.8, 0.12] as any) : 0.8,
     );
 
-    // Halo: selected / hovered / corridor reaches only
+    // Halo: hovered / corridor reaches only — the selected river's raster
+    // carries its own selection affordance, so it gets no line halo.
+    const haloIds = activeIds.filter((i) => i !== selPathId);
     map.setFilter(
       LYR.riverHalo,
-      activeIds.length > 0
-        ? (["in", ["get", "id"], ["literal", activeIds]] as any)
+      haloIds.length > 0
+        ? (["in", ["get", "id"], ["literal", haloIds]] as any)
         : (["==", ["get", "id"], -999] as any),
     );
     map.setPaintProperty(LYR.riverHalo, "line-width", ["+", riverWidthExpr(activeIds), 10] as any);

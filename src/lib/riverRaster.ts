@@ -98,15 +98,23 @@ function buildSegments(riverId: string): Segment[] {
   return out;
 }
 
-/** All rivers as faint context lines (static; real courses where baked). */
+/** All rivers as faint context lines (static; real courses where baked).
+ *  Features carry their slug so the focused river's own line can be hidden
+ *  while its raster representation is shown (one entity, one representation). */
 export const CONTEXT_RIVERS_FC = {
   type: "FeatureCollection" as const,
   features: Object.keys(RIVER_SVG_BY_SLUG).flatMap(slug => {
     const ll = courseLL(slug);
     if (!ll) return [];
-    return [{ type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: ll } }];
+    return [{ type: "Feature" as const, properties: { slug }, geometry: { type: "LineString" as const, coordinates: ll } }];
   }),
 };
+
+/** Slugs of the reaches a river id renders (composite → all segment slugs). */
+export function riverSlugs(riverId: string): string[] {
+  const composite = getCompositeRiver(riverId);
+  return composite ? composite.segments.map(s => s.riverId) : [riverId];
+}
 
 // ── Pixel-cell rasterisation in local metre space → lon/lat quads ─────────────
 export interface CellDef {
