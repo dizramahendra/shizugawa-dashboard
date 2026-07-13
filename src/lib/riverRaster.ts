@@ -25,6 +25,7 @@ import { REAL_RIVER_COURSES } from "@/lib/realRiverCourses";
 import { REAL_RIVER_BANKS } from "@/lib/realRiverBanks";
 import {
   getCompositeRiver,
+  RIVERS,
   RIVER_ROWS,
   RIVER_COLS,
   RIVER_SVG_BY_SLUG,
@@ -86,6 +87,18 @@ function courseLL(slug: string): [number, number][] | null {
   }
 }
 
+function distToBay(p: [number, number]): number {
+  return Math.hypot((p[0] - BAY_CENTER[0]) * Math.cos((p[1] * Math.PI) / 180), p[1] - BAY_CENTER[1]);
+}
+
+/** A reach's centreline oriented upstream → mouth (mouth = end nearer the bay). */
+function orientedCourseLL(slug: string): [number, number][] | null {
+  let ll = courseLL(slug);
+  if (!ll) return null;
+  if (distToBay(ll[0]) < distToBay(ll[ll.length - 1])) ll = ll.slice().reverse();
+  return ll;
+}
+
 function buildSegments(riverId: string): Segment[] {
   const composite = getCompositeRiver(riverId);
   const raw = composite
@@ -97,11 +110,8 @@ function buildSegments(riverId: string): Segment[] {
 
   const out: Segment[] = [];
   for (const r of raw) {
-    let ll = courseLL(r.slug);
+    const ll = orientedCourseLL(r.slug);
     if (!ll) continue;
-    const distToBay = (p: [number, number]) =>
-      Math.hypot((p[0] - BAY_CENTER[0]) * Math.cos((p[1] * Math.PI) / 180), p[1] - BAY_CENTER[1]);
-    if (distToBay(ll[0]) < distToBay(ll[ll.length - 1])) ll = ll.slice().reverse();
     out.push({
       slug: r.slug,
       ll,
@@ -109,6 +119,119 @@ function buildSegments(riverId: string): Segment[] {
     });
   }
   return out;
+}
+
+// ── Drainage network → hydraulic channel width ────────────────────────────────
+// Channel width follows DOWNSTREAM HYDRAULIC GEOMETRY: width ∝ √(accumulated
+// drainage area). Width is a property of the WATERCOURSE, not the reach — the
+// old per-reach taper (narrow head → wide mouth, resetting at every sub-basin
+// boundary) produced pointy "tentacle" tips and fat blob-mouths butting into
+// the next reach's thin head. Here:
+//   • the network topology is derived from the baked geometry — a reach whose
+//     mouth lands within JOIN_R of another reach's course JOINS it there;
+//   • accumulated area at fraction t of a reach = its own sub-basin area
+//     accrued linearly along the course + the FULL upstream area of every
+//     tributary that has joined at or before t;
+//   • width steps UP at confluences (like a real river) and never resets.
+const JOIN_R_M = 300;
+
+/** Sub-basin area (km²) per slug, parsed from the RIVERS catalogue. */
+const AREA_KM2: Record<string, number> = (() => {
+  const out: Record<string, number> = {};
+  for (const r of RIVERS) {
+    const m = /([\d.]+)\s*km²/.exec(r.sub ?? "");
+    out[r.id] = m ? parseFloat(m[1]) : 5;
+  }
+  return out;
+})();
+
+interface ReachNet {
+  ll: [number, number][];        // oriented upstream → mouth
+  cum: number[];                 // cumulative metres per vertex
+  totalLen: number;
+  ownArea: number;               // km²
+  tribs: { slug: string; t: number }[]; // tributaries joining, by arc fraction
+  totalArea: number;             // own + all upstream (filled in pass 2)
+}
+
+let _net: Map<string, ReachNet> | null = null;
+function getNetwork(): Map<string, ReachNet> {
+  if (_net) return _net;
+  const net = new Map<string, ReachNet>();
+  const KXY = (lat: number) => [111320 * Math.cos((lat * Math.PI) / 180), 110540] as const;
+
+  for (const slug of Object.keys(RIVER_SVG_BY_SLUG)) {
+    const ll = orientedCourseLL(slug);
+    if (!ll) continue;
+    const [kx, ky] = KXY(ll[0][1]);
+    const cum = [0];
+    for (let i = 0; i < ll.length - 1; i++) {
+      cum.push(cum[i] + Math.hypot((ll[i + 1][0] - ll[i][0]) * kx, (ll[i + 1][1] - ll[i][1]) * ky));
+    }
+    net.set(slug, {
+      ll, cum, totalLen: cum[cum.length - 1] || 1,
+      ownArea: AREA_KM2[slug] ?? 5, tribs: [], totalArea: 0,
+    });
+  }
+
+  // Junctions: each reach's MOUTH joins the nearest other reach's course
+  // (within JOIN_R), at that course's arc fraction; otherwise it ends in the bay.
+  for (const [slug, r] of net) {
+    const mouth = r.ll[r.ll.length - 1];
+    const [kx, ky] = KXY(mouth[1]);
+    let best: { slug: string; t: number; d: number } | null = null;
+    for (const [other, o] of net) {
+      if (other === slug) continue;
+      for (let i = 0; i < o.ll.length - 1; i++) {
+        const ax = (o.ll[i][0] - mouth[0]) * kx, ay = (o.ll[i][1] - mouth[1]) * ky;
+        const bx = (o.ll[i + 1][0] - mouth[0]) * kx, by = (o.ll[i + 1][1] - mouth[1]) * ky;
+        const dx = bx - ax, dy = by - ay;
+        const len2 = dx * dx + dy * dy || 1;
+        let u = -(ax * dx + ay * dy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const d = Math.hypot(ax + dx * u, ay + dy * u);
+        if (d <= JOIN_R_M && (!best || d < best.d)) {
+          const t = (o.cum[i] + (o.cum[i + 1] - o.cum[i]) * u) / o.totalLen;
+          best = { slug: other, t, d };
+        }
+      }
+    }
+    if (best) net.get(best.slug)!.tribs.push({ slug, t: best.t });
+  }
+
+  // Accumulated totals (cycle-guarded — bad geometry cannot infinite-loop).
+  const totalArea = (slug: string, seen: Set<string>): number => {
+    const r = net.get(slug);
+    if (!r || seen.has(slug)) return 0;
+    seen.add(slug);
+    let a = r.ownArea;
+    for (const trib of r.tribs) a += totalArea(trib.slug, seen);
+    return a;
+  };
+  for (const [slug, r] of net) r.totalArea = totalArea(slug, new Set());
+
+  _net = net;
+  return net;
+}
+
+/** Accumulated drainage area (km²) at arc fraction t of a reach. */
+function drainageAreaAt(slug: string, t: number): number {
+  const net = getNetwork();
+  const r = net.get(slug);
+  if (!r) return 5;
+  let a = r.ownArea * Math.max(0.06, Math.min(1, t)); // headwaters keep a floor
+  for (const trib of r.tribs) {
+    if (trib.t <= t) a += (net.get(trib.slug)?.totalArea ?? 0);
+  }
+  return a;
+}
+
+/** Hydraulic channel width (m) at arc fraction t — width ∝ √(drainage area). */
+function channelWidthM(slug: string, t: number, tier: RasterTier): number {
+  const a = drainageAreaAt(slug, t);
+  return tier === "narrow"
+    ? Math.max(8, Math.min(55, 6.5 * Math.sqrt(a)))
+    : Math.max(35, Math.min(150, 20 * Math.sqrt(a)));
 }
 
 /** All rivers as faint context lines (static; real courses where baked).
@@ -192,20 +315,20 @@ export function buildRiverGeom(riverId: string, tier: RasterTier = "wide"): Rive
   });
 
   // Cell size follows the course length so every river gets ~SAMPLES columns of
-  // pixels; width tapers head → mouth (in cells, matching the canvas look).
-  // The narrow tier halves the cell size (finer detail up close) and drops the
-  // width to ~2–3 cells (≈25–90 m) so it tracks the real channel; bank jitter
-  // is also reduced so it hugs the surveyed course.
+  // pixels; the narrow tier halves the cell size for finer detail up close.
   const cellM = tier === "narrow"
     ? Math.max(12, Math.min(30, courseLen / (SAMPLES * 2)))
     : Math.max(22, Math.min(80, courseLen / SAMPLES));
-  const halfW = tier === "narrow"
-    ? (t: number) => cellM * (1.0 + 0.6 * Math.pow(t, 0.85))
-    : (t: number) => cellM * (1.35 + 2.0 * Math.pow(t, 0.85));
+  // Channel width comes from the DRAINAGE NETWORK (width ∝ √accumulated area,
+  // continuous across sub-basin boundaries — see channelWidthM), floored at
+  // ¾ cell so the ribbon can never break into disconnected cells.
+  const halfWFor = (slug: string, t: number) =>
+    Math.max(0.75 * cellM, channelWidthM(slug, t, tier) / 2);
   // No bank jitter on the narrow tier — it is decorative wobble, and at 2–3
   // cells wide it just misplaces cells relative to the surveyed course.
   const jitterAmp = tier === "narrow" ? 0 : 0.06;
-  const maxHW = halfW(1) + cellM;
+  let maxHW = cellM;
+  for (const seg of segments) maxHW = Math.max(maxHW, halfWFor(seg.slug, 1) + cellM);
 
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const L of segLines) {
@@ -242,8 +365,8 @@ export function buildRiverGeom(riverId: string, tier: RasterTier = "wide"): Rive
       }
       const dist = Math.sqrt(bestD2);
       const jitter = (Math.sin(ix * 0.68 + iy * 0.43) + Math.sin(ix * 0.25 - iy * 0.58)) * jitterAmp;
-      const hw = halfW(bestT) * (1 + jitter);
       const seg = segments[bestSi];
+      const hw = halfWFor(seg.slug, bestT) * (1 + jitter);
       let keep = dist <= hw;
       // TRUE bank shapes (narrow tier): where the channel is mapped as a water
       // polygon (sparse — a few lower reaches), also keep cells whose centre
