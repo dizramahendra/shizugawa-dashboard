@@ -894,9 +894,22 @@ export default function MapViewport({
     // Background dim — the real-map equivalent of the SVG's grayscale+fade.
     // Applied to BOTH basemaps; opacity keeps the zoom crossfade (top-level
     // interpolate, dim baked into the stop values).
+    //
+    // Figure-ground at data zoom: the GSI map is intentionally information-
+    // dense (contours, field symbols, its own blue streams), and past ~z14 it
+    // competes with the pixel raster. So even UNSELECTED, the detail basemap
+    // fades to ~55% and desaturates as the rasters take over — the data reads
+    // as figure, the map as ground.
     const dimTop = dimmed ? 0.35 : 1;
+    const hiDeep = dimmed ? 0.35 : 0.55;
     map.setPaintProperty("basemap", "raster-saturation", dimmed ? -1 : 0);
-    map.setPaintProperty("basemap-hi", "raster-saturation", dimmed ? -1 : 0);
+    map.setPaintProperty(
+      "basemap-hi",
+      "raster-saturation",
+      dimmed
+        ? -1
+        : (["interpolate", ["linear"], ["zoom"], BASEMAP_XFADE_HI, 0, 15.2, -0.5] as any),
+    );
     map.setPaintProperty(
       "basemap",
       "raster-opacity",
@@ -905,7 +918,8 @@ export default function MapViewport({
     map.setPaintProperty(
       "basemap-hi",
       "raster-opacity",
-      ["interpolate", ["linear"], ["zoom"], BASEMAP_XFADE_LO, 0, BASEMAP_XFADE_HI, dimTop] as any,
+      ["interpolate", ["linear"], ["zoom"],
+        BASEMAP_XFADE_LO, 0, BASEMAP_XFADE_HI, dimTop, 15.2, hiDeep] as any,
     );
     map.setPaintProperty(
       LYR.basinFill,

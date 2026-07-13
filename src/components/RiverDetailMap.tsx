@@ -72,7 +72,11 @@ const ESRI_TOPO_STYLE = {
       source: "basemap-hi",
       minzoom: 12.3,
       paint: {
-        "raster-opacity": ["interpolate", ["linear"], ["zoom"], 12.8, 0, 13.8, 1],
+        // Figure-ground at data zoom: past ~z14 the dense GSI cartography
+        // competes with the pixel raster, so it fades to ~55% and desaturates
+        // as the cells take over — data as figure, map as ground.
+        "raster-opacity": ["interpolate", ["linear"], ["zoom"], 12.8, 0, 13.8, 1, 15.2, 0.55],
+        "raster-saturation": ["interpolate", ["linear"], ["zoom"], 13.8, 0, 15.2, -0.5],
       },
     },
   ],
