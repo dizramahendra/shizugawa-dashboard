@@ -22,6 +22,7 @@
  */
 import { sampleSvgPath, type Pt } from "@/lib/svgSample";
 import { REAL_RIVER_COURSES } from "@/lib/realRiverCourses";
+import { REAL_RIVER_BANKS } from "@/lib/realRiverBanks";
 import {
   getCompositeRiver,
   RIVER_ROWS,
@@ -47,9 +48,20 @@ const BAY_CENTER: [number, number] = [141.45, 38.63]; // approx, for mouth detec
 const SAMPLES = 110;
 
 interface Segment {
+  slug: string;             // reach slug (bank-polygon + context lookups)
   ll: [number, number][];   // centreline in lon/lat, upstream → mouth
   colStart: number; colEnd: number;
   rowStart: number; rowEnd: number;
+}
+
+/** Point-in-ring (lon/lat ray cast) for the baked bank polygons. */
+function inRing(p: [number, number], ring: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 function resample(dense: Pt[], n: number): Pt[] {
@@ -91,6 +103,7 @@ function buildSegments(riverId: string): Segment[] {
       Math.hypot((p[0] - BAY_CENTER[0]) * Math.cos((p[1] * Math.PI) / 180), p[1] - BAY_CENTER[1]);
     if (distToBay(ll[0]) < distToBay(ll[ll.length - 1])) ll = ll.slice().reverse();
     out.push({
+      slug: r.slug,
       ll,
       colStart: r.colStart, colEnd: r.colEnd, rowStart: r.rowStart, rowEnd: r.rowEnd,
     });
@@ -160,14 +173,20 @@ export function buildRiverGeom(riverId: string, tier: RasterTier = "wide"): Rive
   let courseLen = 0;
   segments.forEach((seg, si) => {
     const mpts = seg.ll.map(toM);
-    let len = 0;
-    for (let i = 0; i < mpts.length - 1; i++) len += Math.hypot(mpts[i + 1][0] - mpts[i][0], mpts[i + 1][1] - mpts[i][1]);
-    courseLen = Math.max(courseLen, len);
-    const nn = mpts.length;
-    for (let i = 0; i < nn - 1; i++) {
+    // ARC-LENGTH parameterisation: the map-matched centrelines carry the survey
+    // ways' own vertices at irregular spacing, so the along-stream fraction (→
+    // data COLUMN) must come from cumulative length, not vertex index — else
+    // densely-digitised bends would hog data columns.
+    const cum: number[] = [0];
+    for (let i = 0; i < mpts.length - 1; i++) {
+      cum.push(cum[i] + Math.hypot(mpts[i + 1][0] - mpts[i][0], mpts[i + 1][1] - mpts[i][1]));
+    }
+    const total = cum[cum.length - 1] || 1;
+    courseLen = Math.max(courseLen, total);
+    for (let i = 0; i < mpts.length - 1; i++) {
       segLines.push({
         ax: mpts[i][0], ay: mpts[i][1], bx: mpts[i + 1][0], by: mpts[i + 1][1],
-        t0: i / (nn - 1), t1: (i + 1) / (nn - 1), si,
+        t0: cum[i] / total, t1: cum[i + 1] / total, si,
       });
     }
   });
@@ -183,7 +202,9 @@ export function buildRiverGeom(riverId: string, tier: RasterTier = "wide"): Rive
   const halfW = tier === "narrow"
     ? (t: number) => cellM * (1.0 + 0.6 * Math.pow(t, 0.85))
     : (t: number) => cellM * (1.35 + 2.0 * Math.pow(t, 0.85));
-  const jitterAmp = tier === "narrow" ? 0.03 : 0.06;
+  // No bank jitter on the narrow tier — it is decorative wobble, and at 2–3
+  // cells wide it just misplaces cells relative to the surveyed course.
+  const jitterAmp = tier === "narrow" ? 0 : 0.06;
   const maxHW = halfW(1) + cellM;
 
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -222,9 +243,20 @@ export function buildRiverGeom(riverId: string, tier: RasterTier = "wide"): Rive
       const dist = Math.sqrt(bestD2);
       const jitter = (Math.sin(ix * 0.68 + iy * 0.43) + Math.sin(ix * 0.25 - iy * 0.58)) * jitterAmp;
       const hw = halfW(bestT) * (1 + jitter);
-      if (dist > hw) continue;
-
       const seg = segments[bestSi];
+      let keep = dist <= hw;
+      // TRUE bank shapes (narrow tier): where the channel is mapped as a water
+      // polygon (sparse — a few lower reaches), also keep cells whose centre
+      // lies INSIDE the real bank ring, so the raster fills the actual channel
+      // outline instead of just a fixed-width ribbon around the centreline.
+      if (!keep && tier === "narrow") {
+        const rings = REAL_RIVER_BANKS[seg.slug];
+        if (rings) {
+          const c = toLL([px, py]);
+          keep = rings.some(r => inRing(c, r));
+        }
+      }
+      if (!keep) continue;
       const col = Math.round(seg.colStart + bestT * (seg.colEnd - seg.colStart));
       const frac = (bestSign * dist / hw) * 0.5 + 0.5;
       const row = Math.max(seg.rowStart, Math.min(seg.rowEnd,
